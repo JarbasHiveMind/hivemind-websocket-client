@@ -2,7 +2,15 @@
 
 ## [Unreleased](https://github.com/JarbasHiveMind/hivemind_websocket_client/tree/HEAD)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind_websocket_client/compare/V0.0.4a17...HEAD)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind_websocket_client/compare/V0.0.4a18...HEAD)
+
+**Fixed bugs:**
+
+- fix/clients\_manage\_their\_own\_sessions [\#23](https://github.com/JarbasHiveMind/hivemind_websocket_client/pull/23) ([JarbasAl](https://github.com/JarbasAl))
+
+## [V0.0.4a18](https://github.com/JarbasHiveMind/hivemind_websocket_client/tree/V0.0.4a18) (2024-01-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind_websocket_client/compare/V0.0.4a17...V0.0.4a18)
 
 **Closed issues:**
 
