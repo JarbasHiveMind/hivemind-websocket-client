@@ -4,6 +4,7 @@ from typing import Optional
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
 from ovos_bus_client.message import Message
+from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.client import HiveMessageBusClient
@@ -202,6 +203,12 @@ class HiveMindSlaveProtocol:
         assert isinstance(message.payload, MycroftMessage)
         # master wants to inject message into mycroft bus
         pload = message.payload
+
+        # update session sent from hivemind-core
+        sess = Session.from_message(pload)
+        if sess.session_id == self.hm.session_id:
+            sess.site_id = self.site_id  # do not allow overwriting site_id
+        SessionManager.update(sess)
 
         # from this point on, it should be a native source and execute audio
         pload.context["source"] = pload.context.pop("destination")
