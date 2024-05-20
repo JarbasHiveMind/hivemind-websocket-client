@@ -2,7 +2,7 @@ import base64
 import json
 import ssl
 from threading import Event
-from typing import Union
+from typing import Union, Optional
 
 from ovos_bus_client import Message as MycroftMessage, MessageBusClient as OVOSBusClient
 from ovos_bus_client.session import Session
@@ -26,18 +26,18 @@ class HiveMessageWaiter:
     the actual waiting act so the waiting can be setuo, actions can be
     performed and _then_ the message can be waited for.
 
-    Argunments:
+    Arguments:
         bus: Bus to check for messages on
         message_type: message type to wait for
     """
 
-    def __init__(self, bus, message_type):
+    def __init__(self, bus, message_type: Union[HiveMessageType, str]):
         self.bus = bus
         self.msg_type = message_type
         self.received_msg = None
         # Setup response handler
         self.response_event = Event()
-        self.bus.once(message_type, self._handler)
+        self.bus.on(message_type, self._handler)
 
     def _handler(self, message):
         """Receive response data."""
@@ -54,44 +54,42 @@ class HiveMessageWaiter:
             HiveMessage or None
         """
         self.response_event.wait(timeout)
-        if not self.response_event.is_set():
-            # Clean up the event handler
-            try:
-                self.bus.remove(self.msg_type, self._handler)
-            except (ValueError, KeyError):
-                # ValueError occurs on pyee 5.0.1 removing handlers
-                # registered with once.
-                # KeyError may theoretically occur if the event occurs as
-                # the handler is removed
-                pass
+        self.bus.remove(self.msg_type, self._handler)
         return self.received_msg
 
 
 class HivePayloadWaiter(HiveMessageWaiter):
-    def __init__(self, payload_type=HiveMessageType.THIRDPRTY, *args, **kwargs):
+    def __init__(self, payload_type: Union[HiveMessageType, str],
+                 *args, **kwargs):
         super(HivePayloadWaiter, self).__init__(*args, **kwargs)
         self.payload_type = payload_type
 
     def _handler(self, message):
         """Receive response data."""
         if message.payload.msg_type == self.payload_type:
-            self.received_msg = message
-            self.response_event.set()
-        else:
-            self.bus.once(self.msg_type, self._handler)
+            super()._handler(message)
 
 
 class HiveMessageBusClient(OVOSBusClient):
-    def __init__(self, key=None, password=None, crypto_key=None, host='127.0.0.1', port=5678,
-                 useragent="", self_signed=True, share_bus=False,
-                 compress=True, binarize=True, identity: NodeIdentity = None):
-        ssl = host.startswith("wss://")
-        host = host.replace("ws://", "").replace("wss://", "").strip()
+    def __init__(self, key: Optional[str] = None,
+                 password: Optional[str] = None,
+                 crypto_key: Optional[str] = None,
+                 host: Optional[str] = None,
+                 port: Optional[int] = None,
+                 useragent: str = "",
+                 self_signed: bool = True,
+                 share_bus: bool = False,
+                 compress: bool = True,
+                 binarize: bool = True,
+                 identity: NodeIdentity = None,
+                 internal_bus: Optional[OVOSBusClient] = None):
 
         self.identity = identity or None
         self._password = password
         self._access_key = key
         self._name = useragent
+        self._port = port
+        self._host = host
         self.init_identity()
 
         self.crypto_key = crypto_key
@@ -103,20 +101,37 @@ class HiveMessageBusClient(OVOSBusClient):
         self.compress = compress  # None -> auto
         self.binarize = binarize  # only if hivemind reports also supporting it
 
-        sess = Session()  # new session for this client
+        # connect to OVOS, if on a OVOS device
+        if not internal_bus:
+            # FakeBus needed to send emitted events to handlers registered within the client
+            sess = Session()  # new session for this client
+            self.internal_bus = FakeBus(session=sess)
+        else:
+            sess = Session(session_id=internal_bus.session_id)
+            self.internal_bus = internal_bus
         LOG.info(f"Session ID: {sess.session_id}")
-        self.internal_bus = FakeBus(session=sess)  # also send emitted events to handlers registered within the client
-        super().__init__(host=host, port=port, ssl=ssl, emitter=EventEmitter(), session=sess)
+
+        # NOTE: self._host and self._port accessed only after self.init_identity()
+        # this allows them to come from set-identity cli command
+        host = self._host.replace("ws://", "").replace("wss://", "").strip()
+        use_ssl = host.startswith("wss://")
+        super().__init__(host=host, port=self._port, ssl=use_ssl,
+                         emitter=EventEmitter(), session=sess)
 
     def init_identity(self, site_id=None):
         self.identity = self.identity or NodeIdentity()
         self.identity.password = self._password or self.identity.password
         self.identity.access_key = self._access_key or self.identity.access_key
+        self.identity.default_master = self._host = self._host or self.identity.default_master
+        self.identity.default_port = self._port = self._port or self.identity.default_port
         self.identity.name = self._name or "HiveMessageBusClientV0.0.1"
         self.identity.site_id = site_id or self.identity.site_id
 
         if not self.identity.access_key or not self.identity.password:
             raise RuntimeError("NodeIdentity not set, please pass key and password or "
+                               "call 'hivemind-client set-identity'")
+        if not self.identity.default_master:
+            raise RuntimeError("host not set, please pass host and port or "
                                "call 'hivemind-client set-identity'")
 
     @property
@@ -272,6 +287,10 @@ class HiveMessageBusClient(OVOSBusClient):
                     ctxt["platform"] = self.useragent
                 if "destination" not in message.payload.context:
                     ctxt["destination"] = "HiveMind"
+                if "session" not in ctxt:
+                    ctxt["session"] = {}
+                ctxt["session"]["session_id"] = self.session_id
+                ctxt["session"]["site_id"] = self.site_id
                 message.payload.context = ctxt
                 # also send event to client registered handlers
                 self.internal_bus.emit(message.payload)
@@ -325,7 +344,7 @@ class HiveMessageBusClient(OVOSBusClient):
             self.emitter.on(event_name, func)
 
     # utility
-    def wait_for_message(self, message_type, timeout=3.0):
+    def wait_for_message(self, message_type: Union[HiveMessageType, str], timeout=3.0):
         """Wait for a message of a specific type.
 
         Arguments:
@@ -338,8 +357,8 @@ class HiveMessageBusClient(OVOSBusClient):
 
         return HiveMessageWaiter(self, message_type).wait(timeout)
 
-    def wait_for_payload(self, payload_type: str,
-                         message_type=HiveMessageType.THIRDPRTY,
+    def wait_for_payload(self, payload_type: Union[HiveMessageType, str],
+                         message_type: Union[HiveMessageType, str] = HiveMessageType.THIRDPRTY,
                          timeout=3.0):
         """Wait for a message of a specific type + payload of a specific type.
 
@@ -359,7 +378,9 @@ class HiveMessageBusClient(OVOSBusClient):
         return self.wait_for_payload(mycroft_msg_type, timeout=timeout,
                                      message_type=HiveMessageType.BUS)
 
-    def wait_for_response(self, message, reply_type=None, timeout=3.0):
+    def wait_for_response(self, message: Union[MycroftMessage, HiveMessage],
+                          reply_type: Optional[Union[HiveMessageType, str]] = None,
+                          timeout=3.0):
         """Send a message and wait for a response.
 
         Arguments:
@@ -379,8 +400,10 @@ class HiveMessageBusClient(OVOSBusClient):
         self.emit(message)
         return waiter.wait(timeout)
 
-    def wait_for_payload_response(self, message, payload_type,
-                                  reply_type=None, timeout=3.0):
+    def wait_for_payload_response(self, message: Union[MycroftMessage, HiveMessage],
+                                  payload_type: Union[HiveMessageType, str],
+                                  reply_type: Optional[Union[HiveMessageType, str]] = None,
+                                  timeout=3.0):
         """Send a message and wait for a response.
 
         Arguments:
