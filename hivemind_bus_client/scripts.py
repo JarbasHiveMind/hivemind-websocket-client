@@ -20,14 +20,16 @@ def hmclient_cmds():
 @click.option("--key", help="HiveMind access key", type=str, default="")
 @click.option("--password", help="HiveMind password", type=str, default="")
 @click.option("--host", help="default host for hivemind-core", type=str, default="")
+@click.option("--port", help="default port for hivemind-core", type=int, default=5678)
 @click.option("--siteid", help="location identifier for message.context", type=str, default="")
-def identity_set(key: str, password: str, host: str, siteid: str):
+def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not key and not password and not siteid:
         raise ValueError("please set at least one of key/password/siteid/host")
     identity = NodeIdentity()
     identity.password = password or identity.password
     identity.access_key = key or identity.access_key
     identity.site_id = siteid or identity.site_id
+    identity.default_port = port or identity.default_port
     host = host or identity.default_master
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
@@ -174,6 +176,18 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
     hm = HiveMessage(HiveMessageType.PROPAGATE,
                      Message(msg, json.loads(payload)))
     node.emit(hm)
+
+    node.close()
+
+
+@hmclient_cmds.command(help="test if Identity file can connect to HiveMind",
+                       name="test-identity")
+def test_identity():
+    node = HiveMessageBusClient()
+    node.connect(FakeBus())
+
+    node.connected_event.wait()
+    print("== Identity successfully connected to HiveMind!")
 
     node.close()
 

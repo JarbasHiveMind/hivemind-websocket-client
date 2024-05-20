@@ -68,6 +68,14 @@ class NodeIdentity:
     def default_master(self, val):
         self.IDENTITY_FILE["default_master"] = val
 
+    @property
+    def default_port(self):
+        return self.IDENTITY_FILE.get("default_port")
+
+    @default_port.setter
+    def default_port(self, val):
+        self.IDENTITY_FILE["default_port"] = val
+
     def save(self):
         self.IDENTITY_FILE.store()
 
