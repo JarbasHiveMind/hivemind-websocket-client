@@ -188,6 +188,17 @@ class HiveMessageBusClient(OVOSBusClient):
         self.protocol.bind(bus)
         self.wait_for_handshake()
 
+    def on_open(self, *args):
+        """
+        Handle the "open" event from the websocket.
+        A Basic message with the name "open" is forwarded to the emitter.
+        """
+        LOG.debug("Connected")
+        self.connected_event.set()
+        self.emitter.emit("open")
+        # Restore reconnect timer to 5 seconds on sucessful connect
+        self.retry = 5
+
     def on_error(self, *args):
         self.handshake_event.clear()
         self.crypto_key = None
