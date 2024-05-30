@@ -35,12 +35,12 @@ class NodeIdentity:
     def private_key(self):
         """path to PRIVATE .asc PGP key, this cryptographic key
         uniquely identifies this device across the hive and proves it's identity"""
-        return self.IDENTITY_FILE.get("key") or \
+        return self.IDENTITY_FILE.get("secret_key") or \
             f"{dirname(self.IDENTITY_FILE.path)}/{self.name}.asc"
 
     @private_key.setter
     def private_key(self, val):
-        self.IDENTITY_FILE["key"] = val
+        self.IDENTITY_FILE["secret_key"] = val
 
     @property
     def password(self):
