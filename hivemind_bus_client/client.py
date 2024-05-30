@@ -11,6 +11,7 @@ from ovos_utils.messagebus import FakeBus
 from pyee import EventEmitter
 from websocket import ABNF
 from websocket import WebSocketApp, WebSocketConnectionClosedException
+import pgpy
 
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
@@ -271,7 +272,14 @@ class HiveMessageBusClient(OVOSBusClient):
     def _handle_hive_protocol(self, message: HiveMessage):
         # LOG.debug(f"received HiveMind message: {message.msg_type}")
         if message.msg_type == HiveMessageType.BUS:
-            self.internal_bus.emit(message.payload)
+            pload = message.payload
+            if pload.msg_type == "hive.identity_encrypted":
+                try:
+                    pload = self.decrypt(pload)
+                except:
+                    LOG.info("Failed to decrypt PGP message, not for us")
+                    return
+            self.internal_bus.emit(pload)
         self.emitter.emit(message.msg_type, message)  # hive message
 
     def emit(self, message: Union[MycroftMessage, HiveMessage]):
@@ -436,3 +444,39 @@ class HiveMessageBusClient(OVOSBusClient):
         # Send message and wait for it's response
         self.emit(message)
         return waiter.wait(timeout)
+
+    # targeted messages for nodes, assymetric encryption
+    def emit_encrypted(self, message: MycroftMessage, pubkey: Union[str, pgpy.PGPKey]):
+        message = self.encrypt(message, pubkey)
+        self.emit(message)
+
+    def encrypt(self, message: MycroftMessage, pubkey: Union[str, pgpy.PGPKey]):
+        if isinstance(pubkey, str):
+            pubkey, _ = pgpy.PGPKey.from_blob(pubkey)
+        assert isinstance(pubkey, pgpy.PGPKey)
+
+        txt = json.dumps(message.serialize())
+
+        text_message = pgpy.PGPMessage.new(txt)
+        encrypted_message = pubkey.encrypt(text_message)
+
+        # sign message
+        with open(self.identity.private_key, "r") as f:
+            private_key = pgpy.PGPKey.from_blob(f.read())
+        # the bitwise OR operator '|' is used to add a signature to a PGPMessage.
+        encrypted_message |= private_key.sign(encrypted_message,
+                                              intended_recipients=[pubkey])
+
+        return MycroftMessage("hive.identity_encrypted",
+                              {"ciphertext": str(encrypted_message)})
+
+    def decrypt(self, message: MycroftMessage):
+        assert message.msg_type == "hive.identity_encrypted"
+        ciphertext = message.data["ciphertext"]
+        message_from_blob = pgpy.PGPMessage.from_blob(ciphertext)
+
+        with open(self.identity.private_key, "r") as f:
+            private_key = pgpy.PGPKey.from_blob(f.read())
+
+        decrypted: str = private_key.decrypt(message_from_blob)
+        return MycroftMessage.deserialize(json.loads(decrypted))

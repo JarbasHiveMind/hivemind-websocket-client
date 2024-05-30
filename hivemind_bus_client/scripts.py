@@ -34,6 +34,9 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
     identity.default_master = host
+    if not identity.private_key:
+        print("PUBKEY:", identity.public_key)
+        identity.create_keys()
     identity.save()
     print(f"identity saved: {identity.IDENTITY_FILE.path}")
 
@@ -190,6 +193,15 @@ def test_identity():
     print("== Identity successfully connected to HiveMind!")
 
     node.close()
+
+
+@hmclient_cmds.command(help="create a PGP key for inter-node communication", name="set-pubkey")
+def reset_pubkey():
+    identity = NodeIdentity()
+    identity.create_keys()
+    print("PUBKEY:", identity.public_key)
+    identity.save()
+    print(f"identity saved: {identity.IDENTITY_FILE.path}")
 
 
 if __name__ == "__main__":
