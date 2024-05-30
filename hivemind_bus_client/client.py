@@ -446,11 +446,9 @@ class HiveMessageBusClient(OVOSBusClient):
         return waiter.wait(timeout)
 
     # targeted messages for nodes, assymetric encryption
-    def emit_encrypted(self, message: MycroftMessage, pubkey: Union[str, pgpy.PGPKey]):
-        message = self.encrypt(message, pubkey)
-        self.emit(message)
+    def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
+                      pubkey: Union[str, pgpy.PGPKey]):
 
-    def encrypt(self, message: MycroftMessage, pubkey: Union[str, pgpy.PGPKey]):
         if isinstance(pubkey, str):
             pubkey, _ = pgpy.PGPKey.from_blob(pubkey)
         assert isinstance(pubkey, pgpy.PGPKey)
@@ -467,16 +465,4 @@ class HiveMessageBusClient(OVOSBusClient):
         encrypted_message |= private_key.sign(encrypted_message,
                                               intended_recipients=[pubkey])
 
-        return MycroftMessage("hive.identity_encrypted",
-                              {"ciphertext": str(encrypted_message)})
-
-    def decrypt(self, message: MycroftMessage):
-        assert message.msg_type == "hive.identity_encrypted"
-        ciphertext = message.data["ciphertext"]
-        message_from_blob = pgpy.PGPMessage.from_blob(ciphertext)
-
-        with open(self.identity.private_key, "r") as f:
-            private_key = pgpy.PGPKey.from_blob(f.read())
-
-        decrypted: str = private_key.decrypt(message_from_blob)
-        return MycroftMessage.deserialize(json.loads(decrypted))
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": str(encrypted_message)}))

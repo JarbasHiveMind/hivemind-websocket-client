@@ -1,15 +1,16 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
 from ovos_bus_client.message import Message
 from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
-from hivemind_bus_client.identity import NodeIdentity
-from hivemind_bus_client.client import HiveMessageBusClient
-from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
+from typing import Optional
+import pgpy
+from hivemind_bus_client.client import HiveMessageBusClient
+from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
 
 
 @dataclass()
@@ -104,6 +105,7 @@ class HiveMindSlaveProtocol:
         self.hm.on(HiveMessageType.HELLO, self.handle_hello)
         self.hm.on(HiveMessageType.BROADCAST, self.handle_broadcast)
         self.hm.on(HiveMessageType.PROPAGATE, self.handle_propagate)
+        self.hm.on(HiveMessageType.INTERCOM, self.handle_intercom)
         self.hm.on(HiveMessageType.ESCALATE, self.handle_illegal_msg)
         self.hm.on(HiveMessageType.SHARED_BUS, self.handle_illegal_msg)
         self.hm.on(HiveMessageType.BUS, self.handle_bus)
@@ -136,7 +138,7 @@ class HiveMindSlaveProtocol:
             self.internal_protocol.bus.session_id = message.payload["session_id"]
             LOG.debug("session_id updated to: " + message.payload["session_id"])
 
-    def start_handshake(self,):
+    def start_handshake(self):
         if self.binarize:
             LOG.info("hivemind supports binarization protocol")
         else:
@@ -216,14 +218,15 @@ class HiveMindSlaveProtocol:
     def handle_broadcast(self, message: HiveMessage):
         LOG.info(f"BROADCAST: {message.payload}")
 
-        # if the message targets our site_id, send it to internal bus
-        site = message.target_site_id
-        if site and site == self.site_id:
-            pload = message.payload
-            # broadcast messages always come from a trusted source
-            # only masters can emit them
-            if isinstance(pload, MycroftMessage):
-                self.handle_bus(message)
+        if message.payload.msg_type == HiveMessageType.INTERCOM:
+            self.handle_intercom(message)
+            return
+
+        if message.payload.msg_type == HiveMessageType.BUS:
+            # if the message targets our site_id, send it to internal bus
+            site = message.target_site_id
+            if site and site == self.site_id:
+                self.handle_bus(message.payload)
 
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
@@ -234,18 +237,58 @@ class HiveMindSlaveProtocol:
     def handle_propagate(self, message: HiveMessage):
         LOG.info(f"PROPAGATE: {message.payload}")
 
-        # if the message targets our site_id, send it to internal bus
-        site = message.target_site_id
-        if site and site == self.site_id:
-           # might originate from untrusted
-           # satellite anywhere in the hive
-           # do not inject by default
-           pload = message.payload
-           #if isinstance(pload, MycroftMessage):
-           #    self.handle_bus(message)
+        if message.payload.msg_type == HiveMessageType.INTERCOM:
+            self.handle_intercom(message)
+            return
+
+        if message.payload.msg_type == HiveMessageType.BUS:
+            # if the message targets our site_id, send it to internal bus
+            site = message.target_site_id
+            if site and site == self.site_id:
+                # might originate from untrusted
+                # satellite anywhere in the hive
+                # do not inject by default
+                pass # TODO - when to inject ? add list of trusted peers?
+                # self.handle_bus(message.payload)
+
 
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
         data = message.serialize()
         ctxt = {"source": self.node_id}
         self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
+
+
+    def handle_intercom(self, message: HiveMessage):
+        LOG.info(f"INTERCOM: {message.payload}")
+
+        # if the message targets our site_id, send it to internal bus
+        k = message.target_public_key
+        if k and k != self.hm.identity.public_key:
+            # not for us
+            return
+
+        pload = message.payload
+        if isinstance(pload, dict) and "ciphertext" in pload:
+            try:
+                message_from_blob = pgpy.PGPMessage.from_blob(pload["ciphertext"])
+
+                with open(self.identity.private_key, "r") as f:
+                    private_key = pgpy.PGPKey.from_blob(f.read())
+
+                decrypted: str = private_key.decrypt(message_from_blob)
+                message._payload = HiveMessage.deserialize(decrypted)
+            except:
+                if k:
+                    LOG.error("failed to decrypt message!")
+                    raise
+                LOG.debug("failed to decrypt message, not for us")
+                return
+
+        if message.msg_type == HiveMessageType.BUS:
+            self.handle_bus(message)
+        elif message.msg_type == HiveMessageType.PROPAGATE:
+            self.handle_propagate(message)
+        elif message.msg_type == HiveMessageType.BROADCAST:
+            self.handle_broadcast(message)
+
