@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import pgpy
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
 from ovos_bus_client.message import Message
@@ -7,7 +8,7 @@ from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
 from poorman_handshake import HandShake, PasswordHandShake
 from typing import Optional
-import pgpy
+
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
@@ -90,7 +91,7 @@ class HiveMindSlaveProtocol:
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
-            self.identity = NodeIdentity()
+            self.identity = self.hm.identity or NodeIdentity()
         self.handshake = HandShake(self.identity.private_key)
         self.pswd_handshake = PasswordHandShake(self.identity.password) if self.identity.password else None
 
@@ -182,8 +183,8 @@ class HiveMindSlaveProtocol:
 
         # master is requesting handshake start
         else:
-            #required = message.payload.get("handshake")
-            #if not required:
+            # required = message.payload.get("handshake")
+            # if not required:
             #    self.hm.handshake_event.set()  # don't wait
             #    return
 
@@ -219,8 +220,8 @@ class HiveMindSlaveProtocol:
         LOG.info(f"BROADCAST: {message.payload}")
 
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
-            return
+            if self.handle_intercom(message):
+                return True
 
         if message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
@@ -238,8 +239,8 @@ class HiveMindSlaveProtocol:
         LOG.info(f"PROPAGATE: {message.payload}")
 
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
-            return
+            if self.handle_intercom(message):
+                return True
 
         if message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
@@ -248,9 +249,8 @@ class HiveMindSlaveProtocol:
                 # might originate from untrusted
                 # satellite anywhere in the hive
                 # do not inject by default
-                pass # TODO - when to inject ? add list of trusted peers?
+                pass  # TODO - when to inject ? add list of trusted peers?
                 # self.handle_bus(message.payload)
-
 
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
@@ -258,15 +258,14 @@ class HiveMindSlaveProtocol:
         ctxt = {"source": self.node_id}
         self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
 
-
     def handle_intercom(self, message: HiveMessage):
         LOG.info(f"INTERCOM: {message.payload}")
 
         # if the message targets our site_id, send it to internal bus
         k = message.target_public_key
-        if k and k != self.hm.identity.public_key:
+        if k and k != self.identity.public_key:
             # not for us
-            return
+            return False
 
         pload = message.payload
         if isinstance(pload, dict) and "ciphertext" in pload:
@@ -281,14 +280,17 @@ class HiveMindSlaveProtocol:
             except:
                 if k:
                     LOG.error("failed to decrypt message!")
-                    raise
-                LOG.debug("failed to decrypt message, not for us")
-                return
+                else:
+                    LOG.debug("failed to decrypt message, not for us")
+                return False
 
         if message.msg_type == HiveMessageType.BUS:
             self.handle_bus(message)
+            return True
         elif message.msg_type == HiveMessageType.PROPAGATE:
             self.handle_propagate(message)
+            return True
         elif message.msg_type == HiveMessageType.BROADCAST:
             self.handle_broadcast(message)
-
+            return True
+        return False
