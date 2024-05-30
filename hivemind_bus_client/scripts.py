@@ -34,7 +34,7 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
     identity.default_master = host
-    if not identity.private_key:
+    if not identity.public_key:
         identity.create_keys()
         print("PUBKEY:", identity.public_key)
     identity.save()
