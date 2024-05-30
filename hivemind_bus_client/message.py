@@ -26,7 +26,7 @@ class HiveMessageType(str, Enum):
 
 class HiveMessage:
     def __init__(self, msg_type, payload=None, node=None, source_peer=None,
-                 route=None, target_peers=None, meta=None):
+                 route=None, target_peers=None, meta=None, target_site_id=None):
         #  except for the hivemind node classes receiving the message and
         #  creating the object nothing should be able to change these values
         #  node classes might change them a runtime by the private attribute
@@ -50,11 +50,16 @@ class HiveMessage:
             payload = json.loads(payload)
         self._payload = payload or {}
 
+        self._site_id = target_site_id
         self._node = node  # node semi-unique identifier
         self._source_peer = source_peer  # peer_id
         self._route = route or []  # where did this message come from
         self._targets = target_peers or []  # where will it be sent
         self._meta = meta or {}
+
+    @property
+    def target_site_id(self):
+        return self._site_id
 
     @property
     def msg_type(self):
@@ -104,6 +109,7 @@ class HiveMessage:
                 "payload": pload,
                 "route": self.route,
                 "node": self.node_id,
+                "target_site_id": self.target_site_id,
                 "source_peer": self.source_peer}
 
     @property
@@ -120,7 +126,8 @@ class HiveMessage:
 
         if "msg_type" in payload:
             try:
-                return HiveMessage(payload["msg_type"], payload["payload"])
+                return HiveMessage(payload["msg_type"], payload["payload"],
+                                   target_site_id=payload.get("target_site_id"))
             except:
                 pass  # not a hivemind message
 
@@ -128,11 +135,13 @@ class HiveMessage:
             try:
                 # NOTE: technically could also be SHARED_BUS or THIRDPRTY
                 return HiveMessage(HiveMessageType.BUS,
-                                   Message.deserialize(payload))
+                                   Message.deserialize(payload),
+                                   target_site_id=payload.get("target_site_id"))
             except:
                 pass  # not a mycroft message
 
-        return HiveMessage(HiveMessageType.THIRDPRTY, payload)
+        return HiveMessage(HiveMessageType.THIRDPRTY, payload,
+                           target_site_id=payload.get("target_site_id"))
 
     def __getitem__(self, item):
         return self._payload.get(item)
