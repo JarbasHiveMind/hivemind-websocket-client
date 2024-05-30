@@ -35,8 +35,8 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
         host = "ws://" + host
     identity.default_master = host
     if not identity.private_key:
-        print("PUBKEY:", identity.public_key)
         identity.create_keys()
+        print("PUBKEY:", identity.public_key)
     identity.save()
     print(f"identity saved: {identity.IDENTITY_FILE.path}")
 
