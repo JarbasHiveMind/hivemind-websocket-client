@@ -36,8 +36,7 @@ class HiveMindSlaveInternalProtocol:
         payload = message.data.get("payload")
         msg_type = message.data["msg_type"]
 
-        hmessage = HiveMessage(msg_type,
-                               payload=payload)
+        hmessage = HiveMessage(msg_type, payload=payload)
 
         if msg_type == HiveMessageType.BROADCAST:
             # only masters can broadcast, ignore silently
@@ -216,6 +215,16 @@ class HiveMindSlaveProtocol:
 
     def handle_broadcast(self, message: HiveMessage):
         LOG.info(f"BROADCAST: {message.payload}")
+
+        # if the message targets our site_id, send it to internal bus
+        site = message.target_site_id
+        if site and site == self.site_id:
+            pload = message.payload
+            # broadcast messages always come from a trusted source
+            # only masters can emit them
+            if isinstance(pload, MycroftMessage):
+                self.handle_bus(message)
+
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
         data = message.serialize()
@@ -224,6 +233,17 @@ class HiveMindSlaveProtocol:
 
     def handle_propagate(self, message: HiveMessage):
         LOG.info(f"PROPAGATE: {message.payload}")
+
+        # if the message targets our site_id, send it to internal bus
+        site = message.target_site_id
+        if site and site == self.site_id:
+           # might originate from untrusted
+           # satellite anywhere in the hive
+           # do not inject by default
+           pload = message.payload
+           #if isinstance(pload, MycroftMessage):
+           #    self.handle_bus(message)
+
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
         data = message.serialize()
