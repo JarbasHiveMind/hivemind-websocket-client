@@ -272,14 +272,7 @@ class HiveMessageBusClient(OVOSBusClient):
     def _handle_hive_protocol(self, message: HiveMessage):
         # LOG.debug(f"received HiveMind message: {message.msg_type}")
         if message.msg_type == HiveMessageType.BUS:
-            pload = message.payload
-            if pload.msg_type == "hive.identity_encrypted":
-                try:
-                    pload = self.decrypt(pload)
-                except:
-                    LOG.info("Failed to decrypt PGP message, not for us")
-                    return
-            self.internal_bus.emit(pload)
+            self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)  # hive message
 
     def emit(self, message: Union[MycroftMessage, HiveMessage]):
