@@ -132,7 +132,7 @@ def _decode_bitstring_v1(s):
         payload = payload.bytes
         meta["bin_type"] = bin_type
 
-    return HiveMessage(hive_type, payload, meta=meta, **kwargs)
+    return HiveMessage(hive_type, payload, **kwargs)
 
 
 def mycroft2bitstring(msg, compressed=False):
