@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/HEAD)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a24...HEAD)
+
+**Implemented enhancements:**
+
+- feat/INTERCOM msg type [\#27](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/27) ([JarbasAl](https://github.com/JarbasAl))
+
+## [V0.0.4a24](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a24) (2024-06-04)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a23...V0.0.4a24)
+
 ## [V0.0.4a23](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a23) (2024-05-30)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a22...V0.0.4a23)
