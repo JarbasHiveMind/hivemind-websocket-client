@@ -446,7 +446,7 @@ class HiveMessageBusClient(OVOSBusClient):
             pubkey, _ = pgpy.PGPKey.from_blob(pubkey)
         assert isinstance(pubkey, pgpy.PGPKey)
 
-        txt = json.dumps(message.serialize())
+        txt = message.serialize()
 
         text_message = pgpy.PGPMessage.new(txt)
         encrypted_message = pubkey.encrypt(text_message)
