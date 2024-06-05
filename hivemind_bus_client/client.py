@@ -11,6 +11,7 @@ from ovos_utils.messagebus import FakeBus
 from pyee import EventEmitter
 from websocket import ABNF
 from websocket import WebSocketApp, WebSocketConnectionClosedException
+import pgpy
 
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
@@ -436,3 +437,25 @@ class HiveMessageBusClient(OVOSBusClient):
         # Send message and wait for it's response
         self.emit(message)
         return waiter.wait(timeout)
+
+    # targeted messages for nodes, assymetric encryption
+    def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
+                      pubkey: Union[str, pgpy.PGPKey]):
+
+        if isinstance(pubkey, str):
+            pubkey, _ = pgpy.PGPKey.from_blob(pubkey)
+        assert isinstance(pubkey, pgpy.PGPKey)
+
+        txt = message.serialize()
+
+        text_message = pgpy.PGPMessage.new(txt)
+        encrypted_message = pubkey.encrypt(text_message)
+
+        # sign message
+        with open(self.identity.private_key, "r") as f:
+            private_key = pgpy.PGPKey.from_blob(f.read())
+        # the bitwise OR operator '|' is used to add a signature to a PGPMessage.
+        encrypted_message |= private_key.sign(encrypted_message,
+                                              intended_recipients=[pubkey])
+
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": str(encrypted_message)}))

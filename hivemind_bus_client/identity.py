@@ -1,4 +1,5 @@
 from os.path import basename, dirname
+from poorman_handshake.asymmetric.utils import export_private_key, create_private_key
 
 from json_database import JsonConfigXDG
 
@@ -22,15 +23,24 @@ class NodeIdentity:
         self.IDENTITY_FILE["name"] = val
 
     @property
+    def public_key(self):
+        """ASCI public PGP key"""
+        return self.IDENTITY_FILE.get("public_key")
+
+    @public_key.setter
+    def public_key(self, val):
+        self.IDENTITY_FILE["public_key"] = val
+
+    @property
     def private_key(self):
         """path to PRIVATE .asc PGP key, this cryptographic key
         uniquely identifies this device across the hive and proves it's identity"""
-        return self.IDENTITY_FILE.get("key") or \
+        return self.IDENTITY_FILE.get("secret_key") or \
             f"{dirname(self.IDENTITY_FILE.path)}/{self.name}.asc"
 
     @private_key.setter
     def private_key(self, val):
-        self.IDENTITY_FILE["key"] = val
+        self.IDENTITY_FILE["secret_key"] = val
 
     @property
     def password(self):
@@ -81,3 +91,11 @@ class NodeIdentity:
 
     def reload(self):
         self.IDENTITY_FILE.reload()
+
+    def create_keys(self):
+        key = create_private_key("HiveMindComs")
+        priv = f"{dirname(self.IDENTITY_FILE.path)}/HiveMindComs.asc"
+        export_private_key(priv, key)
+        pub = str(key.pubkey)
+        self.private_key = priv
+        self.public_key = pub
