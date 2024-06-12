@@ -114,7 +114,7 @@ class HiveMessageBusClient(OVOSBusClient):
 
         # NOTE: self._host and self._port accessed only after self.init_identity()
         # this allows them to come from set-identity cli command
-        use_ssl = host.startswith("wss://")
+        use_ssl = self._host.startswith("wss://")
         host = self._host.replace("ws://", "").replace("wss://", "").strip()
         super().__init__(host=host, port=self._port, ssl=use_ssl,
                          emitter=EventEmitter(), session=sess)
