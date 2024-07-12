@@ -2,7 +2,7 @@ import base64
 import json
 import ssl
 from threading import Event
-from typing import Union, Optional
+from typing import Union, Optional, Callable
 
 from ovos_bus_client import Message as MycroftMessage, MessageBusClient as OVOSBusClient
 from ovos_bus_client.session import Session
@@ -32,13 +32,14 @@ class HiveMessageWaiter:
         message_type: message type to wait for
     """
 
-    def __init__(self, bus, message_type: Union[HiveMessageType, str]):
+    def __init__(self, bus: 'HiveMessageBusClient',
+                 message_type: Union[HiveMessageType, str]):
         self.bus = bus
         self.msg_type = message_type
         self.received_msg = None
         # Setup response handler
         self.response_event = Event()
-        self.bus.on(message_type, self._handler)
+        self.bus.on(self.msg_type, self._handler)
 
     def _handler(self, message):
         """Receive response data."""
@@ -60,9 +61,12 @@ class HiveMessageWaiter:
 
 
 class HivePayloadWaiter(HiveMessageWaiter):
-    def __init__(self, payload_type: Union[HiveMessageType, str],
+    def __init__(self, bus: 'HiveMessageBusClient',
+                 payload_type: Union[HiveMessageType, str],
+                 message_type: Union[HiveMessageType, str] = HiveMessageType.BUS,
                  *args, **kwargs):
-        super(HivePayloadWaiter, self).__init__(*args, **kwargs)
+        super(HivePayloadWaiter, self).__init__(bus=bus, message_type=message_type,
+                                                *args, **kwargs)
         self.payload_type = payload_type
 
     def _handler(self, message):
@@ -355,6 +359,12 @@ class HiveMessageBusClient(OVOSBusClient):
             LOG.debug(f"registering handler: {event_name}")
             self.emitter.on(event_name, func)
 
+    def remove(self, event_name: str, func: Callable):
+        if event_name not in list(HiveMessageType):
+            self.internal_bus.remove(event_name, func)
+        else:  # hivemind message
+            self.emitter.remove_listener(event_name, func)
+
     # utility
     def wait_for_message(self, message_type: Union[HiveMessageType, str], timeout=3.0):
         """Wait for a message of a specific type.
@@ -404,10 +414,11 @@ class HiveMessageBusClient(OVOSBusClient):
         Returns:
             The received message or None if the response timed out
         """
-        if isinstance(message, MycroftMessage):
-            message = HiveMessage(msg_type=HiveMessageType.BUS, payload=message)
         message_type = reply_type or message.msg_type
-        waiter = HiveMessageWaiter(self, message_type)  # Setup response handler
+        if isinstance(message, MycroftMessage):
+            waiter = HivePayloadWaiter(bus=self, payload_type=message_type)
+        else:
+            waiter = HiveMessageWaiter(bus=self, message_type=message_type)  # Setup response handler
         # Send message and wait for it's response
         self.emit(message)
         return waiter.wait(timeout)
