@@ -12,7 +12,7 @@ from pyee import EventEmitter
 from websocket import ABNF
 from websocket import WebSocketApp, WebSocketConnectionClosedException
 import pgpy
-
+from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
@@ -269,7 +269,8 @@ class HiveMessageBusClient(OVOSBusClient):
         elif isinstance(message, str):
             message = json.loads(message)
         if "ciphertext" in message:
-            raise RuntimeError("got encrypted message, but could not decrypt!")
+            LOG.error("got encrypted message, but could not decrypt!")
+            return
         self.emitter.emit('message', message)  # raw message
         self._handle_hive_protocol(HiveMessage(**message))
 
@@ -279,7 +280,8 @@ class HiveMessageBusClient(OVOSBusClient):
             self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)  # hive message
 
-    def emit(self, message: Union[MycroftMessage, HiveMessage]):
+    def emit(self, message: Union[MycroftMessage, HiveMessage],
+                  binary_type: HiveMindBinaryPayloadType=HiveMindBinaryPayloadType.UNDEFINED):
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
@@ -321,7 +323,8 @@ class HiveMessageBusClient(OVOSBusClient):
             if binarize:
                 bitstr = get_bitstring(hive_type=message.msg_type,
                                        payload=message.payload,
-                                       compressed=self.compress)
+                                       compressed=self.compress,
+                                       binary_type=binary_type)
                 if self.crypto_key:
                     ws_payload = encrypt_bin(self.crypto_key, bitstr.bytes)
                 else:

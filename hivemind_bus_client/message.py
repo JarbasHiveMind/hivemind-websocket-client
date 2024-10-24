@@ -1,5 +1,5 @@
 import json
-from enum import Enum
+from enum import Enum, IntEnum
 
 from ovos_bus_client import Message
 from ovos_utils.json_helper import merge_dict
@@ -29,31 +29,45 @@ class HiveMessageType(str, Enum):
     BINARY = "bin"  # binary data container, payload for something else
 
 
+class HiveMindBinaryPayloadType(IntEnum):
+    """ Pseudo extension type for binary payloads
+    it doesnt describe the payload but rather provides instruction to hivemind about how to handle it"""
+    UNDEFINED = 0  # no info provided about binary contents
+    RAW_AUDIO = 1  # binary content is raw audio  (TODO spec exactly what "raw audio" means)
+    NUMPY_IMAGE = 2  # binary content is an image as a numpy array, eg. webcam picture
+    FILE = 3  # binary is a file to be saved, additional metadata provided elsewhere
+
+
 class HiveMessage:
     def __init__(self, msg_type: Union[HiveMessageType, str],
-                 payload: Optional[Union[Message, 'HiveMessage', str, dict]] =None,
+                 payload: Optional[Union[Message, 'HiveMessage', str, dict, bytes]] =None,
                  node: Optional[str]=None,
                  source_peer: Optional[str]=None,
                  route: Optional[List[str]]=None,
                  target_peers: Optional[List[str]]=None,
                  target_site_id: Optional[str] =None,
-                 target_pubkey: Optional[str] =None):
+                 target_pubkey: Optional[str] =None,
+                 bin_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
         #  except for the hivemind node classes receiving the message and
         #  creating the object nothing should be able to change these values
         #  node classes might change them a runtime by the private attribute
         #  but end-users should consider them read_only
-
-
         if msg_type not in [m.value for m in HiveMessageType]:
             raise ValueError("Unknown HiveMessage.msg_type")
+        if msg_type != HiveMessageType.BINARY and bin_type != HiveMindBinaryPayloadType.UNDEFINED:
+            raise ValueError("bin_type can only be set for BINARY message type")
+
         self._msg_type = msg_type
+        self._bin_type = bin_type
 
         # the payload is more or less a free for all
         # the msg_type determines what happens to the message, but the
         # payload can simply be ignored by the receiving module
         # we store things in dict/json format, json is always used at the
         # transport layer before converting into any of the other formats
-        if isinstance(payload, Message):
+        if not isinstance(payload, bytes) and msg_type == HiveMessageType.BINARY:
+            raise ValueError(f"expected 'bytes' payload for HiveMessageType.BINARY, got {type(payload)}")
+        elif isinstance(payload, Message):
             payload = {"type": payload.msg_type,
                        "data": payload.data,
                        "context": payload.context}
@@ -99,7 +113,7 @@ class HiveMessage:
         return [r for r in self._route if r.get("targets") and r.get("source")]
 
     @property
-    def payload(self) -> Union['HiveMessage', Message, dict]:
+    def payload(self) -> Union['HiveMessage', Message, dict, bytes]:
         if self.msg_type in [HiveMessageType.BUS, HiveMessageType.SHARED_BUS]:
             return Message(self._payload["type"],
                            data=self._payload.get("data"),
@@ -112,8 +126,14 @@ class HiveMessage:
         return self._payload
 
     @property
+    def bin_type(self) -> HiveMindBinaryPayloadType:
+        return self._bin_type
+
+    @property
     def as_dict(self) -> dict:
         pload = self._payload
+        if self.msg_type == HiveMessageType.BINARY:
+            raise ValueError("messages with type HiveMessageType.BINARY can not be cast to dict")
         if isinstance(pload, HiveMessage):
             pload = pload.as_dict
         elif isinstance(pload, Message):
@@ -166,12 +186,19 @@ class HiveMessage:
                            target_pubkey=payload.get("target_pubkey"))
 
     def __getitem__(self, item):
+        if not isinstance(self._payload, dict):
+            raise TypeError(f"Item access not supported for payload type {type(self._payload)}")
         return self._payload.get(item)
 
     def __setitem__(self, key, value):
-        self._payload[key] = value
+        if isinstance(self._payload, dict):
+            self._payload[key] = value
+        else:
+            raise TypeError(f"Item assignment not supported for payload type {type(self._payload)}")
 
     def __str__(self):
+        if self.msg_type == HiveMessageType.BINARY:
+            return f"HiveMessage(BINARY:{len(self._payload)}])"
         return self.as_json
 
     def update_hop_data(self, data=None, **kwargs):

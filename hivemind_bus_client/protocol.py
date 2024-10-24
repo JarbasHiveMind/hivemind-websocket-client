@@ -213,7 +213,8 @@ class HiveMindSlaveProtocol:
         SessionManager.update(sess)
 
         # from this point on, it should be a native source and execute audio
-        pload.context["source"] = pload.context.pop("destination")
+        if "destination" in pload.context:
+            pload.context["source"] = pload.context.pop("destination")
         self.internal_protocol.bus.emit(pload)
 
     def handle_broadcast(self, message: HiveMessage):

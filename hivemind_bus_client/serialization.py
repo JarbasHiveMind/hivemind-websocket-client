@@ -1,24 +1,15 @@
+import json
 import sys
-from enum import IntEnum
 from inspect import signature
 
 from bitstring import BitArray, BitStream
 
 from hivemind_bus_client.exceptions import UnsupportedProtocolVersion
-from hivemind_bus_client.message import HiveMessageType, HiveMessage
+from hivemind_bus_client.message import HiveMessageType, HiveMessage, HiveMindBinaryPayloadType
 from hivemind_bus_client.util import compress_payload, decompress_payload, cast2bytes, bytes2str
 
 PROTOCOL_VERSION = 1  # integer, a version increase signals new functionality added
                       # version 0 is the original hivemind protocol, 1 supports handshake + binary
-
-
-class HiveMindBinaryPayloadType(IntEnum):
-    """ Pseudo extension type for binary payloads
-    it doesnt describe the payload but rather provides instruction to hivemind about how to handle it"""
-    UNDEFINED = 0  # no info provided about binary contents
-    RAW_AUDIO = 1  # binary content is raw audio  (TODO spec exactly what "raw audio" means)
-    NUMPY_IMAGE = 2  # binary content is an image as a numpy array, eg. webcam picture
-    FILE = 3  # binary is a file to be saved, additional metadata provided elsewhere
 
 
 _INT2TYPE = {0: HiveMessageType.HANDSHAKE,
@@ -115,8 +106,7 @@ def _decode_bitstring_v1(s):
     meta = s.read(metalen)
 
     # TODO standardize hivemind meta
-    meta = bytes2str(meta.bytes, compressed)
-    kwargs = {a: meta[a] for a in signature(HiveMessage).parameters if a in meta}
+    meta = json.loads(bytes2str(meta.bytes, compressed))
 
     is_bin = hive_type == HiveMessageType.BINARY
     bin_type = HiveMindBinaryPayloadType.UNDEFINED
@@ -132,6 +122,7 @@ def _decode_bitstring_v1(s):
         payload = payload.bytes
         meta["bin_type"] = bin_type
 
+    kwargs = {a: meta[a] for a in signature(HiveMessage).parameters if a in meta}
     return HiveMessage(hive_type, payload, **kwargs)
 
 
