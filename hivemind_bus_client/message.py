@@ -54,10 +54,11 @@ class HiveMessage:
         #  but end-users should consider them read_only
         if msg_type not in [m.value for m in HiveMessageType]:
             raise ValueError("Unknown HiveMessage.msg_type")
+        if msg_type != HiveMessageType.BINARY and bin_type != HiveMindBinaryPayloadType.UNDEFINED:
+            raise ValueError("bin_type can only be set for BINARY message type")
+
         self._msg_type = msg_type
         self._bin_type = bin_type
-        if msg_type == HiveMessageType.BINARY:
-            self.__setattr__("bin_type", bin_type)
 
         # the payload is more or less a free for all
         # the msg_type determines what happens to the message, but the
@@ -125,6 +126,10 @@ class HiveMessage:
         return self._payload
 
     @property
+    def bin_type(self) -> HiveMindBinaryPayloadType:
+        return self._bin_type
+
+    @property
     def as_dict(self) -> dict:
         pload = self._payload
         if self.msg_type == HiveMessageType.BINARY:
@@ -182,12 +187,14 @@ class HiveMessage:
 
     def __getitem__(self, item):
         if not isinstance(self._payload, dict):
-            return None
+            raise TypeError(f"Item access not supported for payload type {type(self._payload)}")
         return self._payload.get(item)
 
     def __setitem__(self, key, value):
         if isinstance(self._payload, dict):
             self._payload[key] = value
+        else:
+            raise TypeError(f"Item assignment not supported for payload type {type(self._payload)}")
 
     def __str__(self):
         if self.msg_type == HiveMessageType.BINARY:
