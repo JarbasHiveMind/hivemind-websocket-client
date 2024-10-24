@@ -2,7 +2,15 @@
 
 ## [Unreleased](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/HEAD)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a26...HEAD)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a27...HEAD)
+
+**Merged pull requests:**
+
+- fix:binary payloads [\#30](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/30) ([JarbasAl](https://github.com/JarbasAl))
+
+## [V0.0.4a27](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a27) (2024-07-12)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a26...V0.0.4a27)
 
 **Fixed bugs:**
 
