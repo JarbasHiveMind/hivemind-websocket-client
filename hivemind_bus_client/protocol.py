@@ -145,14 +145,17 @@ class HiveMindSlaveProtocol:
         else:
             LOG.info("hivemind does not support binarization protocol")
 
+        sess = Session(self.hm.session_id)
         if self.pswd_handshake is not None:
             envelope = self.pswd_handshake.generate_handshake()
             msg = HiveMessage(HiveMessageType.HANDSHAKE, {"envelope": envelope,
                                                           "binarize": self.binarize,
+                                                          "session": sess.serialize(),
                                                           "site_id": self.site_id})
         else:
             msg = HiveMessage(HiveMessageType.HANDSHAKE, {"pubkey": self.handshake.pubkey,
                                                           "binarize": self.binarize,
+                                                          "session": sess.serialize(),
                                                           "site_id": self.site_id})
         self.hm.emit(msg)
 
