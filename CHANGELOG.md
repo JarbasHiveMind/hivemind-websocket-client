@@ -2,7 +2,15 @@
 
 ## [Unreleased](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/HEAD)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a28...HEAD)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a29...HEAD)
+
+**Merged pull requests:**
+
+- feat:semver [\#32](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/32) ([JarbasAl](https://github.com/JarbasAl))
+
+## [V0.0.4a29](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a29) (2024-10-24)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a28...V0.0.4a29)
 
 **Merged pull requests:**
 
@@ -54,15 +62,15 @@
 
 ## [V0.0.4a22](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a22) (2024-05-21)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a21...V0.0.4a22)
-
-## [V0.0.4a21](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a21) (2024-05-20)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a20...V0.0.4a21)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a20...V0.0.4a22)
 
 ## [V0.0.4a20](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a20) (2024-05-20)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a19...V0.0.4a20)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a21...V0.0.4a20)
+
+## [V0.0.4a21](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a21) (2024-05-20)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a19...V0.0.4a21)
 
 **Implemented enhancements:**
 
@@ -174,10 +182,6 @@
 - ovos rebase + handshake + session support [\#15](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/15) ([JarbasAl](https://github.com/JarbasAl))
 - Feat/mycroft drop in support [\#5](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/5) ([JarbasAl](https://github.com/JarbasAl))
 - Upgrade websocket-client to 1.2.1 [\#2](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/2) ([emphasize](https://github.com/emphasize))
-
-## [0.0.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.0.1) (2021-04-22)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/50c474cc7afa10809e712839621b0f28a364d0f8...0.0.1)
 
 
 
