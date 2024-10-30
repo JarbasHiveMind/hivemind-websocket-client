@@ -4,20 +4,33 @@ import ssl
 from threading import Event
 from typing import Union, Optional, Callable
 
+import pgpy
 from ovos_bus_client import Message as MycroftMessage, MessageBusClient as OVOSBusClient
 from ovos_bus_client.session import Session
-from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus
 from pyee import EventEmitter
 from websocket import ABNF
 from websocket import WebSocketApp, WebSocketConnectionClosedException
-import pgpy
-from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
+
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message, \
     encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin
+from ovos_utils.log import LOG
+from ovos_utils.messagebus import FakeBus
+
+
+class BinaryDataCallbacks:
+    def handle_receive_tts(self, bin_data: bytes,
+                           utterance: str,
+                           lang: str,
+                           file_name: str):
+        LOG.warning(f"Ignoring received binary TTS audio: {utterance} with {len(bin_data)} bytes")
+
+    def handle_receive_file(self, bin_data: bytes,
+                            file_name: str):
+        LOG.warning(f"Ignoring received binary file: {file_name} with {len(bin_data)} bytes")
 
 
 class HiveMessageWaiter:
@@ -87,7 +100,9 @@ class HiveMessageBusClient(OVOSBusClient):
                  compress: bool = True,
                  binarize: bool = True,
                  identity: NodeIdentity = None,
-                 internal_bus: Optional[OVOSBusClient] = None):
+                 internal_bus: Optional[OVOSBusClient] = None,
+                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
+        self.bin_callbacks = bin_callbacks
 
         self.identity = identity or None
         self._password = password
@@ -268,11 +283,36 @@ class HiveMessageBusClient(OVOSBusClient):
             message = decode_bitstring(message)
         elif isinstance(message, str):
             message = json.loads(message)
-        if "ciphertext" in message:
+        if isinstance(message, dict) and "ciphertext" in message:
             LOG.error("got encrypted message, but could not decrypt!")
+            return
+
+        if (isinstance(message, HiveMessage) and message.msg_type == HiveMessageType.BINARY):
+            self._handle_binary(message)
             return
         self.emitter.emit('message', message)  # raw message
         self._handle_hive_protocol(HiveMessage(**message))
+
+    def _handle_binary(self, message: HiveMessage):
+        assert message.msg_type == HiveMessageType.BINARY
+        bin_data = message.payload
+        LOG.debug(f"Got binary data of type: {message.bin_type}")
+        if message.bin_type == HiveMindBinaryPayloadType.TTS_AUDIO:
+            lang = message.metadata.get("lang")
+            utt = message.metadata.get("utterance")
+            file_name = message.metadata.get("file_name")
+            try:
+                self.bin_callbacks.handle_receive_tts(bin_data, utt, lang, file_name)
+            except:
+                LOG.exception("Error in binary callback: handle_receive_tts")
+        elif message.bin_type == HiveMindBinaryPayloadType.FILE:
+            file_name = message.metadata.get("file_name")
+            try:
+                self.bin_callbacks.handle_receive_file(bin_data, file_name)
+            except:
+                LOG.exception("Error in binary callback: handle_receive_file")
+        else:
+            LOG.warning(f"Ignoring received untyped binary data: {len(bin_data)} bytes")
 
     def _handle_hive_protocol(self, message: HiveMessage):
         # LOG.debug(f"received HiveMind message: {message.msg_type}")
@@ -281,7 +321,7 @@ class HiveMessageBusClient(OVOSBusClient):
         self.emitter.emit(message.msg_type, message)  # hive message
 
     def emit(self, message: Union[MycroftMessage, HiveMessage],
-                  binary_type: HiveMindBinaryPayloadType=HiveMindBinaryPayloadType.UNDEFINED):
+             binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
@@ -324,7 +364,8 @@ class HiveMessageBusClient(OVOSBusClient):
                 bitstr = get_bitstring(hive_type=message.msg_type,
                                        payload=message.payload,
                                        compressed=self.compress,
-                                       binary_type=binary_type)
+                                       binary_type=binary_type,
+                                       hivemeta=message.metadata)
                 if self.crypto_key:
                     ws_payload = encrypt_bin(self.crypto_key, bitstr.bytes)
                 else:
