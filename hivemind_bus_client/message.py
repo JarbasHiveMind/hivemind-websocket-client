@@ -3,7 +3,7 @@ from enum import Enum, IntEnum
 
 from ovos_bus_client import Message
 from ovos_utils.json_helper import merge_dict
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict, Any
 
 
 class HiveMessageType(str, Enum):
@@ -36,6 +36,9 @@ class HiveMindBinaryPayloadType(IntEnum):
     RAW_AUDIO = 1  # binary content is raw audio  (TODO spec exactly what "raw audio" means)
     NUMPY_IMAGE = 2  # binary content is an image as a numpy array, eg. webcam picture
     FILE = 3  # binary is a file to be saved, additional metadata provided elsewhere
+    STT_AUDIO_TRANSCRIBE = 4  # full audio sentence to perform STT and return transcripts
+    STT_AUDIO_HANDLE = 5  # full audio sentence to perform STT and handle transcription immediately
+    TTS_AUDIO = 6  # synthesized TTS audio to be played
 
 
 class HiveMessage:
@@ -47,7 +50,8 @@ class HiveMessage:
                  target_peers: Optional[List[str]]=None,
                  target_site_id: Optional[str] =None,
                  target_pubkey: Optional[str] =None,
-                 bin_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
+                 bin_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED,
+                 metadata: Optional[Dict[str, Any]] = None):
         #  except for the hivemind node classes receiving the message and
         #  creating the object nothing should be able to change these values
         #  node classes might change them a runtime by the private attribute
@@ -59,6 +63,7 @@ class HiveMessage:
 
         self._msg_type = msg_type
         self._bin_type = bin_type
+        self._meta = metadata or {}
 
         # the payload is more or less a free for all
         # the msg_type determines what happens to the message, but the
@@ -81,6 +86,10 @@ class HiveMessage:
         self._source_peer = source_peer  # peer_id
         self._route = route or []  # where did this message come from
         self._targets = target_peers or []  # where will it be sent
+
+    @property
+    def metadata(self) -> Dict[str, Any]:
+        return self._meta
 
     @property
     def target_site_id(self) -> str:
@@ -145,6 +154,7 @@ class HiveMessage:
 
         return {"msg_type": self.msg_type,
                 "payload": pload,
+                "metadata": self.metadata,
                 "route": self.route,
                 "node": self.node_id,
                 "target_site_id": self.target_site_id,
@@ -166,6 +176,7 @@ class HiveMessage:
         if "msg_type" in payload:
             try:
                 return HiveMessage(payload["msg_type"], payload["payload"],
+                                   metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except:
@@ -175,13 +186,15 @@ class HiveMessage:
             try:
                 # NOTE: technically could also be SHARED_BUS or THIRDPRTY
                 return HiveMessage(HiveMessageType.BUS,
-                                   Message.deserialize(payload),
+                                   payload=Message.deserialize(payload),
+                                   metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except:
                 pass  # not a mycroft message
 
         return HiveMessage(HiveMessageType.THIRDPRTY, payload,
+                           metadata=payload.get("metadata", {}),
                            target_site_id=payload.get("target_site_id"),
                            target_pubkey=payload.get("target_pubkey"))
 
