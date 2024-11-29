@@ -258,7 +258,7 @@ class HiveMessageBusClient(OVOSBusClient):
             self.client.run_forever(sslopt={
                 "cert_reqs": ssl.CERT_NONE,
                 "check_hostname": False,
-                "ssl_version": ssl.PROTOCOL_TLSv1})
+                "ssl_version": ssl.PROTOCOL_TLS_CLIENT})
         else:
             self.client.run_forever()
 
