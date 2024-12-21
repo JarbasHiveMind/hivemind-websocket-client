@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a1) (2024-12-21)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.2a1...0.1.3a1)
+
+**Merged pull requests:**
+
+- fix: update imports to get rid of deprecation warnings [\#38](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/38) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.2a1) (2024-12-21)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.1...0.1.2a1)
