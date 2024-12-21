@@ -1,12 +1,12 @@
 # Changelog
 
-## [0.1.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.0a1) (2024-10-30)
+## [0.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.2a1) (2024-12-21)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.0.4...0.1.0a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.1...0.1.2a1)
 
 **Merged pull requests:**
 
-- feat:binary handlers [\#33](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/33) ([JarbasAl](https://github.com/JarbasAl))
+- fix: port from identity file [\#36](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/36) ([JarbasAl](https://github.com/JarbasAl))
 
 
 
