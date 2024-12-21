@@ -20,7 +20,7 @@ def hmclient_cmds():
 @click.option("--key", help="HiveMind access key", type=str, default="")
 @click.option("--password", help="HiveMind password", type=str, default="")
 @click.option("--host", help="default host for hivemind-core", type=str, default="")
-@click.option("--port", help="default port for hivemind-core", type=int, default=5678)
+@click.option("--port", help="default port for hivemind-core", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context", type=str, default="")
 def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not key and not password and not siteid:
@@ -29,7 +29,7 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     identity.password = password or identity.password
     identity.access_key = key or identity.access_key
     identity.site_id = siteid or identity.site_id
-    identity.default_port = port or identity.default_port
+    identity.default_port = port or identity.default_port or 5678
     host = host or identity.default_master
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
@@ -45,7 +45,7 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
 @click.option("--key", help="HiveMind access key (default read from identity file)", type=str, default="")
 @click.option("--password", help="HiveMind password (default read from identity file)", type=str, default="")
 @click.option("--host", help="HiveMind host (default read from identity file)", type=str, default="")
-@click.option("--port", help="HiveMind port number (default: 5678)", type=int, default=5678)
+@click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context  (default read from identity file)", type=str, default="")
 def terminal(key: str, password: str, host: str, port: int, siteid: str):
     identity = NodeIdentity()
@@ -53,6 +53,7 @@ def terminal(key: str, password: str, host: str, port: int, siteid: str):
     key = key or identity.access_key
     host = host or identity.default_master
     siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
 
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
@@ -95,7 +96,7 @@ def terminal(key: str, password: str, host: str, port: int, siteid: str):
 @click.option("--key", help="HiveMind access key (default read from identity file)", type=str, default="")
 @click.option("--password", help="HiveMind password (default read from identity file)", type=str, default="")
 @click.option("--host", help="HiveMind host (default read from identity file)", type=str, default="")
-@click.option("--port", help="HiveMind port number (default: 5678)", type=int, default=5678)
+@click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context  (default read from identity file)", type=str, default="")
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
@@ -116,7 +117,7 @@ def send_mycroft(key: str, password: str, host: str, port: int, siteid: str, msg
 @click.option("--key", help="HiveMind access key (default read from identity file)", type=str, default="")
 @click.option("--password", help="HiveMind password (default read from identity file)", type=str, default="")
 @click.option("--host", help="HiveMind host (default read from identity file)", type=str, default="")
-@click.option("--port", help="HiveMind port number (default: 5678)", type=int, default=5678)
+@click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context  (default read from identity file)", type=str, default="")
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
@@ -126,6 +127,7 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
     key = key or identity.access_key
     host = host or identity.default_master
     siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
 
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
@@ -152,7 +154,7 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
 @click.option("--key", help="HiveMind access key (default read from identity file)", type=str, default="")
 @click.option("--password", help="HiveMind password (default read from identity file)", type=str, default="")
 @click.option("--host", help="HiveMind host (default read from identity file)", type=str, default="")
-@click.option("--port", help="HiveMind port number (default: 5678)", type=int, default=5678)
+@click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context  (default read from identity file)", type=str, default="")
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
@@ -162,6 +164,7 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
     key = key or identity.access_key
     host = host or identity.default_master
     siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
 
     if not host.startswith("ws://") and not host.startswith("wss://"):
         host = "ws://" + host
