@@ -3,7 +3,7 @@ import json
 import click
 from ovos_bus_client import Message
 from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus
+from ovos_utils.fakebus import FakeBus
 
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.message import HiveMessage, HiveMessageType

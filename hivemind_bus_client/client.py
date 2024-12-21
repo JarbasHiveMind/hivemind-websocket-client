@@ -18,7 +18,7 @@ from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message, \
     encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin
 from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus
+from ovos_utils.fakebus import FakeBus
 
 
 class BinaryDataCallbacks:
