@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a2) (2024-12-23)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3a1...0.1.3a2)
+
+**Merged pull requests:**
+
+- performance: speed up b64 operations [\#40](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/40) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a1) (2024-12-21)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.2a1...0.1.3a1)
