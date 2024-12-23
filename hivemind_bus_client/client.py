@@ -1,4 +1,4 @@
-import base64
+import pybase64
 import json
 import ssl
 from threading import Event
@@ -18,7 +18,7 @@ from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message, \
     encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin
 from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus
+from ovos_utils.fakebus import FakeBus
 
 
 class BinaryDataCallbacks:
@@ -239,8 +239,7 @@ class HiveMessageBusClient(OVOSBusClient):
     def build_url(key, host='127.0.0.1', port=5678,
                   useragent="HiveMessageBusClientV0.0.1", ssl=True):
         scheme = 'wss' if ssl else 'ws'
-        key = base64.b64encode(f"{useragent}:{key}".encode("utf-8")) \
-            .decode("utf-8")
+        key = pybase64.b64encode(f"{useragent}:{key}".encode("utf-8")).decode("utf-8")
         return f'{scheme}://{host}:{port}?authorization={key}'
 
     def create_client(self):
