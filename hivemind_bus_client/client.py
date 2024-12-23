@@ -1,4 +1,4 @@
-import base64
+import pybase64
 import json
 import ssl
 from threading import Event
@@ -239,8 +239,7 @@ class HiveMessageBusClient(OVOSBusClient):
     def build_url(key, host='127.0.0.1', port=5678,
                   useragent="HiveMessageBusClientV0.0.1", ssl=True):
         scheme = 'wss' if ssl else 'ws'
-        key = base64.b64encode(f"{useragent}:{key}".encode("utf-8")) \
-            .decode("utf-8")
+        key = pybase64.b64encode(f"{useragent}:{key}".encode("utf-8")).decode("utf-8")
         return f'{scheme}://{host}:{port}?authorization={key}'
 
     def create_client(self):
