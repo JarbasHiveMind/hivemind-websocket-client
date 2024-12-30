@@ -1,28 +1,12 @@
 # Changelog
 
-## [0.1.3a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a2) (2024-12-23)
+## [0.1.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.4a1) (2024-12-30)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3a1...0.1.3a2)
-
-**Merged pull requests:**
-
-- performance: speed up b64 operations [\#40](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/40) ([JarbasAl](https://github.com/JarbasAl))
-
-## [0.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a1) (2024-12-21)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.2a1...0.1.3a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3...0.1.4a1)
 
 **Merged pull requests:**
 
-- fix: update imports to get rid of deprecation warnings [\#38](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/38) ([JarbasAl](https://github.com/JarbasAl))
-
-## [0.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.2a1) (2024-12-21)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.1...0.1.2a1)
-
-**Merged pull requests:**
-
-- fix: port from identity file [\#36](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/36) ([JarbasAl](https://github.com/JarbasAl))
+- fix: deprecation warning, update poorman handshake [\#42](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/42) ([JarbasAl](https://github.com/JarbasAl))
 
 
 
