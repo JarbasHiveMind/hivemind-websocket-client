@@ -1,5 +1,5 @@
 from os.path import basename, dirname
-from poorman_handshake.asymmetric.utils import export_private_key, create_private_key
+from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 
 from json_database import JsonConfigXDG
 
@@ -11,7 +11,7 @@ class NodeIdentity:
 
     @property
     def name(self):
-        """human readable label, not guaranteed unique
+        """human-readable label, not guaranteed unique
         can describe functionality, brand, capabilities or something else...
         """
         if not self.IDENTITY_FILE.get("name") and self.IDENTITY_FILE.get("key"):
@@ -93,9 +93,8 @@ class NodeIdentity:
         self.IDENTITY_FILE.reload()
 
     def create_keys(self):
-        key = create_private_key("HiveMindComs")
+        secret, pub = create_RSA_key()
         priv = f"{dirname(self.IDENTITY_FILE.path)}/HiveMindComs.asc"
-        export_private_key(priv, key)
-        pub = str(key.pubkey)
+        export_RSA_key(secret, priv)
         self.private_key = priv
         self.public_key = pub
