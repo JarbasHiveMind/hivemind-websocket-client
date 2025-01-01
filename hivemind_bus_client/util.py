@@ -152,7 +152,8 @@ def decrypt_from_json(key, data):
                 ciphertext, tag, nonce = decode(b64=True)
                 return decrypt(key, ciphertext, tag, nonce)
             except ValueError:
-                raise DecryptionKeyError from e
+                pass
+        raise DecryptionKeyError from e
 
 
 def encrypt_bin(key, data):
