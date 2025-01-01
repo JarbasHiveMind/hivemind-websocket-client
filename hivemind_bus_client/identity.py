@@ -169,7 +169,7 @@ class NodeIdentity:
         This method generates a new private key, stores it in a PEM file, and updates the node's public and private keys
         in the identity file.
         """
-        secret, pub = create_RSA_key()
+        pub, secret = create_RSA_key()
         priv = f"{dirname(self.IDENTITY_FILE.path)}/HiveMindComs.pem"
         export_RSA_key(secret, priv)
         self.private_key = priv
