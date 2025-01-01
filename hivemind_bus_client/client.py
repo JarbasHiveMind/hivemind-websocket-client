@@ -1,12 +1,15 @@
-import pybase64
 import json
 import ssl
+from binascii import hexlify
 from threading import Event
 from typing import Union, Optional, Callable
 
-import pgpy
+import pybase64
+from Cryptodome.PublicKey import RSA
 from ovos_bus_client import Message as MycroftMessage, MessageBusClient as OVOSBusClient
 from ovos_bus_client.session import Session
+from ovos_utils.fakebus import FakeBus
+from ovos_utils.log import LOG
 from pyee import EventEmitter
 from websocket import ABNF
 from websocket import WebSocketApp, WebSocketConnectionClosedException
@@ -17,8 +20,7 @@ from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message, \
     encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin
-from ovos_utils.log import LOG
-from ovos_utils.fakebus import FakeBus
+from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
 
 
 class BinaryDataCallbacks:
@@ -492,24 +494,15 @@ class HiveMessageBusClient(OVOSBusClient):
         self.emit(message)
         return waiter.wait(timeout)
 
-    # targeted messages for nodes, assymetric encryption
+    # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
-                      pubkey: Union[str, pgpy.PGPKey]):
+                      pubkey: Union[str, bytes, RSA.RsaKey]):
 
-        if isinstance(pubkey, str):
-            pubkey, _ = pgpy.PGPKey.from_blob(pubkey)
-        assert isinstance(pubkey, pgpy.PGPKey)
-
-        txt = message.serialize()
-
-        text_message = pgpy.PGPMessage.new(txt)
-        encrypted_message = pubkey.encrypt(text_message)
+        encrypted_message = encrypt_RSA(pubkey, message.serialize())
 
         # sign message
-        with open(self.identity.private_key, "r") as f:
-            private_key = pgpy.PGPKey.from_blob(f.read())
-        # the bitwise OR operator '|' is used to add a signature to a PGPMessage.
-        encrypted_message |= private_key.sign(encrypted_message,
-                                              intended_recipients=[pubkey])
+        private_key = load_RSA_key(self.identity.private_key)
+        signature = sign_RSA(private_key, encrypted_message)
 
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": str(encrypted_message)}))
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": hexlify(encrypted_message),
+                                                                 "signature": hexlify(signature)}))

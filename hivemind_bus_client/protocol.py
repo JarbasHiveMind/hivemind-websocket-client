@@ -1,17 +1,18 @@
+from binascii import unhexlify
 from dataclasses import dataclass
+from typing import Optional
 
-import pgpy
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
 from ovos_bus_client.message import Message
 from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
-from poorman_handshake import HandShake, PasswordHandShake
-from typing import Optional
 
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from poorman_handshake import HandShake, PasswordHandShake
+from poorman_handshake.asymmetric.utils import decrypt_RSA, load_RSA_key
 
 
 @dataclass()
@@ -274,12 +275,17 @@ class HiveMindSlaveProtocol:
         pload = message.payload
         if isinstance(pload, dict) and "ciphertext" in pload:
             try:
-                message_from_blob = pgpy.PGPMessage.from_blob(pload["ciphertext"])
+                ciphertext = unhexlify(pload["ciphertext"])
+                signature = unhexlify(pload["signature"])
 
-                with open(self.identity.private_key, "r") as f:
-                    private_key = pgpy.PGPKey.from_blob(f.read())
+                # TODO allow verifying, but we need to store known pubkeys before this is possible
+                # pubkey = ""
+                # verified: bool = verify_RSA(pubkey, ciphertext, signature)
 
-                decrypted: str = private_key.decrypt(message_from_blob)
+                private_key = load_RSA_key(self.identity.private_key)
+
+                decrypted = decrypt_RSA(private_key, ciphertext).decode("utf8")
+
                 message._payload = HiveMessage.deserialize(decrypted)
             except:
                 if k:
