@@ -1,12 +1,12 @@
 # Changelog
 
-## [0.1.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.4a1) (2024-12-30)
+## [0.1.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.5a1) (2025-01-01)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3...0.1.4a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.4...0.1.5a1)
 
 **Merged pull requests:**
 
-- fix: deprecation warning, update poorman handshake [\#42](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/42) ([JarbasAl](https://github.com/JarbasAl))
+- fix: INTERCOM messages RSA [\#44](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/44) ([JarbasAl](https://github.com/JarbasAl))
 
 
 
