@@ -1,4 +1,4 @@
-from binascii import unhexlify
+import pybase64
 from dataclasses import dataclass
 from typing import Optional
 
@@ -275,8 +275,8 @@ class HiveMindSlaveProtocol:
         pload = message.payload
         if isinstance(pload, dict) and "ciphertext" in pload:
             try:
-                ciphertext = unhexlify(pload["ciphertext"])
-                signature = unhexlify(pload["signature"])
+                ciphertext = pybase64.b64decode(pload["ciphertext"])
+                signature = pybase64.b64decode(pload["signature"])
 
                 # TODO allow verifying, but we need to store known pubkeys before this is possible
                 # pubkey = ""

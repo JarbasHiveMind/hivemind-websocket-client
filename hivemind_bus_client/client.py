@@ -1,6 +1,5 @@
 import json
 import ssl
-from binascii import hexlify
 from threading import Event
 from typing import Union, Optional, Callable
 
@@ -504,5 +503,5 @@ class HiveMessageBusClient(OVOSBusClient):
         private_key = load_RSA_key(self.identity.private_key)
         signature = sign_RSA(private_key, encrypted_message)
 
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": hexlify(encrypted_message),
-                                                                 "signature": hexlify(signature)}))
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
+                                                                 "signature": pybase64.b64encode(signature)}))
