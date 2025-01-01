@@ -136,9 +136,6 @@ class HiveMindSlaveProtocol:
             node_id = message.payload.get("node_id", "")
             self.internal_protocol.node_id = node_id
             LOG.info(f"Connected to HiveMind: {node_id}")
-        if "session_id" in message.payload:
-            self.internal_protocol.bus.session_id = message.payload["session_id"]
-            LOG.debug("session_id updated to: " + message.payload["session_id"])
 
     def start_handshake(self):
         if self.binarize:
@@ -146,18 +143,13 @@ class HiveMindSlaveProtocol:
         else:
             LOG.info("hivemind does not support binarization protocol")
 
-        sess = Session(self.hm.session_id)
         if self.pswd_handshake is not None:
             envelope = self.pswd_handshake.generate_handshake()
             msg = HiveMessage(HiveMessageType.HANDSHAKE, {"envelope": envelope,
-                                                          "binarize": self.binarize,
-                                                          "session": sess.serialize(),
-                                                          "site_id": self.site_id})
+                                                          "binarize": self.binarize})
         else:
             msg = HiveMessage(HiveMessageType.HANDSHAKE, {"pubkey": self.handshake.pubkey,
-                                                          "binarize": self.binarize,
-                                                          "session": sess.serialize(),
-                                                          "site_id": self.site_id})
+                                                          "binarize": self.binarize})
         self.hm.emit(msg)
 
     def receive_handshake(self, envelope):
@@ -176,6 +168,13 @@ class HiveMindSlaveProtocol:
                 # implicitly trust the server
                 self.handshake.receive_handshake(envelope)
             self.hm.crypto_key = self.handshake.secret  # update to new crypto key
+
+        # now that communication is secure, send our Session data and other personal info
+        sess = Session(self.hm.session_id)
+        msg = HiveMessage(HiveMessageType.HELLO, {"pubkey": self.identity.public_key,
+                                                  "session": sess.serialize(),
+                                                  "site_id": self.site_id})
+        self.hm.emit(msg)
         self.hm.handshake_event.set()
 
     def handle_handshake(self, message: HiveMessage):
