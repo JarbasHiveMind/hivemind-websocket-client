@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.5a2) (2025-01-01)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.5a1...0.1.5a2)
+
+**Merged pull requests:**
+
+- performance: reduce\_payload\_size [\#46](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/46) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.1.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.5a1) (2025-01-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.4...0.1.5a1)
