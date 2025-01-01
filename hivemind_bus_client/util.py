@@ -1,6 +1,7 @@
 import json
 import zlib
 from binascii import hexlify, unhexlify
+from typing import Union, Dict
 
 import pybase64
 from ovos_utils.security import encrypt, decrypt, AES
@@ -9,7 +10,7 @@ from hivemind_bus_client.exceptions import EncryptionKeyError, DecryptionKeyErro
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, Message
 
 
-def serialize_message(message):
+def serialize_message(message: Union[HiveMessage, Message, Dict]) -> str:
     # convert a Message object into raw data that can be sent over
     # websocket
     if hasattr(message, 'serialize'):
@@ -23,7 +24,7 @@ def serialize_message(message):
         return json.dumps(message.__dict__)
 
 
-def payload2dict(payload):
+def payload2dict(payload: Union[HiveMessage, Message, str]) -> Dict:
     """helper to ensure all subobjects of a payload are a dict safe for serialization
     eg. ensure payload is valid to send over mycroft messagebus object """
     if isinstance(payload, HiveMessage):
@@ -54,7 +55,7 @@ def payload2dict(payload):
     return payload
 
 
-def get_payload(msg):
+def get_payload(msg: Union[HiveMessage, Message, str, Dict]) -> Dict:
     """ helper to read normalized payload
     from all supported formats (HiveMessage, Message, json str)
     """
@@ -67,7 +68,7 @@ def get_payload(msg):
     return msg
 
 
-def get_hivemsg(msg):
+def get_hivemsg(msg: Union[Message, str, Dict]) -> HiveMessage:
     """ helper to create a normalized HiveMessage object
     from all supported formats (Message, json str, dict)
     """
@@ -81,7 +82,7 @@ def get_hivemsg(msg):
     return msg
 
 
-def get_mycroft_msg(pload):
+def get_mycroft_msg(pload: Union[HiveMessage, str, Dict]) -> Message:
     if isinstance(pload, HiveMessage):
         assert pload.msg_type == HiveMessageType.BUS
         pload = pload.payload
@@ -101,7 +102,7 @@ def get_mycroft_msg(pload):
     return pload
 
 
-def encrypt_as_json(key, data, b64=False):
+def encrypt_as_json(key, data, b64=False) -> str:
     # TODO default b64 to True in a future release
     #  we dont want clients to update before servers, otherwise servers won't be able to decode
     #  after a reasonable time all servers should support decoding both schemes and the default can change
@@ -120,7 +121,7 @@ def encrypt_as_json(key, data, b64=False):
                        "nonce": hexlify(nonce).decode('utf-8')})
 
 
-def decrypt_from_json(key, data):
+def decrypt_from_json(key, data: Union[str, bytes]):
     if isinstance(data, str):
         data = json.loads(data)
     if len(key) > 16:
@@ -156,7 +157,7 @@ def decrypt_from_json(key, data):
         raise DecryptionKeyError from e
 
 
-def encrypt_bin(key, data):
+def encrypt_bin(key, data: Union[str, bytes]):
     if len(key) > 16:
         key = key[0:16]
     try:
@@ -167,7 +168,7 @@ def encrypt_bin(key, data):
     return nonce + ciphertext + tag
 
 
-def decrypt_bin(key, ciphertext):
+def decrypt_bin(key, ciphertext: bytes):
     if len(key) > 16:
         key = key[0:16]
 
@@ -182,7 +183,7 @@ def decrypt_bin(key, ciphertext):
         raise DecryptionKeyError
 
 
-def compress_payload(text):
+def compress_payload(text: Union[str, bytes]) -> bytes:
     # Compressing text
     if isinstance(text, str):
         decompressed = text.encode("utf-8")
@@ -191,15 +192,18 @@ def compress_payload(text):
     return zlib.compress(decompressed)
 
 
-def decompress_payload(compressed):
+def decompress_payload(compressed: Union[str, bytes]) -> bytes:
     # Decompressing text
-    if isinstance(compressed, str):
-        # assume hex
-        compressed = pybase64.b64decode(compressed)
+    if isinstance(compressed, str): # we really should be getting bytes here and not a str
+        if any(a.isupper() for a in compressed):
+            decoder = pybase64.b64decode
+        else:  # assume hex
+            decoder = unhexlify
+        compressed = decoder(compressed)
     return zlib.decompress(compressed)
 
 
-def cast2bytes(payload, compressed=False):
+def cast2bytes(payload: Union[Dict, str], compressed=False) -> bytes:
     if isinstance(payload, dict):
         payload = json.dumps(payload)
     if compressed:
@@ -210,7 +214,7 @@ def cast2bytes(payload, compressed=False):
     return payload
 
 
-def bytes2str(payload, compressed=False):
+def bytes2str(payload: bytes, compressed=False) -> str:
     if compressed:
         return decompress_payload(payload).decode("utf-8")
     else:
