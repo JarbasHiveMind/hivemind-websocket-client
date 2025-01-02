@@ -131,7 +131,9 @@ def encrypt_bin(key: Union[str, bytes], data: Union[str, bytes], cipher: BinaryC
     Args:
         key (Union[str, bytes]): The encryption key, up to 16 bytes. Longer keys will be truncated.
         data (Union[str, bytes]): The data to encrypt. Strings will be encoded as UTF-8.
-        cipher (BinaryCiphers): The encryption cipher. Only BINARY_AES_GCM_128 is supported.
+        cipher (BinaryCiphers): The encryption cipher. Supported options:
+            - BINARY_AES_GCM_128: AES-GCM with 128-bit key
+            - BINARY_CHACHA20_POLY1305: ChaCha20-Poly1305 with 256-bit key
 
     Returns:
         bytes: The encrypted data, including the nonce and tag.
@@ -203,6 +205,8 @@ def encrypt_AES_GCM_128(key: Union[str, bytes], text: Union[str, bytes],
         text = bytes(text, encoding="utf-8")
     if not isinstance(key, bytes):
         key = bytes(key, encoding="utf-8")
+    if len(key) != 16:  # AES-128 uses 128 bit/16 byte keys
+        raise ValueError("AES-GCM-128 requires a 16-byte key")
     cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
     ciphertext, tag = cipher.encrypt_and_digest(text)
     return ciphertext, tag, cipher.nonce
@@ -234,7 +238,7 @@ def encrypt_ChaCha20_Poly1305(key: Union[str, bytes],
                               text: Union[str, bytes],
                               nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
     """
-    Encrypts plaintext using AES-GCM-128.
+    Encrypts plaintext using ChaCha20-Poly1305.
 
     Args:
         key (Union[str, bytes]): The encryption key. Strings will be encoded as UTF-8.
