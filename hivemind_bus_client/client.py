@@ -1,7 +1,7 @@
 import json
 import ssl
 from threading import Event
-from typing import Union, Optional, Callable
+from typing import Union, Optional, Callable, Literal
 
 import pybase64
 from Cryptodome.PublicKey import RSA
@@ -17,8 +17,8 @@ from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
-from hivemind_bus_client.util import serialize_message, \
-    encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin
+from hivemind_bus_client.util import serialize_message
+from hivemind_bus_client.encryption import encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin, JsonCiphers, BinaryCiphers
 from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
 
 
@@ -102,8 +102,13 @@ class HiveMessageBusClient(OVOSBusClient):
                  binarize: bool = True,
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
-                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
+                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks(),
+                 json_cipher: Literal[JsonCiphers] = JsonCiphers.JSON_HEX_AES_GCM_128, # TODO - default to b64 at some point
+                 bin_cipher: Literal[BinaryCiphers] = BinaryCiphers.BINARY_AES_GCM_128, # TODO - ChaCha20 if certain hardware detected
+                 ):
         self.bin_callbacks = bin_callbacks
+        self.json_cipher = json_cipher
+        self.bin_cipher = bin_cipher
 
         self.identity = identity or None
         self._password = password
@@ -271,11 +276,11 @@ class HiveMessageBusClient(OVOSBusClient):
         if self.crypto_key:
             # handle binary encryption
             if isinstance(message, bytes):
-                message = decrypt_bin(self.crypto_key, message)
+                message = decrypt_bin(self.crypto_key, message, cipher=self.bin_cipher)
             # handle json encryption
             elif "ciphertext" in message:
                 # LOG.debug(f"got encrypted message: {len(message)}")
-                message = decrypt_from_json(self.crypto_key, message)
+                message = decrypt_from_json(self.crypto_key, message, cipher=self.json_cipher)
             else:
                 LOG.debug("Message was unencrypted")
 
@@ -367,14 +372,14 @@ class HiveMessageBusClient(OVOSBusClient):
                                        binary_type=binary_type,
                                        hivemeta=message.metadata)
                 if self.crypto_key:
-                    ws_payload = encrypt_bin(self.crypto_key, bitstr.bytes)
+                    ws_payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.bin_cipher)
                 else:
                     ws_payload = bitstr.bytes
                 self.client.send(ws_payload, ABNF.OPCODE_BINARY)
             else:
                 ws_payload = serialize_message(message)
                 if self.crypto_key:
-                    ws_payload = encrypt_as_json(self.crypto_key, ws_payload)
+                    ws_payload = encrypt_as_json(self.crypto_key, ws_payload, cipher=self.json_cipher)
                 self.client.send(ws_payload)
 
         except WebSocketConnectionClosedException:

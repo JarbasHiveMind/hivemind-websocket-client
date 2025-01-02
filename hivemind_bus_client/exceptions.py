@@ -11,6 +11,10 @@ class UnauthorizedKeyError(HiveMindException):
     """ Invalid Key provided """
 
 
+class InvalidCipher(HiveMindException):
+    """unknown encryption scheme requested"""
+
+
 class WrongEncryptionKey(HiveMindException):
     """ Wrong Encryption Key"""
 
