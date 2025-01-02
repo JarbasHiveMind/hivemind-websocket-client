@@ -9,7 +9,7 @@ from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import HiveMessageBusClient
-from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers
+from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
@@ -144,8 +144,9 @@ class HiveMindSlaveProtocol:
             LOG.info("hivemind does not support binarization protocol")
 
         payload = {"binarize": self.binarize,
-                   "encodings": list(c for c in SupportedEncodings),
-                   "ciphers": list(c for c in SupportedCiphers)}
+                   "encodings": [SupportedEncodings.JSON_B64,
+                                 SupportedEncodings.JSON_HEX],
+                   "ciphers": optimal_ciphers()}
         if self.pswd_handshake is not None:
             payload["envelope"] = self.pswd_handshake.generate_handshake()
         else:
