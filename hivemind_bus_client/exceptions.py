@@ -15,6 +15,10 @@ class InvalidCipher(HiveMindException):
     """unknown encryption scheme requested"""
 
 
+class InvalidKeySize(HiveMindException):
+    """ Encryption Key size does not obey specification"""
+
+
 class WrongEncryptionKey(HiveMindException):
     """ Wrong Encryption Key"""
 
