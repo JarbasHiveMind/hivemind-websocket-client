@@ -37,16 +37,6 @@ class BinaryCiphers(str, enum.Enum):
     BINARY_CHACHA20_POLY1305 = "BINARY-CHACHA20-POLY1305"  # specified in RFC7539.
 
 
-class TextCiphers(str, enum.Enum):
-    """
-    Enum representing text-based encryption ciphers.
-    """
-    B64_AES_GCM_128 = "B64-AES-GCM-128"  # Text output with Base64 encoding
-    HEX_AES_GCM_128 = "HEX-AES-GCM-128"  # Text output with Hex encoding
-    B64_CHACHA20_POLY1305 = "B64-CHACHA20-POLY1305"  # Text output with Base64 encoding
-    HEX_CHACHA20_POLY1305 = "HEX-CHACHA20-POLY1305"  # Text output with Hex encoding
-
-
 def encrypt_as_json(key: Union[str, bytes], data: Union[str, Dict[str, Any]],
                     cipher: JsonCiphers = JsonCiphers.JSON_B64_AES_GCM_128) -> str:
     """
