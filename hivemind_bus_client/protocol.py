@@ -184,8 +184,8 @@ class HiveMindSlaveProtocol:
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
-            self.hm.json_encoding = message.payload.get("json_cipher") or SupportedEncodings.JSON_HEX
-            self.hm.cipher = message.payload.get("binary_cipher") or SupportedCiphers.AES_GCM
+            self.hm.json_encoding = message.payload.get("encoding") or SupportedEncodings.JSON_HEX
+            self.hm.cipher = message.payload.get("cipher") or SupportedCiphers.AES_GCM
             self.receive_handshake(envelope)
             LOG.debug(f"Encoding: {self.hm.json_encoding}")
             LOG.debug(f"Cipher: {self.hm.cipher}")
@@ -198,6 +198,10 @@ class HiveMindSlaveProtocol:
             #    self.hm.handshake_event.set()  # don't wait
             #    return
 
+            encodings = message.payload.get("encodings") or [SupportedEncodings.JSON_HEX]
+            ciphers = message.payload.get("ciphers") or [SupportedCiphers.AES_GCM]
+            LOG.debug(f"Server supported encodings: {encodings}")
+            LOG.debug(f"Server supported ciphers: {ciphers}")
             if message.payload.get("crypto_key") and self.hm.crypto_key:
                 pass
                 # we can use the pre-shared key instead of handshake

@@ -22,6 +22,10 @@ def cpu_supports_AES() -> bool:
     """
     Check if the CPU supports AES encryption.
 
+    This function checks the CPU flags to determine if the hardware supports
+    AES encryption. It does so by querying the CPU information and checking
+    if the 'aes' flag is present.
+
     Returns:
         bool: True if AES is supported by the CPU, False otherwise.
     """
@@ -32,7 +36,8 @@ class SupportedEncodings(str, enum.Enum):
     """
     Enum representing JSON-based encryption encodings.
 
-    Ciphers output binary data, json needs to transmit that data as plaintext
+    Ciphers output binary data, and JSON needs to transmit that data as plaintext.
+    The supported encodings include Base64 and Hex encoding.
     """
     JSON_B64 = "JSON-B64"  # JSON text output with Base64 encoding
     JSON_HEX = "JSON-HEX"  # JSON text output with Hex encoding (LEGACY SUPPORT)
@@ -57,57 +62,134 @@ BLOCK_CIPHERS = AES_CIPHERS  # Blowfish etc can be added in the future
 
 
 def optimal_ciphers() -> List[SupportedCiphers]:
+    """
+    Determine the optimal ciphers based on CPU support.
+
+    This function checks if the CPU supports AES encryption. If it does, it
+    returns a list of ciphers with AES first, followed by other supported ciphers.
+    If AES is not supported, the function returns a list of ciphers with
+    ChaCha20-Poly1305 first.
+
+    Returns:
+        List[SupportedCiphers]: A list of optimal ciphers based on CPU support.
+    """
     if not cpu_supports_AES():
         return [SupportedCiphers.CHACHA20_POLY1305, SupportedCiphers.AES_CCM, SupportedCiphers.AES_GCM]
     return [SupportedCiphers.AES_GCM, SupportedCiphers.AES_CCM, SupportedCiphers.CHACHA20_POLY1305]
 
 
-def encrypt_as_json(key: Union[str, bytes], data: Union[str, Dict[str, Any]],
-                    cipher: SupportedCiphers = SupportedCiphers.AES_GCM,
-                    encoding: SupportedEncodings = SupportedEncodings.JSON_B64) -> str:
+def _norm_cipher(cipher: Union[SupportedCiphers, str]) -> SupportedCiphers:
+    """
+    Normalize a cipher to an enum member.
+
+    This function takes either a cipher string or an enum member and ensures it
+    is converted to the corresponding enum member of SupportedCiphers. If the input
+    is invalid, an InvalidCipher exception is raised.
+
+    Args:
+        cipher (Union[SupportedCiphers, str]): The cipher to normalize, either a string or an enum member.
+
+    Returns:
+        SupportedCiphers: The corresponding enum member of SupportedCiphers.
+
+    Raises:
+        InvalidCipher: If the cipher is invalid.
+    """
+    if isinstance(cipher, SupportedCiphers):
+        return cipher  # If already an enum member, just return it
+
+    # Convert string to enum member by matching the value
+    for member in SupportedCiphers:
+        if member.value == cipher:
+            return member
+
+    raise InvalidCipher(f"Invalid cipher: {cipher}")
+
+
+def _norm_encoding(encoding: Union[SupportedEncodings, str]) -> SupportedEncodings:
+    """
+    Normalize an encoding to an enum member.
+
+    This function takes either an encoding string or an enum member and ensures it
+    is converted to the corresponding enum member of SupportedEncodings. If the input
+    is invalid, an InvalidCipher exception is raised.
+
+    Args:
+        encoding (Union[SupportedEncodings, str]): The encoding to normalize, either a string or an enum member.
+
+    Returns:
+        SupportedEncodings: The corresponding enum member of SupportedEncodings.
+
+    Raises:
+        InvalidCipher: If the encoding is invalid.
+    """
+    if isinstance(encoding, SupportedEncodings):
+        return encoding  # If already an enum member, just return it
+
+    # Convert string to enum member by matching the value
+    for member in SupportedEncodings:
+        if member.value == encoding:
+            return member
+
+    raise InvalidCipher(f"Invalid JSON encoding: {encoding}")
+
+
+def encrypt_as_json(
+    key: Union[str, bytes],
+    plaintext: Union[str, Dict[str, Any]],
+    cipher: Union[SupportedCiphers, str] = SupportedCiphers.AES_GCM,
+    encoding: Union[SupportedEncodings, str] = SupportedEncodings.JSON_B64
+) -> str:
     """
     Encrypts the given data and outputs it as a JSON string.
 
     Args:
         key (Union[str, bytes]): The encryption key, up to 16 bytes. Longer keys will be truncated.
-        data (Union[str, Dict[str, Any]]): The data to encrypt. If a dictionary, it will be serialized to JSON.
-        cipher (SupportedEncodings): The encryption cipher. Supported options:
-            - JSON-B64-AES-GCM-128: Outputs Base64-encoded JSON.
-            - JSON-HEX-AES-GCM-128: Outputs Hex-encoded JSON.
+        plaintext (Union[str, Dict[str, Any]]): The data to encrypt. If a dictionary, it will be serialized to JSON.
+        cipher (Union[SupportedCiphers, str]): The encryption cipher. Supported options:
+            - AES-GCM (default)
+        encoding (Union[SupportedEncodings, str]): The encoding type for JSON. Supported options:
+            - JSON-B64 (default)
 
     Returns:
         str: A JSON string containing the encrypted data, nonce, and tag.
 
     Raises:
-        InvalidCipher: If an unsupported cipher is provided.
+        InvalidCipher: If an unsupported cipher or encoding is provided.
     """
-    if cipher not in SupportedCiphers:
-        raise InvalidCipher(f"Invalid cipher: {str(cipher)}")
-    if encoding not in SupportedEncodings:
-        raise InvalidCipher(f"Invalid JSON encoding: {str(encoding)}")
 
-    if isinstance(data, dict):
-        data = json.dumps(data)
+    cipher = _norm_cipher(cipher)
+    encoding = _norm_encoding(encoding)
+
+    # If plaintext is a dictionary, convert it to a JSON string
+    if isinstance(plaintext, dict):
+        plaintext = json.dumps(plaintext)
 
     try:
-        ciphertext = encrypt_bin(key=key, plaintext=data, cipher=cipher)
+        ciphertext = encrypt_bin(key=key, plaintext=plaintext, cipher=cipher)
     except InvalidKeySize as e:
         raise e
     except Exception as e:
         raise EncryptionKeyError from e
 
-    # extract nonce/tag depending on cipher, sizes are different
+    # Extract nonce/tag depending on cipher, sizes are different
     if cipher in AES_CIPHERS:
-        nonce, ciphertext, tag = (ciphertext[:AES_NONCE_SIZE],
-                                  ciphertext[AES_NONCE_SIZE:-AES_TAG_SIZE],
-                                  ciphertext[-AES_TAG_SIZE:])
+        nonce, ciphertext, tag = (
+            ciphertext[:AES_NONCE_SIZE],
+            ciphertext[AES_NONCE_SIZE:-AES_TAG_SIZE],
+            ciphertext[-AES_TAG_SIZE:]
+        )
     else:
-        nonce, ciphertext, tag = (ciphertext[:CHACHA20_NONCE_SIZE],
-                                  ciphertext[CHACHA20_NONCE_SIZE:-CHACHA20_TAG_SIZE],
-                                  ciphertext[-CHACHA20_TAG_SIZE:])
+        nonce, ciphertext, tag = (
+            ciphertext[:CHACHA20_NONCE_SIZE],
+            ciphertext[CHACHA20_NONCE_SIZE:-CHACHA20_TAG_SIZE],
+            ciphertext[-CHACHA20_TAG_SIZE:]
+        )
 
+    # Choose encoder based on the encoding
     encoder = pybase64.b64encode if encoding == SupportedEncodings.JSON_B64 else hexlify
 
+    # Return the JSON-encoded ciphertext, tag, and nonce
     return json.dumps({
         "ciphertext": encoder(ciphertext).decode('utf-8'),
         "tag": encoder(tag).decode('utf-8'),
@@ -115,15 +197,15 @@ def encrypt_as_json(key: Union[str, bytes], data: Union[str, Dict[str, Any]],
     })
 
 
-def decrypt_from_json(key: Union[str, bytes], data: Union[str, bytes],
-                      cipher: SupportedCiphers = SupportedCiphers.AES_GCM,
-                      encoding: SupportedEncodings = SupportedEncodings.JSON_B64) -> str:
+def decrypt_from_json(key: Union[str, bytes], ciphertextjson: Union[str, bytes],
+                      cipher: Union[SupportedCiphers, str] = SupportedCiphers.AES_GCM,
+                      encoding: Union[SupportedEncodings, str] = SupportedEncodings.JSON_B64) -> str:
     """
     Decrypts data from a JSON string.
 
     Args:
         key (Union[str, bytes]): The decryption key, up to 16 bytes. Longer keys will be truncated.
-        data (Union[str, bytes]): The encrypted data as a JSON string or bytes.
+        ciphertextjson (Union[str, bytes]): The encrypted data as a JSON string or bytes.
         cipher (SupportedEncodings): The cipher used for encryption.
 
     Returns:
@@ -133,38 +215,37 @@ def decrypt_from_json(key: Union[str, bytes], data: Union[str, bytes],
         InvalidCipher: If an unsupported cipher is provided.
         DecryptionKeyError: If decryption fails due to an invalid key or corrupted data.
     """
-    if cipher not in SupportedCiphers:
-        raise InvalidCipher(f"Invalid cipher: {str(cipher)}")
-    if encoding not in SupportedEncodings:
-        raise InvalidCipher(f"Invalid JSON encoding: {str(encoding)}")
+    cipher = _norm_cipher(cipher)
+    encoding = _norm_encoding(encoding)
 
-    if isinstance(data, str):
-        data = json.loads(data)
+    if isinstance(ciphertextjson, str):
+        ciphertextjson = json.loads(ciphertextjson)
 
     decoder = pybase64.b64decode if encoding == SupportedEncodings.JSON_B64 else unhexlify
 
-    ciphertext = decoder(data["ciphertext"])
-    if "tag" not in data:  # web crypto compatibility
+    ciphertext = decoder(ciphertextjson["ciphertext"])
+
+    if "tag" not in ciphertextjson:  # web crypto compatibility
         if cipher in AES_CIPHERS:
             ciphertext, tag = ciphertext[:-AES_TAG_SIZE], ciphertext[-AES_TAG_SIZE:]
         else:
             ciphertext, tag = ciphertext[:-CHACHA20_TAG_SIZE], ciphertext[-CHACHA20_TAG_SIZE:]
     else:
-        tag = decoder(data["tag"])
-    nonce = decoder(data["nonce"])
+        tag = decoder(ciphertextjson["tag"])
+    nonce = decoder(ciphertextjson["nonce"])
 
     try:
-        plaintext = decrypt_bin(key=key,
-                                ciphertext=nonce + ciphertext + tag,
-                                cipher=cipher)
-        return plaintext.decode("utf-8")
+        ciphertext = decrypt_bin(key=key,
+                                     ciphertext=nonce + ciphertext + tag,
+                                     cipher=cipher)
+        return ciphertext.decode("utf-8")
     except InvalidKeySize as e:
         raise e
     except Exception as e:
         raise DecryptionKeyError from e
 
 
-def encrypt_bin(key: Union[str, bytes], plaintext: Union[str, bytes], cipher: SupportedCiphers) -> bytes:
+def encrypt_bin(key: Union[str, bytes], plaintext: Union[str, bytes], cipher: Union[SupportedCiphers, str]) -> bytes:
     """
     Encrypts the given data and returns it as binary.
 
@@ -181,10 +262,9 @@ def encrypt_bin(key: Union[str, bytes], plaintext: Union[str, bytes], cipher: Su
 
     Raises:
         InvalidCipher: If an unsupported cipher is provided.
-        EncryptionKeyError: If encryption fails.
+        InvalidKeySize: If an invalid key size is provided.
     """
-    if cipher not in SupportedCiphers:
-        raise InvalidCipher(f"Invalid cipher: {str(cipher)}")
+    cipher = _norm_cipher(cipher)
 
     encryptor = encrypt_AES if cipher in AES_CIPHERS else encrypt_ChaCha20_Poly1305
 
@@ -207,24 +287,23 @@ def encrypt_bin(key: Union[str, bytes], plaintext: Union[str, bytes], cipher: Su
     return nonce + ciphertext + tag
 
 
-def decrypt_bin(key: Union[str, bytes], ciphertext: bytes, cipher: SupportedCiphers) -> bytes:
+def decrypt_bin(key: Union[str, bytes], ciphertext: Union[str, bytes], cipher: Union[SupportedCiphers, str]) -> bytes:
     """
-    Decrypts binary data.
+    Decrypts the given binary data.
 
     Args:
         key (Union[str, bytes]): The decryption key, up to 16 bytes. Longer keys will be truncated.
-        ciphertext (bytes): The binary encrypted data. Must include nonce and tag.
+        ciphertext (Union[str, bytes]): The data to decrypt, including the nonce and tag.
         cipher (SupportedCiphers): The cipher used for encryption.
 
     Returns:
-        bytes: The decrypted plaintext data.
+        bytes: The decrypted data.
 
     Raises:
         InvalidCipher: If an unsupported cipher is provided.
         DecryptionKeyError: If decryption fails due to an invalid key or corrupted data.
     """
-    if cipher not in SupportedCiphers:
-        raise InvalidCipher(f"Invalid cipher: {str(cipher)}")
+    cipher = _norm_cipher(cipher)
 
     # extract nonce/tag depending on cipher, sizes are different
     if cipher in AES_CIPHERS:
