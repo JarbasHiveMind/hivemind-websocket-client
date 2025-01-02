@@ -6,7 +6,12 @@ from typing import Union, Optional, Dict, Any
 import pybase64
 from Cryptodome.Cipher import AES, ChaCha20_Poly1305
 
+from cpuinfo import get_cpu_info
 from hivemind_bus_client.exceptions import EncryptionKeyError, DecryptionKeyError, InvalidCipher
+
+
+def cpu_supports_AES() -> bool:
+    return "aes" in get_cpu_info()["flags"]
 
 
 class JsonCiphers(str, enum.Enum):

@@ -1,7 +1,7 @@
 import json
 import ssl
 from threading import Event
-from typing import Union, Optional, Callable, Literal
+from typing import Union, Optional, Callable
 
 import pybase64
 from Cryptodome.PublicKey import RSA
@@ -102,13 +102,10 @@ class HiveMessageBusClient(OVOSBusClient):
                  binarize: bool = True,
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
-                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks(),
-                 json_cipher: Literal[JsonCiphers] = JsonCiphers.JSON_HEX_AES_GCM_128, # TODO - default to b64 at some point
-                 bin_cipher: Literal[BinaryCiphers] = BinaryCiphers.BINARY_AES_GCM_128, # TODO - ChaCha20 if certain hardware detected
-                 ):
+                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
         self.bin_callbacks = bin_callbacks
-        self.json_cipher = json_cipher
-        self.bin_cipher = bin_cipher
+        self.json_cipher = JsonCiphers.JSON_HEX_AES_GCM_128  # server defaults before it was made configurable
+        self.bin_cipher = BinaryCiphers.BINARY_AES_GCM_128  # server defaults before it was made configurable
 
         self.identity = identity or None
         self._password = password

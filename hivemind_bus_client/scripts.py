@@ -198,8 +198,8 @@ def test_identity():
     node.close()
 
 
-@hmclient_cmds.command(help="recreate the PGP key for inter-node communication", name="reset-pgp")
-def reset_pgp_key():
+@hmclient_cmds.command(help="recreate the private RSA key for inter-node communication", name="reset-pgp")
+def reset_keys():
     identity = NodeIdentity()
     identity.create_keys()
     print("PUBKEY:", identity.public_key)

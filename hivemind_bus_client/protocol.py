@@ -1,6 +1,6 @@
 import pybase64
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
@@ -9,7 +9,7 @@ from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import HiveMessageBusClient
-from hivemind_bus_client.encryption import JsonCiphers, BinaryCiphers
+from hivemind_bus_client.encryption import JsonCiphers, BinaryCiphers, cpu_supports_AES
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
@@ -119,6 +119,16 @@ class HiveMindSlaveProtocol:
         # this is how ovos-core bus refers to this slave's master
         return self.internal_protocol.node_id
 
+    @property
+    def optimal_ciphers(self) -> Tuple[JsonCiphers, BinaryCiphers]:
+        if not cpu_supports_AES():
+            j = JsonCiphers.JSON_B64_CHACHA20_POLY1305
+            b = BinaryCiphers.BINARY_CHACHA20_POLY1305
+        else:
+            j = JsonCiphers.JSON_B64_AES_GCM_128
+            b = BinaryCiphers.BINARY_AES_GCM_128
+        return j, b
+
     # TODO - handshake handlers
     # hivemind events
     def handle_illegal_msg(self, message: HiveMessage):
@@ -184,6 +194,9 @@ class HiveMindSlaveProtocol:
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
+            self.hm.json_cipher =  message.payload.get("json_cipher") or JsonCiphers.JSON_HEX_AES_GCM_128
+            self.hm.bin_cipher =  message.payload.get("binary_cipher") or BinaryCiphers.BINARY_AES_GCM_128
+            LOG.debug(f"Cipher to use: {self.hm.json_cipher} + {self.hm.bin_cipher}")
             self.receive_handshake(envelope)
 
         # master is requesting handshake start
