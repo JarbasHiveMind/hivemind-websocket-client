@@ -68,8 +68,11 @@ def encrypt_as_json(key: Union[str, bytes], data: Union[str, Dict[str, Any]],
 
     ciphertext = encrypt_bin(key, data, cipher=bcipher)
 
-    # TODO - adjust depending on cipher, sizes are different
-    nonce, ciphertext, tag = ciphertext[:16], ciphertext[16:-16], ciphertext[-16:]
+    # extract nonce/tag depending on cipher, sizes are different
+    if cipher in aes_ciphers:
+        nonce, ciphertext, tag = ciphertext[:16], ciphertext[16:-16], ciphertext[-16:]
+    else:
+        nonce, ciphertext, tag = ciphertext[:12], ciphertext[12:-16], ciphertext[-16:]
 
     encoder = pybase64.b64encode if cipher in b64_ciphers else hexlify
 
@@ -108,7 +111,6 @@ def decrypt_from_json(key: Union[str, bytes], data: Union[str, bytes], cipher: J
 
     ciphertext = decoder(data["ciphertext"])
     if "tag" not in data:  # web crypto compatibility
-        # TODO - adjust depending on cipher, sizes are different
         ciphertext, tag = ciphertext[:-16], ciphertext[-16:]
     else:
         tag = decoder(data["tag"])
@@ -169,8 +171,11 @@ def decrypt_bin(key: Union[str, bytes], ciphertext: bytes, cipher: BinaryCiphers
     if cipher not in BinaryCiphers:
         raise InvalidCipher(f"Invalid binary cipher: {str(cipher)}")
 
-    # TODO - adjust depending on cipher, sizes are different
-    nonce, ciphertext, tag = ciphertext[:16], ciphertext[16:-16], ciphertext[-16:]
+    # extract nonce/tag depending on cipher, sizes are different
+    if cipher == BinaryCiphers.BINARY_AES_GCM_128:
+        nonce, ciphertext, tag = ciphertext[:16], ciphertext[16:-16], ciphertext[-16:]
+    else:
+        nonce, ciphertext, tag = ciphertext[:12], ciphertext[12:-16], ciphertext[-16:]
 
     decryptor = decrypt_AES_GCM_128 if cipher == BinaryCiphers.BINARY_AES_GCM_128 else decrypt_ChaCha20_Poly1305
     try:
