@@ -2,6 +2,7 @@ import json
 import zlib
 from typing import Union, Dict
 
+from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, Message
 
 
@@ -140,9 +141,9 @@ def encrypt_as_json(key, data, b64=False) -> str:
         DeprecationWarning,
         stacklevel=2
     )
-    from hivemind_bus_client.encryption import encrypt_as_json as _ej, JsonCiphers
-    c = JsonCiphers.JSON_B64_AES_GCM_128 if b64 else JsonCiphers.JSON_HEX_AES_GCM_128
-    return _ej(key, data, c)
+    from hivemind_bus_client.encryption import encrypt_as_json as _ej
+    c = SupportedEncodings.JSON_B64 if b64 else SupportedEncodings.JSON_HEX
+    return _ej(key, data, encoding=c, cipher=SupportedCiphers.AES_GCM)
 
 
 def decrypt_from_json(key, data: Union[str, bytes]):
@@ -152,12 +153,12 @@ def decrypt_from_json(key, data: Union[str, bytes]):
         DeprecationWarning,
         stacklevel=2
     )
-    from hivemind_bus_client.encryption import decrypt_from_json as _dj, JsonCiphers
+    from hivemind_bus_client.encryption import decrypt_from_json as _dj
     try:
-        return _dj(key, data, JsonCiphers.JSON_HEX_AES_GCM_128)
+        return _dj(key, data, encoding=SupportedEncodings.JSON_HEX, cipher=SupportedCiphers.AES_GCM)
     except Exception as e:
         try:
-            return _dj(key, data, JsonCiphers.JSON_B64_AES_GCM_128)
+            return _dj(key, data, encoding=SupportedEncodings.JSON_B64, cipher=SupportedCiphers.AES_GCM)
         except:
             raise e
 
@@ -169,8 +170,8 @@ def encrypt_bin(key, data: Union[str, bytes]):
         DeprecationWarning,
         stacklevel=2
     )
-    from hivemind_bus_client.encryption import encrypt_bin as _eb, BinaryCiphers
-    return _eb(key, data, BinaryCiphers.BINARY_AES_GCM_128)
+    from hivemind_bus_client.encryption import encrypt_bin as _eb
+    return _eb(key, data, cipher=SupportedCiphers.AES_GCM)
 
 
 def decrypt_bin(key, ciphertext: bytes):
@@ -180,8 +181,8 @@ def decrypt_bin(key, ciphertext: bytes):
         DeprecationWarning,
         stacklevel=2
     )
-    from hivemind_bus_client.encryption import decrypt_bin as _db, BinaryCiphers
-    return _db(key, ciphertext, BinaryCiphers.BINARY_AES_GCM_128)
+    from hivemind_bus_client.encryption import decrypt_bin as _db
+    return _db(key, ciphertext, SupportedCiphers.AES_GCM)
 
 
 if __name__ == "__main__":
