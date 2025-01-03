@@ -7,7 +7,7 @@ import pybase64
 from Cryptodome.Cipher import AES, ChaCha20_Poly1305
 from cpuinfo import get_cpu_info
 
-from hivemind_bus_client.encodings import Z85B, B91, B100P, Z85P
+from hivemind_bus_client.encodings import Z85B, B91, Z85P
 from hivemind_bus_client.exceptions import EncryptionKeyError, DecryptionKeyError, InvalidEncoding, InvalidCipher, \
     InvalidKeySize
 
@@ -41,10 +41,9 @@ class SupportedEncodings(str, enum.Enum):
     Ciphers output binary data, and JSON needs to transmit that data as plaintext.
     The supported encodings include Base64 and Hex encoding.
     """
+    JSON_B91 = "JSON-B91"  # JSON text output with Base91 encoding
     JSON_Z85B = "JSON-Z85B"  # JSON text output with Z85B encoding
     JSON_Z85P = "JSON-Z85P"  # JSON text output with Z85B encoding
-    JSON_B100P = "JSON-B1OOP"  # JSON text output with Base100 encoding
-    JSON_B91 = "JSON-B91"  # JSON text output with Base91 encoding
     JSON_B64 = "JSON-B64"  # JSON text output with Base64 encoding
     JSON_URLSAFE_B64 = "JSON-URLSAFE-B64"  # JSON text output with url safe Base64 encoding
     JSON_B32 = "JSON-B32"  # JSON text output with Base32 encoding
@@ -67,8 +66,6 @@ def get_encoder(encoding: SupportedEncodings) -> Callable[[bytes], bytes]:
         return Z85P.encode
     if encoding == SupportedEncodings.JSON_B91:
         return B91.encode
-    if encoding == SupportedEncodings.JSON_B100P:
-        return B100P.encode
     raise InvalidEncoding(f"Invalid encoding: {encoding}")
 
 
@@ -88,8 +85,6 @@ def get_decoder(encoding: SupportedEncodings) -> Callable[[bytes], bytes]:
         return Z85P.decode
     if encoding == SupportedEncodings.JSON_B91:
         return B91.decode
-    if encoding == SupportedEncodings.JSON_B100P:
-        return B100P.decode
     raise InvalidEncoding(f"Invalid encoding: {encoding}")
 
 
