@@ -80,19 +80,18 @@ def generate_random_data(size: int) -> bytes:
 
 
 def benchmark_encoding(encoding: SupportedEncodings, data: bytes) -> dict:
-    """Benchmark encoding for a specific encoding."""
     encoder = get_encoder(encoding)
     decoder = get_decoder(encoding)
 
     # Measure encoding time
-    start_time = time.time()
+    start_time = time.perf_counter()
     encoded_data = encoder(data)
-    encoding_time = time.time() - start_time
+    encoding_time = time.perf_counter() - start_time
 
     # Measure decoding time
-    start_time = time.time()
+    start_time = time.perf_counter()
     decoded_data = decoder(encoded_data)
-    decoding_time = time.time() - start_time
+    decoding_time = time.perf_counter() - start_time
 
     # Calculate size increase
     original_size = len(data)
@@ -180,58 +179,8 @@ def save_detailed_results_to_markdown(results: dict, filename: str):
 @click.command()
 @click.option("--sizes", default="10,100,1000,5000,10000,50000", help="Data sizes to benchmark, comma-separated.")
 @click.option("--weights", default="0.5,0.5", help="Weights for performance and bandwidth, comma-separated.")
-@click.option("--output", default=None, help="Filename to save detailed benchmark results in markdown format.")
-def main(sizes: str, weights: str, output: str):
-    global performance_weight, bandwidth_weight
-
-    sizes = list(map(int, sizes.split(",")))
-    performance_weight, bandwidth_weight = map(float, weights.split(","))
-
-    encodings_to_test = [
-        SupportedEncodings.JSON_B64,
-        SupportedEncodings.JSON_URLSAFE_B64,
-        SupportedEncodings.JSON_B32,
-        SupportedEncodings.JSON_HEX,
-        SupportedEncodings.JSON_Z85B,
-        SupportedEncodings.JSON_Z85P,
-        SupportedEncodings.JSON_B91,
-    ]
-
-    results = {}
-    for encoding in encodings_to_test:
-        encoding_results = []
-        for size in sizes:
-            print(f"Benchmarking {encoding.value} with {size} bytes of data...")
-            data = generate_random_data(size)
-            encoding_results.append(benchmark_encoding(encoding, data))
-        scores = calculate_score(encoding_results)
-        results[encoding.value] = {"results": encoding_results, "scores": scores}
-
-    normalized_scores = normalize_scores(results)
-    table = []
-
-    for encoding, data in normalized_scores.items():
-        performance = data["performance"]
-        bandwidth = data["bandwidth"]
-        aggregate = calculate_aggregate_score(performance, bandwidth)
-        table.append((encoding, performance, bandwidth, aggregate))
-
-    table.sort(key=lambda x: x[3], reverse=True)
-
-    print("\nBenchmark Results:")
-    print(f"{'Encoding':<20} {'Performance':<12} {'Bandwidth':<10} {'Aggregate':<10}")
-    print("=" * 55)
-    for row in table:
-        print(f"{row[0]:<20} {row[1]:<12.2f} {row[2]:<10.2f} {row[3]:<10.2f}")
-
-    if output:
-        save_detailed_results_to_markdown(results, output)
-
-
-@click.command()
-@click.option("--sizes", default="10,100,1000,5000,10000,50000", help="Data sizes to benchmark, comma-separated.")
-@click.option("--weights", default="0.5,0.5", help="Weights for performance and bandwidth, comma-separated.")
-def main(sizes: str, weights: str):
+@click.option("--iterations", default=20, help="Number of iterations to average results.")
+def main(sizes: str, weights: str, iterations: int):
     global performance_weight, bandwidth_weight
 
     sizes = list(map(int, sizes.split(",")))
@@ -252,9 +201,27 @@ def main(sizes: str, weights: str):
     for encoding in encodings_to_test:
         encoding_results = []
         for size in sizes:
-            print(f"Benchmarking {encoding.value} with {size} bytes of data...")
-            data = generate_random_data(size)
-            encoding_results.append(benchmark_encoding(encoding, data))
+            print(f"Benchmarking {encoding.value} with {size} bytes of data over {iterations} iterations...")
+            aggregated_result = {
+                "encoding_time": [],
+                "decoding_time": [],
+                "size_increase": [],
+            }
+            for _ in range(iterations):
+                data = generate_random_data(size)
+                result = benchmark_encoding(encoding, data)
+                aggregated_result["encoding_time"].append(result["encoding_time"])
+                aggregated_result["decoding_time"].append(result["decoding_time"])
+                aggregated_result["size_increase"].append(result["size_increase"])
+
+            # Average results over iterations
+            encoding_results.append({
+                "encoding_time": mean(aggregated_result["encoding_time"]),
+                "decoding_time": mean(aggregated_result["decoding_time"]),
+                "size_increase": mean(aggregated_result["size_increase"]),
+                "encoded_size": result["encoded_size"],  # Same across iterations
+                "original_size": result["original_size"],  # Same across iterations
+            })
         scores = calculate_score(encoding_results)
         results[encoding.value] = {"results": encoding_results, "scores": scores}
 
@@ -283,7 +250,6 @@ def main(sizes: str, weights: str):
     for row in table:
         print(
             f"{row[0]:<20} {row[1]:<20.6f} {row[2]:<20.6f} {row[3]:<20.2f} {row[4]:<12.2f} {row[5]:<10.2f} {row[6]:<10.2f}")
-
 
 if __name__ == "__main__":
     main()
