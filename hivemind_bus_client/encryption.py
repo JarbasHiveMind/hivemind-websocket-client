@@ -78,7 +78,6 @@ class SupportedCiphers(str, enum.Enum):
       - CHACHA20-POLY1305 - https://datatracker.ietf.org/doc/html/rfc7539
     """
     AES_GCM = "AES-GCM"
-    AES_CCM = "AES-CCM"
     CHACHA20_POLY1305 = "CHACHA20-POLY1305"  # specified in RFC7539.
 
 
@@ -99,8 +98,8 @@ def optimal_ciphers() -> List[SupportedCiphers]:
         List[SupportedCiphers]: A list of optimal ciphers based on CPU support.
     """
     if not cpu_supports_AES():
-        return [SupportedCiphers.CHACHA20_POLY1305, SupportedCiphers.AES_CCM, SupportedCiphers.AES_GCM]
-    return [SupportedCiphers.AES_GCM, SupportedCiphers.AES_CCM, SupportedCiphers.CHACHA20_POLY1305]
+        return [SupportedCiphers.CHACHA20_POLY1305, SupportedCiphers.AES_GCM]
+    return [SupportedCiphers.AES_GCM, SupportedCiphers.CHACHA20_POLY1305]
 
 
 def _norm_cipher(cipher: Union[SupportedCiphers, str]) -> SupportedCiphers:
@@ -281,7 +280,6 @@ def encrypt_bin(key: Union[str, bytes], plaintext: Union[str, bytes], cipher: Un
         plaintext (Union[str, bytes]): The data to encrypt. Strings will be encoded as UTF-8.
         cipher (SupportedCiphers): The encryption cipher. Supported options:
             - AES_GCM: AES-GCM with 128-bit/256-bit key
-            - AES_CCM: AES-GCM with 128-bit/256-bit key
             - CHACHA20_POLY1305: ChaCha20-Poly1305 with 256-bit key
 
     Returns:
@@ -299,8 +297,6 @@ def encrypt_bin(key: Union[str, bytes], plaintext: Union[str, bytes], cipher: Un
         if cipher in BLOCK_CIPHERS:
             if cipher == SupportedCiphers.AES_GCM:
                 mode = AES.MODE_GCM
-            elif cipher == SupportedCiphers.AES_CCM:
-                mode = AES.MODE_CCM
             else:
                 raise ValueError("invalid block cipher mode")
             ciphertext, tag, nonce = encryptor(key, plaintext, mode=mode)
@@ -333,7 +329,7 @@ def decrypt_bin(key: Union[str, bytes], ciphertext: Union[str, bytes], cipher: U
     cipher = _norm_cipher(cipher)
 
     # extract nonce/tag depending on cipher, sizes are different
-    if cipher in AES_CIPHERS:
+    if cipher == SupportedCiphers.AES_GCM:
         nonce, ciphertext, tag = (ciphertext[:AES_NONCE_SIZE],
                                   ciphertext[AES_NONCE_SIZE:-AES_TAG_SIZE],
                                   ciphertext[-AES_TAG_SIZE:])
@@ -347,8 +343,6 @@ def decrypt_bin(key: Union[str, bytes], ciphertext: Union[str, bytes], cipher: U
         if cipher in BLOCK_CIPHERS:
             if cipher == SupportedCiphers.AES_GCM:
                 mode = AES.MODE_GCM
-            elif cipher == SupportedCiphers.AES_CCM:
-                mode = AES.MODE_CCM
             else:
                 raise ValueError("invalid block cipher mode")
             return decryptor(key, ciphertext, tag, nonce, mode=mode)
@@ -363,7 +357,7 @@ def decrypt_bin(key: Union[str, bytes], ciphertext: Union[str, bytes], cipher: U
 # Cipher Implementations
 def encrypt_AES(key: Union[str, bytes], text: Union[str, bytes],
                 nonce: Optional[bytes] = None,
-                mode: Literal[AES.MODE_GCM, AES.MODE_CCM] = AES.MODE_GCM) -> tuple[bytes, bytes, bytes]:
+                mode: Literal[AES.MODE_GCM] = AES.MODE_GCM) -> tuple[bytes, bytes, bytes]:
     """
     Encrypts plaintext using AES-GCM-128.
 
@@ -392,7 +386,7 @@ def decrypt_AES_128(key: Union[str, bytes],
                     ciphertext: bytes,
                     tag: bytes,
                     nonce: bytes,
-                    mode: Literal[AES.MODE_GCM, AES.MODE_CCM] = AES.MODE_GCM) -> bytes:
+                    mode: Literal[AES.MODE_GCM] = AES.MODE_GCM) -> bytes:
     """
     Decrypts ciphertext encrypted using AES-GCM-128.
 
