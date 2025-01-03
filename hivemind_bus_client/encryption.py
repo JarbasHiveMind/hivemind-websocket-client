@@ -2,12 +2,12 @@ import enum
 import json
 from binascii import hexlify, unhexlify
 from typing import Union, Optional, Dict, Any, Literal, List, Callable
-
+import base64
 import pybase64
-from hivemind_bus_client.z85b import Z85B
 from Cryptodome.Cipher import AES, ChaCha20_Poly1305
 from cpuinfo import get_cpu_info
 
+from hivemind_bus_client.encodings import Z85B, B91, Z85P
 from hivemind_bus_client.exceptions import EncryptionKeyError, DecryptionKeyError, InvalidEncoding, InvalidCipher, \
     InvalidKeySize
 
@@ -41,19 +41,31 @@ class SupportedEncodings(str, enum.Enum):
     Ciphers output binary data, and JSON needs to transmit that data as plaintext.
     The supported encodings include Base64 and Hex encoding.
     """
+    JSON_B91 = "JSON-B91"  # JSON text output with Base91 encoding
     JSON_Z85B = "JSON-Z85B"  # JSON text output with Z85B encoding
+    JSON_Z85P = "JSON-Z85P"  # JSON text output with Z85B encoding
     JSON_B64 = "JSON-B64"  # JSON text output with Base64 encoding
-    JSON_HEX = "JSON-HEX"  # JSON text output with Hex encoding
+    JSON_URLSAFE_B64 = "JSON-URLSAFE-B64"  # JSON text output with url safe Base64 encoding
+    JSON_B32 = "JSON-B32"  # JSON text output with Base32 encoding
+    JSON_HEX = "JSON-HEX"  # JSON text output with Base16 (Hex) encoding
 
 
 def get_encoder(encoding: SupportedEncodings) -> Callable[[bytes], bytes]:
     encoding = _norm_encoding(encoding)
     if encoding == SupportedEncodings.JSON_B64:
         return pybase64.b64encode
+    if encoding == SupportedEncodings.JSON_URLSAFE_B64:
+        return pybase64.urlsafe_b64encode
+    if encoding == SupportedEncodings.JSON_B32:
+        return base64.b32encode
     if encoding == SupportedEncodings.JSON_HEX:
         return hexlify
     if encoding == SupportedEncodings.JSON_Z85B:
         return Z85B.encode
+    if encoding == SupportedEncodings.JSON_Z85P:
+        return Z85P.encode
+    if encoding == SupportedEncodings.JSON_B91:
+        return B91.encode
     raise InvalidEncoding(f"Invalid encoding: {encoding}")
 
 
@@ -61,10 +73,18 @@ def get_decoder(encoding: SupportedEncodings) -> Callable[[bytes], bytes]:
     encoding = _norm_encoding(encoding)
     if encoding == SupportedEncodings.JSON_B64:
         return pybase64.b64decode
+    if encoding == SupportedEncodings.JSON_URLSAFE_B64:
+        return pybase64.urlsafe_b64decode
+    if encoding == SupportedEncodings.JSON_B32:
+        return base64.b32decode
     if encoding == SupportedEncodings.JSON_HEX:
         return unhexlify
     if encoding == SupportedEncodings.JSON_Z85B:
         return Z85B.decode
+    if encoding == SupportedEncodings.JSON_Z85P:
+        return Z85P.decode
+    if encoding == SupportedEncodings.JSON_B91:
+        return B91.decode
     raise InvalidEncoding(f"Invalid encoding: {encoding}")
 
 
