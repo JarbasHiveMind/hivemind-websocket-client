@@ -185,7 +185,12 @@ def main(sizes: str, weights: str, iterations: int):
 
     sizes = list(map(int, sizes.split(",")))
     performance_weight, bandwidth_weight = map(float, weights.split(","))
-
+    
+    # Validate weights
+    if not (0 <= performance_weight <= 1 and 0 <= bandwidth_weight <= 1):
+        raise ValueError("Weights must be between 0 and 1")
+    if abs(performance_weight + bandwidth_weight - 1.0) > 1e-10:
+        raise ValueError("Weights must sum to 1")
     encodings_to_test = [
         SupportedEncodings.JSON_B64_STD,
         SupportedEncodings.JSON_B64,
