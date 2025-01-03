@@ -1,12 +1,12 @@
 # Changelog
 
-## [0.2.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.2.0a1) (2025-01-03)
+## [0.2.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.2.1a1) (2025-01-03)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.6...0.2.0a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.2.0...0.2.1a1)
 
 **Merged pull requests:**
 
-- feat:add chacha20 cipher + z85 encoding [\#50](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/50) ([JarbasAl](https://github.com/JarbasAl))
+- fix:binarization\_protocol [\#53](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/53) ([JarbasAl](https://github.com/JarbasAl))
 
 
 
