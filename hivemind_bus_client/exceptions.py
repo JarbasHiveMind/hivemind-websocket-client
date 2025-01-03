@@ -45,3 +45,8 @@ class SecureConnectionFailed(HiveMindConnectionError):
 
 class HiveMindEntryPointNotFound(HiveMindConnectionError):
     """ can not connect to provided address """
+
+
+class Z85DecodeError(Exception):
+    """Exception raised for errors in decoding Z85b."""
+    pass

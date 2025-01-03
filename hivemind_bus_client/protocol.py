@@ -145,6 +145,7 @@ class HiveMindSlaveProtocol:
 
         payload = {"binarize": self.binarize,
                    "encodings": [SupportedEncodings.JSON_B64,
+                                 SupportedEncodings.JSON_Z85B,
                                  SupportedEncodings.JSON_HEX],
                    "ciphers": optimal_ciphers()}
         if self.pswd_handshake is not None:

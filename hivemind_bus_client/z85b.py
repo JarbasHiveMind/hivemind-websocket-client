@@ -12,16 +12,11 @@ This file is a derivative work of z85.py from pyzmq.
 Copyright (c) 2013 Brian Granger, Min Ragan-Kelley
 Distributed under the terms of the New BSD License.
 """
-
-from typing import Union
 import re
 import struct
+from typing import Union
 
-
-
-class Z85DecodeError(Exception):
-    """Exception raised for errors in decoding Z85b."""
-    pass
+from hivemind_bus_client.exceptions import Z85DecodeError
 
 
 class Z85B:
@@ -37,7 +32,6 @@ class Z85B:
     # Padding lengths for encoding and decoding
     _E_PADDING = [0, 3, 2, 1]
     _D_PADDING = [0, 4, 3, 2, 1]
-
 
     @classmethod
     def encode(cls, rawbytes: Union[str, bytes]) -> bytes:
