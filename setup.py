@@ -69,7 +69,8 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'hivemind-client=hivemind_bus_client.scripts:hmclient_cmds'
+            'hivemind-client=hivemind_bus_client.scripts:hmclient_cmds',
+            'hivemind-encoding-bench=hivemind_bus_client.encodings.benchmark:main'
         ]
     }
 )
