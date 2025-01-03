@@ -5,3 +5,4 @@ bitstring>=4.1.1
 cryptography>=41.0.1
 pycryptodomex>=3.18.0
 pybase64
+py-cpuinfo

@@ -11,6 +11,18 @@ class UnauthorizedKeyError(HiveMindException):
     """ Invalid Key provided """
 
 
+class InvalidCipher(HiveMindException):
+    """unknown encryption scheme requested"""
+
+
+class InvalidEncoding(HiveMindException):
+    """unknown encoding scheme requested"""
+
+
+class InvalidKeySize(HiveMindException):
+    """ Encryption Key size does not obey specification"""
+
+
 class WrongEncryptionKey(HiveMindException):
     """ Wrong Encryption Key"""
 
@@ -33,3 +45,8 @@ class SecureConnectionFailed(HiveMindConnectionError):
 
 class HiveMindEntryPointNotFound(HiveMindConnectionError):
     """ can not connect to provided address """
+
+
+class Z85DecodeError(Exception):
+    """Exception raised for errors in decoding Z85b."""
+    pass

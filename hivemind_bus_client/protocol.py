@@ -1,6 +1,6 @@
 import pybase64
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
@@ -9,6 +9,7 @@ from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import HiveMessageBusClient
+from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
@@ -118,7 +119,6 @@ class HiveMindSlaveProtocol:
         # this is how ovos-core bus refers to this slave's master
         return self.internal_protocol.node_id
 
-    # TODO - handshake handlers
     # hivemind events
     def handle_illegal_msg(self, message: HiveMessage):
         # this should not happen,
@@ -143,14 +143,17 @@ class HiveMindSlaveProtocol:
         else:
             LOG.info("hivemind does not support binarization protocol")
 
+        payload = {"binarize": self.binarize,
+                   "encodings": [SupportedEncodings.JSON_B64,
+                                 SupportedEncodings.JSON_Z85B,
+                                 SupportedEncodings.JSON_HEX],
+                   "ciphers": optimal_ciphers()}
         if self.pswd_handshake is not None:
-            envelope = self.pswd_handshake.generate_handshake()
-            msg = HiveMessage(HiveMessageType.HANDSHAKE, {"envelope": envelope,
-                                                          "binarize": self.binarize})
+            payload["envelope"] = self.pswd_handshake.generate_handshake()
         else:
-            msg = HiveMessage(HiveMessageType.HANDSHAKE, {"pubkey": self.handshake.pubkey,
-                                                          "binarize": self.binarize})
-        self.hm.emit(msg)
+            payload["pubkey"] = self.handshake.pubkey
+
+        self.hm.emit(HiveMessage(HiveMessageType.HANDSHAKE, payload))
 
     def receive_handshake(self, envelope):
         if self.pswd_handshake is not None:
@@ -182,7 +185,12 @@ class HiveMindSlaveProtocol:
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
+            self.hm.json_encoding = message.payload.get("encoding") or SupportedEncodings.JSON_HEX
+            self.hm.cipher = message.payload.get("cipher") or SupportedCiphers.AES_GCM
             self.receive_handshake(envelope)
+            LOG.debug(f"Encoding: {self.hm.json_encoding}")
+            LOG.debug(f"Cipher: {self.hm.cipher}")
+            LOG.debug(f"Key size: {len(self.pswd_handshake.secret) * 8}bit")
 
         # master is requesting handshake start
         else:
@@ -191,13 +199,17 @@ class HiveMindSlaveProtocol:
             #    self.hm.handshake_event.set()  # don't wait
             #    return
 
+            encodings = message.payload.get("encodings") or [SupportedEncodings.JSON_HEX]
+            ciphers = message.payload.get("ciphers") or [SupportedCiphers.AES_GCM]
+            LOG.debug(f"Server supported encodings: {encodings}")
+            LOG.debug(f"Server supported ciphers: {ciphers}")
             if message.payload.get("crypto_key") and self.hm.crypto_key:
                 pass
                 # we can use the pre-shared key instead of handshake
                 # TODO - flag to give preference to pre-shared key over handshake
 
             self.binarize = message.payload.get("binarize", False)
-            # TODO - flag to give preference to / require password or not
+            # TODO - flag to give preference to / require password or use RSA handshake
             # currently if password is set then it is always used
             if message.payload.get("password") and self.identity.password:
                 self.pswd_handshake = PasswordHandShake(self.identity.password)

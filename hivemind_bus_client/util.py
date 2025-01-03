@@ -1,12 +1,8 @@
 import json
 import zlib
-from binascii import hexlify, unhexlify
 from typing import Union, Dict
 
-import pybase64
-from ovos_utils.security import encrypt, decrypt, AES
-
-from hivemind_bus_client.exceptions import EncryptionKeyError, DecryptionKeyError
+from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, Message
 
 
@@ -102,87 +98,6 @@ def get_mycroft_msg(pload: Union[HiveMessage, str, Dict]) -> Message:
     return pload
 
 
-def encrypt_as_json(key, data, b64=False) -> str:
-    # TODO default b64 to True in a future release
-    #  we dont want clients to update before servers, otherwise servers won't be able to decode
-    #  after a reasonable time all servers should support decoding both schemes and the default can change
-    if isinstance(data, dict):
-        data = json.dumps(data)
-    if len(key) > 16:
-        key = key[0:16]
-    ciphertext = encrypt_bin(key, data)
-    nonce, ciphertext, tag = ciphertext[:16], ciphertext[16:-16], ciphertext[-16:]
-    if b64:
-        return json.dumps({"ciphertext": pybase64.b64encode(ciphertext).decode('utf-8'),
-                           "tag": pybase64.b64encode(tag).decode('utf-8'),
-                           "nonce": pybase64.b64encode(nonce).decode('utf-8')})
-    return json.dumps({"ciphertext": hexlify(ciphertext).decode('utf-8'),
-                       "tag": hexlify(tag).decode('utf-8'),
-                       "nonce": hexlify(nonce).decode('utf-8')})
-
-
-def decrypt_from_json(key, data: Union[str, bytes]):
-    if isinstance(data, str):
-        data = json.loads(data)
-    if len(key) > 16:
-        key = key[0:16]
-
-    # payloads can be either hex encoded (old style)
-    # or b64 encoded (new style)
-    def decode(b64=False):
-        if b64:
-            decoder = pybase64.b64decode
-        else:
-            decoder = unhexlify
-
-        ciphertext = decoder(data["ciphertext"])
-        if data.get("tag") is None:  # web crypto
-            ciphertext, tag = ciphertext[:-16], ciphertext[-16:]
-        else:
-            tag = decoder(data["tag"])
-        nonce = decoder(data["nonce"])
-        return ciphertext, tag, nonce
-
-    is_b64 = any(a.isupper() for a in str(data))  # if any letter is uppercase, it must be b64
-    ciphertext, tag, nonce = decode(is_b64)
-    try:
-        return decrypt(key, ciphertext, tag, nonce)
-    except ValueError as e:
-        if not is_b64:
-            try:  # maybe it was b64 after all? unlikely but....
-                ciphertext, tag, nonce = decode(b64=True)
-                return decrypt(key, ciphertext, tag, nonce)
-            except ValueError:
-                pass
-        raise DecryptionKeyError from e
-
-
-def encrypt_bin(key, data: Union[str, bytes]):
-    if len(key) > 16:
-        key = key[0:16]
-    try:
-        ciphertext, tag, nonce = encrypt(key, data)
-    except:
-        raise EncryptionKeyError
-
-    return nonce + ciphertext + tag
-
-
-def decrypt_bin(key, ciphertext: bytes):
-    if len(key) > 16:
-        key = key[0:16]
-
-    nonce, ciphertext, tag = ciphertext[:16], ciphertext[16:-16], ciphertext[-16:]
-
-    try:
-        if not isinstance(key, bytes):
-            key = bytes(key, encoding="utf-8")
-        cipher = AES.new(key, AES.MODE_GCM, nonce)
-        return cipher.decrypt_and_verify(ciphertext, tag)
-    except ValueError:
-        raise DecryptionKeyError
-
-
 def compress_payload(text: Union[str, bytes]) -> bytes:
     # Compressing text
     if isinstance(text, str):
@@ -192,14 +107,7 @@ def compress_payload(text: Union[str, bytes]) -> bytes:
     return zlib.compress(decompressed)
 
 
-def decompress_payload(compressed: Union[str, bytes]) -> bytes:
-    # Decompressing text
-    if isinstance(compressed, str): # we really should be getting bytes here and not a str
-        if any(a.isupper() for a in compressed):
-            decoder = pybase64.b64decode
-        else:  # assume hex
-            decoder = unhexlify
-        compressed = decoder(compressed)
+def decompress_payload(compressed: bytes) -> bytes:
     return zlib.decompress(compressed)
 
 
@@ -219,6 +127,62 @@ def bytes2str(payload: bytes, compressed=False) -> str:
         return decompress_payload(payload).decode("utf-8")
     else:
         return payload.decode("utf-8")
+
+
+###############
+# deprecated
+import warnings
+
+
+def encrypt_as_json(key, data, b64=False) -> str:
+    warnings.warn(
+        "encrypt_as_json is deprecated and will be removed in future versions. "
+        "Use 'from hivemind_bus_client.encryption import encrypt_as_json' instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    from hivemind_bus_client.encryption import encrypt_as_json as _ej
+    c = SupportedEncodings.JSON_B64 if b64 else SupportedEncodings.JSON_HEX
+    return _ej(key, data, encoding=c, cipher=SupportedCiphers.AES_GCM)
+
+
+def decrypt_from_json(key, data: Union[str, bytes]):
+    warnings.warn(
+        "decrypt_from_json is deprecated and will be removed in future versions. "
+        "Use 'from hivemind_bus_client.encryption import decrypt_from_json' instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    from hivemind_bus_client.encryption import decrypt_from_json as _dj
+    try:
+        return _dj(key, data, encoding=SupportedEncodings.JSON_HEX, cipher=SupportedCiphers.AES_GCM)
+    except Exception as e:
+        try:
+            return _dj(key, data, encoding=SupportedEncodings.JSON_B64, cipher=SupportedCiphers.AES_GCM)
+        except:
+            raise e
+
+
+def encrypt_bin(key, data: Union[str, bytes]):
+    warnings.warn(
+        "encrypt_bin is deprecated and will be removed in future versions. "
+        "Use 'from hivemind_bus_client.encryption import encrypt_bin' instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    from hivemind_bus_client.encryption import encrypt_bin as _eb
+    return _eb(key, data, cipher=SupportedCiphers.AES_GCM)
+
+
+def decrypt_bin(key, ciphertext: bytes):
+    warnings.warn(
+        "decrypt_bin is deprecated and will be removed in future versions. "
+        "Use 'from hivemind_bus_client.encryption import decrypt_bin' instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    from hivemind_bus_client.encryption import decrypt_bin as _db
+    return _db(key, ciphertext, SupportedCiphers.AES_GCM)
 
 
 if __name__ == "__main__":
