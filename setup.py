@@ -44,7 +44,7 @@ def required(requirements_file):
 setup(
     name='hivemind_bus_client',
     version=get_version(),
-    packages=['hivemind_bus_client'],
+    packages=['hivemind_bus_client', 'hivemind_bus_client.encodings'],
     package_data={
       '*': ['*.txt', '*.md']
     },
