@@ -163,7 +163,7 @@ class HiveMessage:
 
     @property
     def as_json(self) -> str:
-        return json.dumps(self.as_dict)
+        return json.dumps(self.as_dict, ensure_ascii=False)
 
     def serialize(self) -> str:
         return self.as_json
