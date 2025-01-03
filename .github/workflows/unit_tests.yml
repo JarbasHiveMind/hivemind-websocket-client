@@ -5,35 +5,30 @@ on:
       - dev
     paths-ignore:
       - 'hivemind_bus_client/version.py'
-      - 'examples/**'
       - '.github/**'
       - '.gitignore'
       - 'LICENSE'
       - 'CHANGELOG.md'
       - 'MANIFEST.in'
-      - 'readme.md'
-      - 'scripts/**'
+      - 'README.md'
   push:
     branches:
       - master
     paths-ignore:
       - 'hivemind_bus_client/version.py'
-      - 'requirements/**'
-      - 'examples/**'
       - '.github/**'
       - '.gitignore'
       - 'LICENSE'
       - 'CHANGELOG.md'
       - 'MANIFEST.in'
-      - 'readme.md'
-      - 'scripts/**'
+      - 'README.md'
   workflow_dispatch:
 
 jobs:
   unit_tests:
     strategy:
       matrix:
-        python-version: [3.9, "3.10", "3.11" ]
+        python-version: ["3.10", "3.11" ]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -50,9 +45,12 @@ jobs:
       - name: Install repo
         run: |
           pip install -e .
+      - name: Install test dependencies
+        run: |
+          pip install -r test/requirements.txt
       - name: Run unittests
         run: |
-          pytest --cov=hivemind_bus_client --cov-report xml test/unittests
+          pytest --cov=hivemind_bus_client --cov-report xml test
       - name: Upload coverage
         if: "${{ matrix.python-version == '3.9' }}"
         env:
