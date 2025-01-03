@@ -1,0 +1,60 @@
+name: Run UnitTests
+on:
+  pull_request:
+    branches:
+      - dev
+    paths-ignore:
+      - 'hivemind_bus_client/version.py'
+      - 'examples/**'
+      - '.github/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'CHANGELOG.md'
+      - 'MANIFEST.in'
+      - 'readme.md'
+      - 'scripts/**'
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'hivemind_bus_client/version.py'
+      - 'requirements/**'
+      - 'examples/**'
+      - '.github/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'CHANGELOG.md'
+      - 'MANIFEST.in'
+      - 'readme.md'
+      - 'scripts/**'
+  workflow_dispatch:
+
+jobs:
+  unit_tests:
+    strategy:
+      matrix:
+        python-version: [3.9, "3.10", "3.11" ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install python3-dev swig
+          python -m pip install build wheel
+      - name: Install repo
+        run: |
+          pip install -e .
+      - name: Run unittests
+        run: |
+          pytest --cov=hivemind_bus_client --cov-report xml test/unittests
+      - name: Upload coverage
+        if: "${{ matrix.python-version == '3.9' }}"
+        env:
+          CODECOV_TOKEN: ${{secrets.CODECOV_TOKEN}}
+        uses: codecov/codecov-action@v2
