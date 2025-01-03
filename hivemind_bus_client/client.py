@@ -294,8 +294,17 @@ class HiveMessageBusClient(OVOSBusClient):
         if (isinstance(message, HiveMessage) and message.msg_type == HiveMessageType.BINARY):
             self._handle_binary(message)
             return
-        self.emitter.emit('message', message)  # raw message
-        self._handle_hive_protocol(HiveMessage(**message))
+
+        if isinstance(message, HiveMessage):
+            self.emitter.emit('message', message.serialize())  # raw message
+            self._handle_hive_protocol(message)
+        elif isinstance(message, str):
+            self.emitter.emit('message', message)  # raw message
+            self._handle_hive_protocol(HiveMessage(**json.loads(message)))
+        else:
+            assert isinstance(message, dict)
+            self.emitter.emit('message', json.dumps(message, ensure_ascii=False))  # raw message
+            self._handle_hive_protocol(HiveMessage(**message))
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY
