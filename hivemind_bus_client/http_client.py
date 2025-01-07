@@ -11,13 +11,17 @@ from ovos_bus_client.session import Session
 from ovos_utils.fakebus import FakeBus
 from ovos_utils.log import LOG
 
+from Cryptodome.PublicKey import RSA
 from hivemind_bus_client.client import BinaryDataCallbacks
-from hivemind_bus_client.encryption import (decrypt_from_json, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers)
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
-from hivemind_bus_client.serialization import decode_bitstring
+from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
+from hivemind_bus_client.util import serialize_message
+from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
+                                            SupportedEncodings, SupportedCiphers)
+from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
+
 
 
 class HiveMindHTTPClient(threading.Thread):
@@ -224,9 +228,7 @@ class HiveMindHTTPClient(threading.Thread):
 
         # Retrieve messages until stop
         while not self.stopped.is_set():
-            for hm in self.get_messages():
-                self.on_message(hm)
-            for hm in self.get_binary_messages():
+            for hm in self.get_messages() + self.get_binary_messages():
                 self.on_message(hm)
 
             self.stopped.wait(1)
@@ -239,20 +241,74 @@ class HiveMindHTTPClient(threading.Thread):
 
     #################
     # user facing api
-    def on(self, msg_type, handler):
-        if msg_type not in self._handlers:
-            self._handlers[msg_type] = []
-        self._handlers[msg_type].append(handler)
+    def on(self, event_name: str, func: Callable):
+        if event_name not in self._handlers:
+            self._handlers[event_name] = []
+        self._handlers[event_name].append(func)
 
-    def on_mycroft(self, mycroft_msg_type, func):
-        LOG.debug(f"registering mycroft event: {mycroft_msg_type}")
-        self.internal_bus.on(mycroft_msg_type, func)
+    def remove(self, event_name: str, func: Callable):
+        if event_name in self._handlers:
+            self._handlers[event_name] = [h for h in self._handlers[event_name]
+                                          if h is not func]
 
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
+        if isinstance(message, MycroftMessage):
+            message = HiveMessage(msg_type=HiveMessageType.BUS,
+                                  payload=message)
+        if message.msg_type == HiveMessageType.BUS:
+            ctxt = dict(message.payload.context)
+            if "source" not in ctxt:
+                ctxt["source"] = self.useragent
+            if "platform" not in message.payload.context:
+                ctxt["platform"] = self.useragent
+            if "destination" not in message.payload.context:
+                ctxt["destination"] = "HiveMind"
+            if "session" not in ctxt:
+                ctxt["session"] = {}
+            ctxt["session"]["session_id"] = self.session_id
+            ctxt["session"]["site_id"] = self.site_id
+            message.payload.context = ctxt
+
+        LOG.debug(f"sending to HiveMind: {message.msg_type}")
+        binarize = False
         if message.msg_type == HiveMessageType.BINARY:
-            raise NotImplementedError("binary sending not yet implemented")
-        self.send_message(message)
+            binarize = True
+        elif message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]:
+            binarize = self.protocol.binarize and self.binarize
+
+        if binarize:
+            bitstr = get_bitstring(hive_type=message.msg_type,
+                                   payload=message.payload,
+                                   compressed=self.compress,
+                                   binary_type=binary_type,
+                                   hivemeta=message.metadata)
+            if self.crypto_key:
+                payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.cipher)
+            else:
+                payload = bitstr.bytes
+        else:
+            payload = serialize_message(message)
+            if self.crypto_key:
+                payload = encrypt_as_json(self.crypto_key, payload,
+                                             cipher=self.cipher, encoding=self.json_encoding)
+
+        url = f"{self.base_url}/send_message"
+        return requests.post(url, data={"message": payload}, params={"authorization": self.auth})
+
+
+    # targeted messages for nodes, asymmetric encryption
+    def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
+                      pubkey: Union[str, bytes, RSA.RsaKey]):
+
+        encrypted_message = encrypt_RSA(pubkey, message.serialize())
+
+        # sign message
+        private_key = load_RSA_key(self.identity.private_key)
+        signature = sign_RSA(private_key, encrypted_message)
+
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
+                                                                 "signature": pybase64.b64encode(signature)}))
 
     ###############
     # HiveMind HTTP Api
@@ -300,22 +356,33 @@ class HiveMindHTTPClient(threading.Thread):
             raise RuntimeError(response["error"])
         return [pybase64.b64decode(m) for m in response["b64_messages"]]
 
-    def send_message(self, message: HiveMessage) -> dict:
-        """Send a message to the HiveMind server."""
-        url = f"{self.base_url}/send_message"
-        data = {"message": message.serialize()}
-        response = requests.post(url, data=data, params={"authorization": self.auth})
-        return response.json()
 
 
 # Example usage:
 if __name__ == "__main__":
     LOG.set_level("DEBUG")
+
+    class BinaryDataHandler(BinaryDataCallbacks):
+        def handle_receive_tts(self, bin_data: bytes,
+                               utterance: str,
+                               lang: str,
+                               file_name: str):
+            # we can play it or save to file or whatever
+            print(f"got {len(bin_data)} bytes of TTS audio")
+            print(f"utterance: {utterance}", f"lang: {lang}", f"file_name: {file_name}")
+            # got 33836 bytes of TTS audio
+            # utterance: hello world lang: en-US file_name: 5eb63bbbe01eeed093cb22bb8f5acdc3.wav
+
     # not passing key etc so it uses identity file
-    client = HiveMindHTTPClient(host="http://localhost", port=5678)
+    client = HiveMindHTTPClient(host="http://localhost", port=5679,
+                                bin_callbacks=BinaryDataHandler())
 
     time.sleep(5)
     client.emit(HiveMessage(HiveMessageType.BUS,
+                            MycroftMessage("speak:synth",
+                                           {"utterance": "hello world"})))
+    time.sleep(6)
+    client.emit(HiveMessage(HiveMessageType.BUS,
                             MycroftMessage("recognizer_loop:utterance",
                                            {"utterances": ["who is Isaac Newton"]})))
-    time.sleep(10)
+    time.sleep(20)
