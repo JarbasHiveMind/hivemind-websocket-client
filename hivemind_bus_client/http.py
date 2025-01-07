@@ -250,7 +250,7 @@ class HiveMindHTTPClient(threading.Thread):
 
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
-        if HiveMessage.msg_type == HiveMessageType.BINARY:
+        if message.msg_type == HiveMessageType.BINARY:
             raise NotImplementedError("binary sending not yet implemented")
         self.send_message(message)
 
