@@ -1,28 +1,36 @@
 # Changelog
 
-## [0.4.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.0a1) (2025-01-08)
+## [0.4.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.2a1) (2025-01-08)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.3.0a2...0.4.0a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.1a2...0.4.2a1)
 
-**Merged pull requests:**
+**Closed issues:**
 
-- feat:http client [\#60](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/60) ([JarbasAl](https://github.com/JarbasAl))
-
-## [0.3.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.3.0a2) (2025-01-03)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.3.0a1...0.3.0a2)
+- Execution example in the readme raises an error [\#22](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/22)
 
 **Merged pull requests:**
 
-- chore:benchmark [\#57](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/57) ([JarbasAl](https://github.com/JarbasAl))
+- fix: no auto connect [\#66](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/66) ([JarbasAl](https://github.com/JarbasAl))
 
-## [0.3.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.3.0a1) (2025-01-03)
+## [0.4.1a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a2) (2025-01-08)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.2.1...0.3.0a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.1a1...0.4.1a2)
 
 **Merged pull requests:**
 
-- feat:more encodings [\#55](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/55) ([JarbasAl](https://github.com/JarbasAl))
+- bring http client closes to websocket client [\#64](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/64) ([JarbasAl](https://github.com/JarbasAl))
+
+## [0.4.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a1) (2025-01-08)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.0...0.4.1a1)
+
+**Closed issues:**
+
+- Faster encodings [\#59](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/59)
+
+**Merged pull requests:**
+
+- refactor: move to z85base91 package [\#62](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/62) ([JarbasAl](https://github.com/JarbasAl))
 
 
 

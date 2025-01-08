@@ -10,7 +10,7 @@ from typing import Callable
 import click
 import pybase64
 
-from hivemind_bus_client.encodings import Z85B, B91, Z85P
+from z85base91 import Z85B, B91, Z85P
 from hivemind_bus_client.exceptions import InvalidEncoding
 
 performance_weight = 0.5

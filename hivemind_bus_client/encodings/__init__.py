@@ -1,3 +1,10 @@
-from hivemind_bus_client.encodings.z85b import Z85B
-from hivemind_bus_client.encodings.z85p import Z85P
-from hivemind_bus_client.encodings.b91 import B91
+from z85base91 import Z85B, Z85P, B91
+import warnings
+
+# Deprecation warning
+warnings.warn(
+    "Importing from hivemind_bus_client.encodings is deprecated and will be removed in a future release. "
+    "Please update your code to use the new package 'z85base91'",
+    DeprecationWarning,
+    stacklevel=2,
+)

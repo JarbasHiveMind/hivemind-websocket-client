@@ -1,15 +1,16 @@
+import base64
 import enum
 import json
 from binascii import hexlify, unhexlify
 from typing import Union, Optional, Dict, Any, Literal, List, Callable
-import base64
+
 import pybase64
 from Cryptodome.Cipher import AES, ChaCha20_Poly1305
 from cpuinfo import get_cpu_info
 
-from hivemind_bus_client.encodings import Z85B, B91, Z85P
 from hivemind_bus_client.exceptions import EncryptionKeyError, DecryptionKeyError, InvalidEncoding, InvalidCipher, \
     InvalidKeySize
+from z85base91 import Z85B, B91, Z85P
 
 # Cipher-specific constants
 AES_KEY_SIZES = [16, 24, 32]  # poorman_handshake generates 32 bit secrets
