@@ -1,6 +1,6 @@
-# Hivemind Websocket Client
+# Hivemind Bus Client
 
-![logo](./logo.png)
+Python client library for [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core)
 
 ## Install
 
@@ -10,36 +10,86 @@ pip install hivemind_bus_client
 
 ## Usage
 
+via [hivemind-http-protocol](https://github.com/JarbasHiveMind/hivemind-http-protocol)
+
 ```python
-from time import sleep
-from ovos_bus_client import Message
-from hivemind_bus_client import HiveMessageBusClient
-from hivemind_bus_client.decorators import on_escalate, \
-    on_shared_bus, on_ping, on_broadcast, on_propagate, on_mycroft_message, \
-    on_registry_opcode, on_third_party, on_cascade, on_handshake, on_hello, \
-    on_rendezvous, on_hive_message, on_third_party, on_payload
+from hivemind_bus_client.http_client import HiveMindHTTPClient
 
-key = "super_secret_access_key"
-crypto_key = "ivf1NQSkQNogWYyr"
+# not passing key etc so it uses identity file
+client = HiveMindHTTPClient(host="http://localhost", port=5679)
+```
 
-bus = HiveMessageBusClient(key, crypto_key=crypto_key, ssl=False)
+via [hivemind-websocket-protocol](https://github.com/JarbasHiveMind/hivemind-websocket-protocol)
+```python
+from hivemind_bus_client.client import HiveMessageBusClient
 
-bus.run_in_thread()
+# not passing key etc so it uses identity file
+client = HiveMessageBusClient(host="ws://localhost", port=5678)
+```
+
+### Example: Simple Chat
+
+```python
+import threading
+from ovos_bus_client.message import Message
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_bus_client.http_client import HiveMindHTTPClient
+
+# not passing key etc so it uses identity file
+client = HiveMindHTTPClient(host="http://localhost", port=5679)
+
+# to handle agent responses, use client.on_mycroft("event", handler)
+answered = threading.Event()
+
+def handle_speak(message: Message):
+    print(message.data['utterance'])
+
+def utt_handled(message: Message):
+    answered.set()
+
+client.on_mycroft("speak", handle_speak)
+client.on_mycroft("ovos.utterance.handled", utt_handled)
 
 
-@on_mycroft_message(payload_type="speak", bus=bus)
-def on_speak(msg):
-    print(msg.data["utterance"])
+while True:
+    utt = input("> ")
+    answered.clear()
+    client.emit(HiveMessage(HiveMessageType.BUS,
+                            Message("recognizer_loop:utterance", {"utterances": [utt]})))
+    answered.wait()
+```
+
+### Example: Remote TTS 
+
+if server is running [hivemind-audio-binary-protocol](https://github.com/JarbasHiveMind/hivemind-audio-binary-protocol)
+
+```python
+from ovos_bus_client.message import Message
+from hivemind_bus_client.client import BinaryDataCallbacks
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_bus_client.http_client import HiveMindHTTPClient
+
+# To handle binary data subclass BinaryDataCallbacks
+class BinaryDataHandler(BinaryDataCallbacks):
+    def handle_receive_tts(self, bin_data: bytes,
+                           utterance: str,
+                           lang: str,
+                           file_name: str):
+        # we can play it or save to file or whatever
+        print(f"got {len(bin_data)} bytes of TTS audio")
+        print(f"utterance: {utterance}", f"lang: {lang}", f"file_name: {file_name}")
+        # got 33836 bytes of TTS audio
+        # utterance: hello world lang: en-US file_name: 5eb63bbbe01eeed093cb22bb8f5acdc3.wav
 
 
-mycroft_msg = Message("recognizer_loop:utterance",
-                      {"utterances": ["tell me a joke"]})
-bus.emit_mycroft(mycroft_msg)
+# not passing key etc so it uses identity file
+client = HiveMindHTTPClient(host="http://localhost", port=5679,
+                            bin_callbacks=BinaryDataHandler())
 
+# send HiveMessages as usual
+client.emit(HiveMessage(HiveMessageType.BUS,
+                        Message("speak:synth", {"utterance": "hello world"})))
 
-sleep(50)
-
-bus.close()
 ```
 
 ## Cli Usage
