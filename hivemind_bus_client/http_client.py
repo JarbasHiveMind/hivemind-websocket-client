@@ -358,8 +358,8 @@ class HiveMindHTTPClient(threading.Thread):
         self.protocol.bind(bus)
         url = f"{self.base_url}/connect"
         response = requests.post(url, params={"authorization": self.auth})
-        self.connected.set()
         self.wait_for_handshake()
+        self.connected.set()
         return response.json()
 
     def disconnect(self) -> dict:
