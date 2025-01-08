@@ -17,6 +17,7 @@ from hivemind_bus_client.http_client import HiveMindHTTPClient
 
 # not passing key etc so it uses identity file
 client = HiveMindHTTPClient(host="http://localhost", port=5679)
+client.connect() # establish a secure end-to-end encrypted connection
 ```
 
 via [hivemind-websocket-protocol](https://github.com/JarbasHiveMind/hivemind-websocket-protocol)
@@ -25,6 +26,7 @@ from hivemind_bus_client.client import HiveMessageBusClient
 
 # not passing key etc so it uses identity file
 client = HiveMessageBusClient(host="ws://localhost", port=5678)
+client.connect() # establish a secure end-to-end encrypted connection
 ```
 
 ### Example: Simple Chat

@@ -76,10 +76,9 @@ class HiveMindHTTPClient(threading.Thread):
         self._handlers: Dict[str, List[Callable[[HiveMessage], None]]] = {}
         self._agent_handlers: Dict[str, List[Callable[[MycroftMessage], None]]] = {}
         self.start()
-        self.wait_for_handshake()
+
 
     def wait_for_handshake(self, timeout=5):
-        self.connected.wait(timeout=timeout)
         self.handshake_event.wait(timeout=timeout)
         if not self.handshake_event.is_set():
             self.protocol.start_handshake()
@@ -239,8 +238,9 @@ class HiveMindHTTPClient(threading.Thread):
     # main loop
     def run(self):
         self.stopped.clear()
+
         # Connect to the server
-        self.connect()
+        self.connected.wait()
 
         # Retrieve messages until stop
         while not self.stopped.is_set():
@@ -358,7 +358,8 @@ class HiveMindHTTPClient(threading.Thread):
         self.protocol.bind(bus)
         url = f"{self.base_url}/connect"
         response = requests.post(url, params={"authorization": self.auth})
-        self.connected.set()  # TODO validate no error in post request
+        self.connected.set()
+        self.wait_for_handshake()
         return response.json()
 
     def disconnect(self) -> dict:
@@ -419,6 +420,7 @@ if __name__ == "__main__":
     # not passing key etc so it uses identity file
     client = HiveMindHTTPClient(host="http://localhost", port=5679,
                                 bin_callbacks=BinaryDataHandler())
+    client.connect()
 
     # send HiveMessages as usual
     client.emit(HiveMessage(HiveMessageType.BUS,
