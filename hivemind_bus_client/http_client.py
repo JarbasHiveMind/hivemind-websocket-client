@@ -73,6 +73,7 @@ class HiveMindHTTPClient(threading.Thread):
         LOG.info(f"Session ID: {sess.session_id}")
         self.session_id = sess.session_id
         self.stopped = threading.Event()
+        self.connected = threading.Event()
         self._handlers: Dict[str, List[Callable[[HiveMessage], None]]] = {}
         self.start()
 
@@ -253,6 +254,8 @@ class HiveMindHTTPClient(threading.Thread):
 
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
+        if not self.connected.is_set():
+            raise ConnectionAbortedError("self.connect() needs to be called first!")
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
@@ -331,6 +334,7 @@ class HiveMindHTTPClient(threading.Thread):
         self.protocol.bind(bus)
         url = f"{self.base_url}/connect"
         response = requests.post(url, params={"authorization": self.auth})
+        self.connected.set()  # TODO validate no error in post request
         return response.json()
 
     def disconnect(self) -> dict:
@@ -338,10 +342,13 @@ class HiveMindHTTPClient(threading.Thread):
         LOG.info("Disconnecting...")
         url = f"{self.base_url}/disconnect"
         response = requests.post(url, params={"authorization": self.auth})
+        self.connected.clear()
         return response.json()
 
     def get_messages(self) -> List[str]:
         """Retrieve messages from the HiveMind server."""
+        if not self.connected.is_set():
+            raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_messages"
         response = requests.get(url, params={"authorization": self.auth}).json()
         if response.get("error"):
@@ -350,6 +357,8 @@ class HiveMindHTTPClient(threading.Thread):
 
     def get_binary_messages(self) -> List[bytes]:
         """Retrieve messages from the HiveMind server."""
+        if not self.connected.is_set():
+            raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_binary_messages"
         response = requests.get(url, params={"authorization": self.auth}).json()
         if response.get("error"):

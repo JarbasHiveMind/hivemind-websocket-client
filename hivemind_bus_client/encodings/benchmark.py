@@ -179,7 +179,7 @@ def save_detailed_results_to_markdown(results: dict, filename: str):
 @click.command()
 @click.option("--sizes", default="10,100,1000,5000,10000,50000", help="Data sizes to benchmark, comma-separated.")
 @click.option("--weights", default="0.5,0.5", help="Weights for performance and bandwidth, comma-separated.")
-@click.option("--iterations", default=20, help="Number of iterations to average results.")
+@click.option("--iterations", default=1000, help="Number of iterations to average results.")
 def main(sizes: str, weights: str, iterations: int):
     global performance_weight, bandwidth_weight
 
@@ -258,3 +258,19 @@ def main(sizes: str, weights: str, iterations: int):
 
 if __name__ == "__main__":
     main()
+
+#
+
+
+
+# Benchmark Results (new):
+# Encoding             Avg Encoding Time    Avg Decoding Time    Avg Size Increase    Performance  Bandwidth  Aggregate
+# ==============================================================================================================
+# JSON-B64             0.000001             0.000004             1.38                 100.00       81.64      90.82
+# JSON-URLSAFE-B64     0.000002             0.000005             1.38                 73.23        81.64      77.43
+# JSON-B64-stdlib      0.000009             0.000009             1.38                 27.29        81.64      54.46
+# JSON-B91             0.001880             0.002634             1.24                 1.00         100.00     50.50
+# JSON-Z85B            0.001361             0.001661             1.26                 1.05         97.90      49.47
+# JSON-Z85P            0.001241             0.001487             1.31                 1.07         91.12      46.09
+# JSON-B32             0.000679             0.001196             1.60                 1.15         53.26      27.20
+# JSON-HEX             0.000008             0.000008             2.00                 30.74        1.00       15.87
