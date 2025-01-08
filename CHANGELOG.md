@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.0a1) (2025-01-08)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.3.0a2...0.4.0a1)
+
+**Merged pull requests:**
+
+- feat:http client [\#60](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/60) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.3.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.3.0a2) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.3.0a1...0.3.0a2)
