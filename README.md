@@ -35,10 +35,11 @@ client.connect() # establish a secure end-to-end encrypted connection
 import threading
 from ovos_bus_client.message import Message
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
-from hivemind_bus_client.http_client import HiveMindHTTPClient
+from hivemind_bus_client.client import HiveMessageBusClient
 
 # not passing key etc so it uses identity file
-client = HiveMindHTTPClient(host="http://localhost", port=5679)
+client = HiveMessageBusClient(host="ws://localhost", port=5678)
+client.connect() # establish a secure end-to-end encrypted connection
 
 # to handle agent responses, use client.on_mycroft("event", handler)
 answered = threading.Event()
@@ -87,6 +88,7 @@ class BinaryDataHandler(BinaryDataCallbacks):
 # not passing key etc so it uses identity file
 client = HiveMindHTTPClient(host="http://localhost", port=5679,
                             bin_callbacks=BinaryDataHandler())
+client.connect()
 
 # send HiveMessages as usual
 client.emit(HiveMessage(HiveMessageType.BUS,
