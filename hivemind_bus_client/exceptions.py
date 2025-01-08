@@ -47,6 +47,10 @@ class HiveMindEntryPointNotFound(HiveMindConnectionError):
     """ can not connect to provided address """
 
 
-class Z85DecodeError(Exception):
+class DecodingError(HiveMindException):
+    """Exception raised for errors in decoding"""
+
+
+class Z85DecodeError(DecodingError):
     """Exception raised for errors in decoding Z85b."""
-    pass
+
