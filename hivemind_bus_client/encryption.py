@@ -32,7 +32,7 @@ def cpu_supports_AES() -> bool:
     Returns:
         bool: True if AES is supported by the CPU, False otherwise.
     """
-    return "aes" in get_cpu_info()["flags"]
+    return "aes" in get_cpu_info().get("flags", [])
 
 
 class SupportedEncodings(str, enum.Enum):
