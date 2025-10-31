@@ -362,7 +362,11 @@ class HiveMessageBusClient(OVOSBusClient):
                     ctxt["session"] = {}
                 ctxt["session"]["session_id"] = self.session_id
                 ctxt["session"]["site_id"] = self.site_id
-                message.payload.context = ctxt
+                
+                if isinstance(message, HiveMessage):
+                    message["context"] = ctxt
+                else:
+                    message.payload.context = ctxt
                 # also send event to client registered handlers
                 self.internal_bus.emit(message.payload)
 
