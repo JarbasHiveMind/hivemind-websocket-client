@@ -134,6 +134,15 @@ class HiveMessage:
             return HiveMessage(**self._payload)
         return self._payload
 
+    @payload.setter
+    def payload(self, payload: Union['HiveMessage', Message, dict, bytes]):
+        if isinstance(payload, Message):
+            self._payload = payload.as_dict
+        elif isinstance(payload, HiveMessage):
+            self._payload = payload.as_dict
+        else:
+            self._payload = payload
+
     @property
     def bin_type(self) -> HiveMindBinaryPayloadType:
         return self._bin_type
