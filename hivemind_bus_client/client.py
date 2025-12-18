@@ -368,9 +368,9 @@ class HiveMessageBusClient(OVOSBusClient):
                 updated_payload = message.payload
                 if "source" not in updated_payload.context:
                     updated_payload.context["source"] = self.useragent
-                if "platform" not in message.payload.context:
+                if "platform" not in updated_payload.context:
                     updated_payload.context["platform"] = self.useragent
-                if "destination" not in message.payload.context:
+                if "destination" not in updated_payload.context:
                     updated_payload.context["destination"] = "HiveMind"
                 if "session" not in updated_payload.context:
                     updated_payload.context["session"] = {}
