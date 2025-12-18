@@ -1,4 +1,6 @@
-# Hivemind Bus Client
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/JarbasHiveMind/hivemind-websocket-client)
+
+# Hivemind Client
 
 Python client library for [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core)
 

@@ -123,6 +123,14 @@ class HiveMessage:
 
     @property
     def payload(self) -> Union['HiveMessage', Message, dict, bytes]:
+        """
+        Return the public payload converted to the most appropriate message representation for this HiveMessage.
+        
+        Depending on this message's msg_type, the payload is returned as a reconstructed `Message`, a reconstructed `HiveMessage`, or the raw stored payload.
+        
+        Returns:
+            Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, or ESCALATE; otherwise the raw payload (typically a `dict` or `bytes`).
+        """
         if self.msg_type in [HiveMessageType.BUS, HiveMessageType.SHARED_BUS]:
             return Message(self._payload["type"],
                            data=self._payload.get("data"),
@@ -134,8 +142,29 @@ class HiveMessage:
             return HiveMessage(**self._payload)
         return self._payload
 
+    @payload.setter
+    def payload(self, payload: Union['HiveMessage', Message, dict, bytes]):
+        """
+        Set the message payload, normalizing Message or HiveMessage inputs to their dictionary representations.
+        
+        Parameters:
+            payload (HiveMessage | Message | dict | bytes): New payload to assign. If a `Message` or `HiveMessage` is provided, its dict representation is stored; otherwise the value is stored as given.
+        """
+        if isinstance(payload, Message):
+            self._payload = payload.as_dict
+        elif isinstance(payload, HiveMessage):
+            self._payload = payload.as_dict
+        else:
+            self._payload = payload
+
     @property
     def bin_type(self) -> HiveMindBinaryPayloadType:
+        """
+        Get the binary payload type for this message.
+        
+        Returns:
+            HiveMindBinaryPayloadType: Indicator of how the message's binary payload should be interpreted.
+        """
         return self._bin_type
 
     @property
@@ -233,4 +262,4 @@ class HiveMessage:
 
     def remove_target_peer(self, peer):
         if peer in self._targets:
-            self._targets.pop(peer)
+            self._targets.remove(peer)

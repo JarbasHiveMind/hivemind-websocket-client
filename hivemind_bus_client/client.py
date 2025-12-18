@@ -335,6 +335,20 @@ class HiveMessageBusClient(OVOSBusClient):
 
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
+        """
+        Send a HiveMessage or MycroftMessage to the HiveMind network, injecting routing context for BUS messages and optionally sending binary payloads.
+       
+        Parameters:
+            message (MycroftMessage | HiveMessage): The message to send. If a MycroftMessage is provided it will be wrapped into a BUS HiveMessage.
+            binary_type (HiveMindBinaryPayloadType): When sending binary payloads, indicates the binary payload subtype; defaults to UNDEFINED.
+       
+        Notes:
+            - For messages with msg_type == HiveMessageType.BUS, the function will ensure the payload.context contains routing fields (source, platform, destination, session) and will emit the payload to the client's internal bus before sending.
+            - This method transmits the message over the client's WebSocket and may perform serialization, optional compression, and optional encryption depending on client configuration.
+       
+        Raises:
+            ValueError: If the client has not been started with run_forever() and the connection is not ready.
+        """
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
@@ -351,18 +365,19 @@ class HiveMessageBusClient(OVOSBusClient):
             # end users if they need to do it manually, error prone and easy
             # to forget
             if message.msg_type == HiveMessageType.BUS:
-                ctxt = dict(message.payload.context)
-                if "source" not in ctxt:
-                    ctxt["source"] = self.useragent
-                if "platform" not in message.payload.context:
-                    ctxt["platform"] = self.useragent
-                if "destination" not in message.payload.context:
-                    ctxt["destination"] = "HiveMind"
-                if "session" not in ctxt:
-                    ctxt["session"] = {}
-                ctxt["session"]["session_id"] = self.session_id
-                ctxt["session"]["site_id"] = self.site_id
-                message.payload.context = ctxt
+                updated_payload = message.payload
+                if "source" not in updated_payload.context:
+                    updated_payload.context["source"] = self.useragent
+                if "platform" not in updated_payload.context:
+                    updated_payload.context["platform"] = self.useragent
+                if "destination" not in updated_payload.context:
+                    updated_payload.context["destination"] = "HiveMind"
+                if "session" not in updated_payload.context:
+                    updated_payload.context["session"] = {}
+                updated_payload.context["session"]["session_id"] = self.session_id
+                updated_payload.context["session"]["site_id"] = self.site_id
+                message.payload = updated_payload
+
                 # also send event to client registered handlers
                 self.internal_bus.emit(message.payload)
 
