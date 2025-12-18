@@ -336,20 +336,20 @@ class HiveMessageBusClient(OVOSBusClient):
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
         """
-             Send a HiveMessage or MycroftMessage to the HiveMind network, injecting routing context for BUS messages and optionally sending binary payloads.
-             
-             Parameters:
-                 message (MycroftMessage | HiveMessage): The message to send. If a MycroftMessage is provided it will be wrapped into a BUS HiveMessage.
-                 binary_type (HiveMindBinaryPayloadType): When sending binary payloads, indicates the binary payload subtype; defaults to UNDEFINED.
-             
-             Notes:
-                 - For messages with msg_type == HiveMessageType.BUS, the function will ensure the payload.context contains routing fields (source, platform, destination, session) and will emit the payload to the client's internal bus before sending.
-                 - This method transmits the message over the client's WebSocket and may perform serialization, optional compression, and optional encryption depending on client configuration.
-             
-             Raises:
-                 ValueError: If the client has not been started with run_forever() and the connection is not ready.
-             """
-             if isinstance(message, MycroftMessage):
+        Send a HiveMessage or MycroftMessage to the HiveMind network, injecting routing context for BUS messages and optionally sending binary payloads.
+       
+        Parameters:
+            message (MycroftMessage | HiveMessage): The message to send. If a MycroftMessage is provided it will be wrapped into a BUS HiveMessage.
+            binary_type (HiveMindBinaryPayloadType): When sending binary payloads, indicates the binary payload subtype; defaults to UNDEFINED.
+       
+        Notes:
+            - For messages with msg_type == HiveMessageType.BUS, the function will ensure the payload.context contains routing fields (source, platform, destination, session) and will emit the payload to the client's internal bus before sending.
+            - This method transmits the message over the client's WebSocket and may perform serialization, optional compression, and optional encryption depending on client configuration.
+       
+        Raises:
+            ValueError: If the client has not been started with run_forever() and the connection is not ready.
+        """
+        if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
         if not self.connected_event.is_set():
