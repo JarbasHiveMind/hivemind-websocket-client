@@ -262,4 +262,4 @@ class HiveMessage:
 
     def remove_target_peer(self, peer):
         if peer in self._targets:
-            self._targets.pop(peer)
+            self._targets.remove(peer)
