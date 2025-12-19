@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.5a2) (2025-12-19)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.5a1...0.4.5a2)
+
+**Merged pull requests:**
+
+- chore\(deps\): update actions/setup-python action to v6 [\#81](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/81) ([renovate[bot]](https://github.com/apps/renovate))
+
 ## [0.4.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.5a1) (2025-12-18)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.4...0.4.5a1)
