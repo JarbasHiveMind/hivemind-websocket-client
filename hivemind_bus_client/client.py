@@ -236,7 +236,11 @@ class HiveMessageBusClient(OVOSBusClient):
     def wait_for_handshake(self, timeout=5):
         self.handshake_event.wait(timeout=timeout)
         if not self.handshake_event.is_set():
-            self.protocol.start_handshake()
+            if self.connected_event.is_set():
+                self.protocol.start_handshake()
+            else:
+                LOG.warning("Can't start handshake because websocket connection is not yet open...")
+                self.connected_event.wait(timeout=timeout)
             self.wait_for_handshake()
 
     @staticmethod
@@ -353,12 +357,12 @@ class HiveMessageBusClient(OVOSBusClient):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
         if not self.connected_event.is_set():
-            LOG.warning("hivemind connection not ready")
+            LOG.warning(f"hivemind connection not ready: {message.serialize()}")
             if not self.connected_event.wait(10):
                 if not self.started_running:
                     raise ValueError('You must execute run_forever() '
                                      'before emitting messages')
-                self.connected_event.wait()
+                raise RuntimeError(f"Can not send messages before opening the websocket connection. Failed to emit : {message.serialize()}")
 
         try:
             # auto inject context for proper routing, this is confusing for
