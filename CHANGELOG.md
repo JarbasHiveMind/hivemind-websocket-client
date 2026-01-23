@@ -1,17 +1,28 @@
 # Changelog
 
-## [0.4.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.4a1) (2025-12-18)
+## [0.4.5a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.5a3) (2026-01-23)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.3...0.4.4a1)
-
-**Closed issues:**
-
-- FEAT: Mac support [\#68](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/68)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.5a2...0.4.5a3)
 
 **Merged pull requests:**
 
-- fix: payload context update [\#73](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/73) ([JarbasAl](https://github.com/JarbasAl))
-- fix: defensive check for potential missing key [\#69](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/69) ([mikejgray](https://github.com/mikejgray))
+- chore\(deps\): update actions/checkout action to v6 [\#79](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/79) ([renovate[bot]](https://github.com/apps/renovate))
+
+## [0.4.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.5a2) (2025-12-19)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.5a1...0.4.5a2)
+
+**Merged pull requests:**
+
+- chore\(deps\): update actions/setup-python action to v6 [\#81](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/81) ([renovate[bot]](https://github.com/apps/renovate))
+
+## [0.4.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.5a1) (2025-12-18)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.4...0.4.5a1)
+
+**Merged pull requests:**
+
+- chore: Configure Renovate [\#76](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/76) ([renovate[bot]](https://github.com/apps/renovate))
 
 
 
