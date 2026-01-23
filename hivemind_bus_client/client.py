@@ -357,7 +357,7 @@ class HiveMessageBusClient(OVOSBusClient):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
         if not self.connected_event.is_set():
-            LOG.warning(f"hivemind connection not ready: {message.serialize()}")
+            LOG.warning("hivemind connection not ready!")
             if not self.connected_event.wait(10):
                 if not self.started_running:
                     raise ValueError('You must execute run_forever() '
