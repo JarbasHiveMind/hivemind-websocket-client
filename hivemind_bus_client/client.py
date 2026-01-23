@@ -233,21 +233,23 @@ class HiveMessageBusClient(OVOSBusClient):
         self.crypto_key = None
         super().on_close(*args)
 
-    def wait_for_handshake(self, timeout=5):
+    def wait_for_handshake(self, timeout=5, max_retries=15):
         """
         Waits for the HiveMind handshake to complete; if the handshake is not set and the websocket connection is open, starts the handshake, otherwise waits for the websocket to open and retries.
-        
+
         Parameters:
             timeout (float): Number of seconds to wait for each handshake or connection attempt before retrying.
         """
         self.handshake_event.wait(timeout=timeout)
         if not self.handshake_event.is_set():
+            if max_retries <= 0:
+                raise RuntimeError("timed out waiting for handshake")
             if self.connected_event.is_set():
                 self.protocol.start_handshake()
             else:
                 LOG.warning("Can't start handshake because websocket connection is not yet open...")
                 self.connected_event.wait(timeout=timeout)
-            self.wait_for_handshake()
+            self.wait_for_handshake(timeout, max_retries - 1)
 
     @staticmethod
     def build_url(key, host='127.0.0.1', port=5678,
@@ -346,19 +348,18 @@ class HiveMessageBusClient(OVOSBusClient):
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):
         """
-        Send a HiveMind message (or wrap and send a MycroftMessage) and optionally transmit it as a binary payload.
-         
+        Send a HiveMessage or MycroftMessage to the HiveMind network, injecting routing context for BUS messages and optionally sending binary payloads.
+       
         Parameters:
-            message (MycroftMessage | HiveMessage): The outgoing message. A MycroftMessage will be wrapped into a BUS HiveMessage.
-            binary_type (HiveMindBinaryPayloadType): Binary payload subtype to use when sending BINARY messages; defaults to UNDEFINED.
-         
-        Behavior:
-            - For BUS messages, ensures payload.context contains routing fields (source, platform, destination, session_id, site_id) and emits the payload to the client's internal bus before sending.
-            - Chooses binary or text transport according to message type and client configuration; the payload may be compressed and/or encrypted based on client settings.
-         
+            message (MycroftMessage | HiveMessage): The message to send. If a MycroftMessage is provided it will be wrapped into a BUS HiveMessage.
+            binary_type (HiveMindBinaryPayloadType): When sending binary payloads, indicates the binary payload subtype; defaults to UNDEFINED.
+       
+        Notes:
+            - For messages with msg_type == HiveMessageType.BUS, the function will ensure the payload.context contains routing fields (source, platform, destination, session) and will emit the payload to the client's internal bus before sending.
+            - This method transmits the message over the client's WebSocket and may perform serialization, optional compression, and optional encryption depending on client configuration.
+       
         Raises:
-            ValueError: If the client has not been started (run_forever() not executed) and therefore cannot send messages.
-            RuntimeError: If the client was started but the websocket connection did not open within the wait period, preventing the message from being sent.
+            ValueError: If the client has not been started with run_forever() and the connection is not ready.
         """
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
