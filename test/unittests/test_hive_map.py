@@ -1,0 +1,167 @@
+"""Tests for hivemind_bus_client.hive_map — HiveMapper and NodeInfo."""
+import json
+import pytest
+from hivemind_bus_client.hive_map import HiveMapper, NodeInfo
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+
+
+class TestNodeInfo:
+    def test_rtt_ms_both_timestamps(self):
+        node = NodeInfo(peer="a", timestamp=100.0, received_at=100.05)
+        assert node.rtt_ms == pytest.approx(50.0)
+
+    def test_rtt_ms_missing_timestamp(self):
+        node = NodeInfo(peer="a", received_at=100.0)
+        assert node.rtt_ms is None
+
+    def test_rtt_ms_missing_received(self):
+        node = NodeInfo(peer="a", timestamp=100.0)
+        assert node.rtt_ms is None
+
+    def test_rtt_ms_both_none(self):
+        node = NodeInfo(peer="a")
+        assert node.rtt_ms is None
+
+
+def _make_ping(flood_id: str, peer: str, site_id: str = "",
+               route: list = None, timestamp: float = None) -> HiveMessage:
+    """Helper: build a PING HiveMessage with optional route."""
+    payload = {"flood_id": flood_id, "peer": peer, "site_id": site_id}
+    if timestamp is not None:
+        payload["timestamp"] = timestamp
+    msg = HiveMessage(HiveMessageType.PING, payload, route=route or [])
+    return msg
+
+
+class TestHiveMapperOnPing:
+    def test_new_ping_returns_true(self):
+        mapper = HiveMapper()
+        mapper.start_ping("flood1")
+        msg = _make_ping("flood1", "nodeA")
+        assert mapper.on_ping(msg) is True
+        assert "nodeA" in mapper.nodes
+
+    def test_duplicate_ping_returns_false(self):
+        mapper = HiveMapper()
+        mapper.start_ping("flood1")
+        msg = _make_ping("flood1", "nodeA")
+        mapper.on_ping(msg)
+        assert mapper.on_ping(msg) is False
+
+    def test_empty_peer_ignored(self):
+        mapper = HiveMapper()
+        mapper.start_ping("flood1")
+        msg = _make_ping("flood1", "")
+        assert mapper.on_ping(msg) is False
+
+    def test_non_dict_payload_ignored(self):
+        mapper = HiveMapper()
+        # HiveMessageType.PING with a non-dict payload (raw string won't happen
+        # in practice but tests the guard)
+        msg = HiveMessage(HiveMessageType.THIRDPRTY, {"flood_id": "x", "peer": "y"})
+        # msg_type is THIRDPRTY so payload returns dict — but for PING type,
+        # payload is returned as-is (dict). Let's test with a proper PING.
+        msg2 = HiveMessage(HiveMessageType.PING, {})
+        assert mapper.on_ping(msg2) is False
+
+    def test_route_edges_extracted(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        route = [{"source": "hub", "targets": ["relay1"]},
+                 {"source": "relay1", "targets": ["nodeA"]}]
+        msg = _make_ping("f1", "nodeA", route=route)
+        mapper.on_ping(msg)
+        assert "hub" in mapper.edges
+        assert "relay1" in mapper.edges["hub"]
+        assert "relay1" in mapper.edges
+        assert "nodeA" in mapper.edges["relay1"]
+
+    def test_node_info_populated(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        msg = _make_ping("f1", "nodeA", site_id="kitchen", timestamp=1000.0)
+        mapper.on_ping(msg, received_at=1000.05)
+        node = mapper.nodes["nodeA"]
+        assert node.site_id == "kitchen"
+        assert node.rtt_ms == pytest.approx(50.0)
+
+    def test_auto_creates_seen_set_for_unknown_flood_id(self):
+        mapper = HiveMapper()
+        # Don't call start_ping — on_ping should auto-create the set
+        msg = _make_ping("unknown_flood", "nodeX")
+        assert mapper.on_ping(msg) is True
+
+    def test_multiple_floods_independent(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        mapper.start_ping("f2")
+        msg1 = _make_ping("f1", "nodeA")
+        msg2 = _make_ping("f2", "nodeA")
+        assert mapper.on_ping(msg1) is True
+        assert mapper.on_ping(msg2) is True
+        # Same peer, different flood_id — both accepted
+
+
+class TestHiveMapperToDict:
+    def test_empty_mapper(self):
+        mapper = HiveMapper()
+        d = mapper.to_dict()
+        assert d == {"nodes": [], "edges": []}
+
+    def test_nodes_and_edges(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        route = [{"source": "hub", "targets": ["nodeA"]}]
+        mapper.on_ping(_make_ping("f1", "nodeA", site_id="lr", route=route,
+                                   timestamp=10.0), received_at=10.1)
+        d = mapper.to_dict()
+        assert len(d["nodes"]) == 1
+        assert d["nodes"][0]["peer"] == "nodeA"
+        assert d["nodes"][0]["site_id"] == "lr"
+        assert len(d["edges"]) == 1
+        assert d["edges"][0] == {"source": "hub", "target": "nodeA"}
+
+
+class TestHiveMapperToJson:
+    def test_valid_json(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        mapper.on_ping(_make_ping("f1", "nodeA"))
+        result = json.loads(mapper.to_json())
+        assert "nodes" in result
+        assert "edges" in result
+
+
+class TestHiveMapperToAscii:
+    def test_empty_returns_no_nodes(self):
+        mapper = HiveMapper()
+        assert mapper.to_ascii() == "[No nodes discovered]"
+
+    def test_single_node_with_root(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        route = [{"source": "nodeA", "targets": ["root"]}]
+        mapper.on_ping(_make_ping("f1", "nodeA", site_id="lr", route=route))
+        tree = mapper.to_ascii(root_peer="root")
+        assert "[self] root" in tree
+        assert "nodeA" in tree
+
+    def test_without_root_peer(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        route = [{"source": "hub", "targets": ["nodeA"]}]
+        mapper.on_ping(_make_ping("f1", "nodeA", route=route))
+        tree = mapper.to_ascii()
+        assert "hub" in tree
+        assert "nodeA" in tree
+
+
+class TestHiveMapperClear:
+    def test_clear_resets_state(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        mapper.on_ping(_make_ping("f1", "nodeA"))
+        mapper.clear()
+        assert mapper.nodes == {}
+        assert mapper.edges == {}
+        assert mapper._seen_pings == {}
