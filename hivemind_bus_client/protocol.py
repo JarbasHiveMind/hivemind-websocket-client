@@ -1,6 +1,7 @@
 import pybase64
-from dataclasses import dataclass
-from typing import Optional, Tuple
+import time
+from dataclasses import dataclass, field
+from typing import Optional, Tuple, Dict, Callable
 
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
@@ -90,6 +91,7 @@ class HiveMindSlaveProtocol:
     shared_bus: bool = False
     binarize: bool = False
     site_id: str = "unknown"
+    _propagate_payload_handlers: Dict[str, Callable] = field(default_factory=dict)  # dispatch table for PROPAGATE inner types
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
@@ -113,6 +115,13 @@ class HiveMindSlaveProtocol:
         self.hm.on(HiveMessageType.SHARED_BUS, self.handle_illegal_msg)
         self.hm.on(HiveMessageType.BUS, self.handle_bus)
         self.hm.on(HiveMessageType.HANDSHAKE, self.handle_handshake)
+
+        # Dispatch table for PROPAGATE inner payload types
+        self._propagate_payload_handlers: Dict[str, Callable[[HiveMessage], None]] = {
+            HiveMessageType.PING: self._handle_ping,
+            HiveMessageType.PONG: self._handle_pong,
+            HiveMessageType.INTERCOM: self._handle_propagate_intercom,
+        }
 
     @property
     def node_id(self):
@@ -245,16 +254,35 @@ class HiveMindSlaveProtocol:
 
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
-        data = message.serialize()
+        data = message.as_dict  # fix: serialize() returns str; MycroftMessage.data must be dict
         ctxt = {"source": self.node_id}
         self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
+
+    def _handle_propagate_intercom(self, message: HiveMessage):
+        """Handle PROPAGATE(INTERCOM) via dispatch table.
+
+        Args:
+            message: The outer PROPAGATE HiveMessage whose inner payload is INTERCOM.
+        """
+        if self.handle_intercom(message.payload):
+            return
 
     def handle_propagate(self, message: HiveMessage):
         LOG.info(f"PROPAGATE: {message.payload}")
 
-        if message.payload.msg_type == HiveMessageType.INTERCOM:
-            if self.handle_intercom(message):
-                return True
+        # Lazy initialization of dispatch table for tests that bypass bind()
+        if not hasattr(self, '_propagate_payload_handlers') or not self._propagate_payload_handlers:
+            self._propagate_payload_handlers = {
+                HiveMessageType.PING: self._handle_ping,
+                HiveMessageType.PONG: self._handle_pong,
+                HiveMessageType.INTERCOM: self._handle_propagate_intercom,
+            }
+
+        # Dispatch on inner payload type
+        inner = message.payload
+        handler = self._propagate_payload_handlers.get(inner.msg_type)
+        if handler:
+            handler(message)
 
         if message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
@@ -268,9 +296,66 @@ class HiveMindSlaveProtocol:
 
         # if this device is also a hivemind server
         # forward to HiveMindListenerInternalProtocol
-        data = message.serialize()
+        data = message.as_dict  # fix: serialize() returns str; MycroftMessage.data must be dict
         ctxt = {"source": self.node_id}
         self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
+
+    def _handle_ping(self, message: HiveMessage):
+        """Respond to a received PROPAGATE(PING) with a PROPAGATE(PONG).
+
+        Emits ``hive.ping.received`` on the internal bus for skill integration.
+
+        Args:
+            message: The outer PROPAGATE HiveMessage whose inner payload is a PING.
+        """
+        inner = message.payload
+        ping_payload = inner.payload if isinstance(inner.payload, dict) else {}
+
+        peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
+        pong_payload = {
+            "ping_id": ping_payload.get("ping_id", ""),
+            "timestamp": ping_payload.get("timestamp", 0.0),
+            "pong_timestamp": time.time(),
+            "peer": peer,
+            "site_id": self.site_id,
+        }
+        pong_inner = HiveMessage(HiveMessageType.PONG, pong_payload)
+        pong_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=pong_inner)
+
+        LOG.debug(f"Sending PONG for ping_id={ping_payload.get('ping_id')}")
+        self.hm.emit(pong_outer)
+
+        if self.internal_protocol and self.internal_protocol.bus:
+            self.internal_protocol.bus.emit(MycroftMessage(
+                "hive.ping.received",
+                {
+                    "ping_id": ping_payload.get("ping_id"),
+                    "peer": ping_payload.get("peer"),
+                    "site_id": ping_payload.get("site_id"),
+                },
+            ))
+
+    def _handle_pong(self, message: HiveMessage):
+        """Process a received PROPAGATE(PONG).
+
+        Emits ``hive.pong.received`` on the internal bus so skills and the
+        ``hivemind-client ping`` CLI can react.
+
+        Args:
+            message: The outer PROPAGATE HiveMessage whose inner payload is a PONG.
+        """
+        inner = message.payload
+        pong_payload = inner.payload if isinstance(inner.payload, dict) else {}
+
+        LOG.debug(
+            f"Received PONG from {pong_payload.get('peer')} "
+            f"ping_id={pong_payload.get('ping_id')}"
+        )
+
+        if self.internal_protocol and self.internal_protocol.bus:
+            self.internal_protocol.bus.emit(
+                MycroftMessage("hive.pong.received", pong_payload)
+            )
 
     def handle_intercom(self, message: HiveMessage):
         LOG.info(f"INTERCOM: {message.payload}")
@@ -296,20 +381,30 @@ class HiveMindSlaveProtocol:
                 decrypted = decrypt_RSA(private_key, ciphertext).decode("utf8")
 
                 message._payload = HiveMessage.deserialize(decrypted)
-            except:
+            except Exception:
                 if k:
                     LOG.error("failed to decrypt message!")
                 else:
                     LOG.debug("failed to decrypt message, not for us")
                 return False
 
-        if message.msg_type == HiveMessageType.BUS:
-            self.handle_bus(message)
+        # Dispatch on the inner message type (not the outer INTERCOM type).
+        # After decryption _payload is the inner HiveMessage; for unencrypted INTERCOM
+        # it is the raw dict representation of the inner message.
+        inner = message.payload
+        if isinstance(inner, dict):
+            try:
+                inner = HiveMessage.deserialize(inner)
+            except Exception:
+                return False
+
+        if inner.msg_type == HiveMessageType.BUS:
+            self.handle_bus(inner)
             return True
-        elif message.msg_type == HiveMessageType.PROPAGATE:
-            self.handle_propagate(message)
+        elif inner.msg_type == HiveMessageType.PROPAGATE:
+            self.handle_propagate(inner)
             return True
-        elif message.msg_type == HiveMessageType.BROADCAST:
-            self.handle_broadcast(message)
+        elif inner.msg_type == HiveMessageType.BROADCAST:
+            self.handle_broadcast(inner)
             return True
         return False
