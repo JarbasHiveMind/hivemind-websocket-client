@@ -227,5 +227,46 @@ class TestHiveMessageInitNormalization(unittest.TestCase):
         self.assertEqual(d["msg_type"], HiveMessageType.BROADCAST)
 
 
+class TestDeserializePreservesFields(unittest.TestCase):
+    """Regression tests for deserialize() restoring all serialized fields."""
+
+    def test_serialize_deserialize_preserves_route(self):
+        """Route data must survive as_dict → deserialize() roundtrip."""
+        route = [{"source": "peer-A", "targets": ["peer-B", "peer-C"]}]
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload={"type": "test", "data": {}, "context": {}},
+                          source_peer="peer-A", target_peers=["peer-B", "peer-C"])
+        msg.replace_route(route)
+        restored = HiveMessage.deserialize(msg.as_dict)
+        self.assertEqual(restored.route, route)
+
+    def test_serialize_deserialize_preserves_source_peer(self):
+        """source_peer must survive roundtrip."""
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload={"type": "test", "data": {}, "context": {}},
+                          source_peer="peer-X")
+        restored = HiveMessage.deserialize(msg.serialize())
+        self.assertEqual(restored.source_peer, "peer-X")
+
+    def test_serialize_deserialize_preserves_node(self):
+        """node must survive roundtrip."""
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload={"type": "test", "data": {}, "context": {}},
+                          node="node-42")
+        restored = HiveMessage.deserialize(msg.serialize())
+        self.assertEqual(restored.node_id, "node-42")
+
+    def test_route_type_is_list_of_dicts(self):
+        """Route entries are dicts with 'source' and 'targets' keys, not strings."""
+        route = [{"source": "p1", "targets": ["p2"]}, {"source": "p2", "targets": ["p3"]}]
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload={"type": "t", "data": {}, "context": {}})
+        msg.replace_route(route)
+        for hop in msg.route:
+            self.assertIsInstance(hop, dict)
+            self.assertIn("source", hop)
+            self.assertIn("targets", hop)
+
+
 if __name__ == "__main__":
     unittest.main()
