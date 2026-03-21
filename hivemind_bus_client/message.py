@@ -46,7 +46,7 @@ class HiveMessage:
                  payload: Optional[Union[Message, 'HiveMessage', str, dict, bytes]] =None,
                  node: Optional[str]=None,
                  source_peer: Optional[str]=None,
-                 route: Optional[List[str]]=None,
+                 route: Optional[List[Dict[str, Any]]]=None,
                  target_peers: Optional[List[str]]=None,
                  target_site_id: Optional[str] =None,
                  target_pubkey: Optional[str] =None,
@@ -120,7 +120,7 @@ class HiveMessage:
         return self._targets
 
     @property
-    def route(self) -> List[str]:
+    def route(self) -> List[Dict[str, Any]]:
         return [r for r in self._route if r.get("targets") and r.get("source")]
 
     @property
@@ -209,6 +209,9 @@ class HiveMessage:
             try:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
+                                   route=payload.get("route"),
+                                   node=payload.get("node"),
+                                   source_peer=payload.get("source_peer"),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:
@@ -220,6 +223,9 @@ class HiveMessage:
                 return HiveMessage(HiveMessageType.BUS,
                                    payload=Message.deserialize(payload),
                                    metadata=payload.get("metadata", {}),
+                                   route=payload.get("route"),
+                                   node=payload.get("node"),
+                                   source_peer=payload.get("source_peer"),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:
@@ -227,6 +233,9 @@ class HiveMessage:
 
         return HiveMessage(HiveMessageType.THIRDPRTY, payload,
                            metadata=payload.get("metadata", {}),
+                           route=payload.get("route"),
+                           node=payload.get("node"),
+                           source_peer=payload.get("source_peer"),
                            target_site_id=payload.get("target_site_id"),
                            target_pubkey=payload.get("target_pubkey"))
 
