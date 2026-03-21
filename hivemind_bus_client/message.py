@@ -131,7 +131,7 @@ class HiveMessage:
         Depending on this message's msg_type, the payload is returned as a reconstructed `Message`, a reconstructed `HiveMessage`, or the raw stored payload.
         
         Returns:
-            Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, or ESCALATE; otherwise the raw payload (typically a `dict` or `bytes`).
+            Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, ESCALATE, or QUERY; otherwise the raw payload (typically a `dict` or `bytes`).
         """
         if self.msg_type in [HiveMessageType.BUS, HiveMessageType.SHARED_BUS]:
             return Message(self._payload["type"],
@@ -140,7 +140,8 @@ class HiveMessage:
         if self.msg_type in [HiveMessageType.BROADCAST,
                              HiveMessageType.PROPAGATE,
                              HiveMessageType.CASCADE,
-                             HiveMessageType.ESCALATE]:
+                             HiveMessageType.ESCALATE,
+                             HiveMessageType.QUERY]:
             return HiveMessage(**self._payload)
         return self._payload
 
