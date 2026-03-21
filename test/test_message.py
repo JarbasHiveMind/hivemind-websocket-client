@@ -240,21 +240,26 @@ class TestDeserializePreservesFields(unittest.TestCase):
         restored = HiveMessage.deserialize(msg.as_dict)
         self.assertEqual(restored.route, route)
 
-    def test_serialize_deserialize_preserves_source_peer(self):
-        """source_peer must survive roundtrip."""
+    def test_source_peer_not_preserved_through_deserialize(self):
+        """source_peer is a per-hop transient field — intentionally NOT restored by deserialize().
+
+        Each hop sets source_peer fresh via update_source_peer(). Preserving it
+        through deserialization breaks target_peers fallback logic and causes
+        PING flood loops in relay chains.
+        """
         msg = HiveMessage(HiveMessageType.BUS,
                           payload={"type": "test", "data": {}, "context": {}},
                           source_peer="peer-X")
         restored = HiveMessage.deserialize(msg.serialize())
-        self.assertEqual(restored.source_peer, "peer-X")
+        self.assertIsNone(restored.source_peer)
 
-    def test_serialize_deserialize_preserves_node(self):
-        """node must survive roundtrip."""
+    def test_node_not_preserved_through_deserialize(self):
+        """node is a per-hop transient field — intentionally NOT restored by deserialize()."""
         msg = HiveMessage(HiveMessageType.BUS,
                           payload={"type": "test", "data": {}, "context": {}},
                           node="node-42")
         restored = HiveMessage.deserialize(msg.serialize())
-        self.assertEqual(restored.node_id, "node-42")
+        self.assertIsNone(restored.node_id)
 
     def test_route_type_is_list_of_dicts(self):
         """Route entries are dicts with 'source' and 'targets' keys, not strings."""

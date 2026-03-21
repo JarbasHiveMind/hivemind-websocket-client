@@ -210,8 +210,6 @@ class HiveMessage:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
                                    route=payload.get("route"),
-                                   node=payload.get("node"),
-                                   source_peer=payload.get("source_peer"),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:
@@ -224,8 +222,6 @@ class HiveMessage:
                                    payload=Message.deserialize(payload),
                                    metadata=payload.get("metadata", {}),
                                    route=payload.get("route"),
-                                   node=payload.get("node"),
-                                   source_peer=payload.get("source_peer"),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:
@@ -234,8 +230,6 @@ class HiveMessage:
         return HiveMessage(HiveMessageType.THIRDPRTY, payload,
                            metadata=payload.get("metadata", {}),
                            route=payload.get("route"),
-                           node=payload.get("node"),
-                           source_peer=payload.get("source_peer"),
                            target_site_id=payload.get("target_site_id"),
                            target_pubkey=payload.get("target_pubkey"))
 
