@@ -23,7 +23,7 @@ class HiveMessageType(str, Enum):
     # send a response
     CASCADE = "cascade"  # like propagate, but expects a response back from
     # all nodes in the hive (responses optional)
-    PING = "ping"  # like cascade, but used to map the network
+    PING = "ping"  # flood-based network discovery; every node responds with its own PING
     RENDEZVOUS = "rendezvous"  # reserved for rendezvous-nodes
     THIRDPRTY = "3rdparty"  # user land message, do whatever you want
     BINARY = "bin"  # binary data container, payload for something else
@@ -76,6 +76,8 @@ class HiveMessage:
             payload = {"type": payload.msg_type,
                        "data": payload.data,
                        "context": payload.context}
+        elif isinstance(payload, HiveMessage):
+            payload = payload.as_dict  # fix: __init__ was missing normalization that the payload setter has
         elif isinstance(payload, str):
             payload = json.loads(payload)
         self._payload = payload or {}
@@ -208,7 +210,7 @@ class HiveMessage:
                                    metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
-            except:
+            except Exception:
                 pass  # not a hivemind message
 
         if "type" in payload:
@@ -219,7 +221,7 @@ class HiveMessage:
                                    metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
-            except:
+            except Exception:
                 pass  # not a mycroft message
 
         return HiveMessage(HiveMessageType.THIRDPRTY, payload,

@@ -1,4 +1,6 @@
 import json
+import time
+import uuid
 
 import click
 from ovos_bus_client import Message
@@ -8,7 +10,7 @@ from ovos_utils.fakebus import FakeBus
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.identity import NodeIdentity
-LOG.set_level("DEBUG")
+LOG.set_level("ERROR")
 
 
 @click.group()
@@ -205,6 +207,142 @@ def reset_keys():
     print("PUBKEY:", identity.public_key)
     identity.save()
     print(f"identity saved: {identity.IDENTITY_FILE.path}")
+
+
+@hmclient_cmds.command(
+    help="discover a HiveMind hub on the local network (requires hivemind-presence)",
+    name="discover",
+)
+@click.option("--timeout", help="scan duration in seconds", type=float, default=25.0)
+@click.option("--zeroconf", type=bool, default=True,
+              help="scan via Zeroconf/mDNS (default: True)")
+@click.option("--upnp", type=bool, default=False,
+              help="scan via UPnP/SSDP (default: False)")
+@click.option("--beacon", type=bool, default=True,
+              help="scan via HiveBeacon UDP broadcast (default: True)")
+@click.option("--save", is_flag=True, default=False,
+              help="save first discovered hub to NodeIdentity and exit")
+def discover(timeout, zeroconf, upnp, beacon, save):
+    try:
+        from hivemind_presence import LocalDiscovery
+    except ImportError:
+        raise RuntimeError(
+            "hivemind-presence is not installed. "
+            "Install it with: pip install HiveMind-presence"
+        )
+
+    disc = LocalDiscovery(zeroconf=zeroconf, upnp=upnp, beacon=beacon)
+
+    found = []
+    for node in disc.scan(timeout=timeout):
+        print(f"[FOUND] {node.friendly_name}  {node.host}:{node.port}  ssl={node.ssl}")
+        found.append(node)
+        if save:
+            identity = NodeIdentity()
+            scheme = "wss" if node.ssl else "ws"
+            identity.default_master = f"{scheme}://{node.host}"
+            identity.default_port = node.port
+            identity.save()
+            print(f"[SAVED] identity → {identity.IDENTITY_FILE.path}")
+            disc.stop()
+            break
+
+    disc.stop()
+    if not found:
+        print("[NONE] No hubs discovered within the timeout.")
+
+
+@hmclient_cmds.command(
+    help="Send a PING and display the reachable hive map.",
+    name="ping",
+)
+@click.option("--key", help="HiveMind access key (default read from identity file)", type=str, default="")
+@click.option("--password", help="HiveMind password (default read from identity file)", type=str, default="")
+@click.option("--host", help="HiveMind host (default read from identity file)", type=str, default="")
+@click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
+@click.option("--siteid", help="location identifier (default read from identity file)", type=str, default="")
+@click.option("--timeout", help="seconds to collect responses (default: 5.0)", type=float, default=5.0)
+@click.option("--json", "output_json", is_flag=True, default=False, help="output raw JSON topology")
+def ping(key: str, password: str, host: str, port: int, siteid: str,
+         timeout: float, output_json: bool):
+    """Send a PING flood and collect responsive PINGs to map the hive topology."""
+    try:
+        from hivemind_core.hive_map import HiveMapper
+    except ImportError:
+        raise RuntimeError(
+            "hivemind-core is not installed. "
+            "Install it with: pip install hivemind-core"
+        )
+
+    identity = NodeIdentity()
+    password = password or identity.password
+    key = key or identity.access_key
+    host = host or identity.default_master
+    siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
+
+    if not host.startswith("ws://") and not host.startswith("wss://"):
+        host = "ws://" + host
+
+    if not key or not password or not host:
+        raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
+                           "call 'hivemind-client set-identity'")
+
+    mapper = HiveMapper()
+    flood_id = str(uuid.uuid4())
+    my_peer = f"{identity.name or 'hivemind-client'}::{flood_id[:8]}"
+
+    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node.connect(FakeBus(), site_id=siteid)
+    node.connected_event.wait(timeout=10)
+    print(f"== connected to HiveMind, sending PING (timeout={timeout}s)")
+
+    mapper.start_ping(flood_id)
+
+    def on_ping_response(outer: HiveMessage):
+        """Handle a PROPAGATE message whose inner payload is a responsive PING."""
+        inner = outer.payload
+        if not isinstance(inner, HiveMessage):
+            return
+        if inner.msg_type != HiveMessageType.PING:
+            return
+        ping_data = inner.payload
+        if not isinstance(ping_data, dict):
+            return
+        if ping_data.get("flood_id") != flood_id:
+            return
+        # Transfer route from outer PROPAGATE to inner PING so HiveMapper can read it
+        inner.replace_route(outer.route)
+        if mapper.on_ping(inner, received_at=time.time()):
+            peer = ping_data.get("peer", "?")
+            site = ping_data.get("site_id", "")
+            site_str = f"  site={site}" if site else ""
+            print(f"  PING from {peer}{site_str}")
+
+    node.on(HiveMessageType.PROPAGATE, on_ping_response)
+
+    ping_payload = {
+        "flood_id": flood_id,
+        "timestamp": time.time(),
+        "peer": my_peer,
+        "site_id": siteid,
+    }
+    ping_inner = HiveMessage(HiveMessageType.PING, ping_payload)
+    ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=ping_inner)
+    node.emit(ping_outer)
+
+    time.sleep(timeout)
+    node.close()
+
+    if not mapper.nodes:
+        print("[No responses received within the timeout window]")
+        return
+
+    if output_json:
+        print(mapper.to_json())
+    else:
+        print("\n== Hive Map ==")
+        print(mapper.to_ascii(root_peer=my_peer))
 
 
 if __name__ == "__main__":

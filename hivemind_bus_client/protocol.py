@@ -1,7 +1,7 @@
 import pybase64
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Dict, Callable
+from typing import Optional
 
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
@@ -91,7 +91,7 @@ class HiveMindSlaveProtocol:
     shared_bus: bool = False
     binarize: bool = False
     site_id: str = "unknown"
-    _propagate_payload_handlers: Dict[str, Callable] = field(default_factory=dict)  # dispatch table for PROPAGATE inner types
+    _seen_flood_ids: set = field(default_factory=set)
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
@@ -116,12 +116,7 @@ class HiveMindSlaveProtocol:
         self.hm.on(HiveMessageType.BUS, self.handle_bus)
         self.hm.on(HiveMessageType.HANDSHAKE, self.handle_handshake)
 
-        # Dispatch table for PROPAGATE inner payload types
-        self._propagate_payload_handlers: Dict[str, Callable[[HiveMessage], None]] = {
-            HiveMessageType.PING: self._handle_ping,
-            HiveMessageType.PONG: self._handle_pong,
-            HiveMessageType.INTERCOM: self._handle_propagate_intercom,
-        }
+
 
     @property
     def node_id(self):
@@ -270,19 +265,13 @@ class HiveMindSlaveProtocol:
     def handle_propagate(self, message: HiveMessage):
         LOG.info(f"PROPAGATE: {message.payload}")
 
-        # Lazy initialization of dispatch table for tests that bypass bind()
-        if not hasattr(self, '_propagate_payload_handlers') or not self._propagate_payload_handlers:
-            self._propagate_payload_handlers = {
-                HiveMessageType.PING: self._handle_ping,
-                HiveMessageType.PONG: self._handle_pong,
-                HiveMessageType.INTERCOM: self._handle_propagate_intercom,
-            }
-
-        # Dispatch on inner payload type
+        # Dispatch on inner payload type using attribute lookup (not cached
+        # references) so that monkey-patching _handle_ping etc. works in tests.
         inner = message.payload
-        handler = self._propagate_payload_handlers.get(inner.msg_type)
-        if handler:
-            handler(message)
+        if inner.msg_type == HiveMessageType.PING:
+            self._handle_ping(message)
+        elif inner.msg_type == HiveMessageType.INTERCOM:
+            self._handle_propagate_intercom(message)
 
         if message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
@@ -301,9 +290,11 @@ class HiveMindSlaveProtocol:
         self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
 
     def _handle_ping(self, message: HiveMessage):
-        """Respond to a received PROPAGATE(PING) with a PROPAGATE(PONG).
+        """Handle a received PROPAGATE(PING) using flood-based discovery.
 
-        Emits ``hive.ping.received`` on the internal bus for skill integration.
+        Emits ``hive.ping.received`` on the internal bus, then — if this
+        ``flood_id`` has not been seen before — builds and sends this node's
+        own responsive PING (same ``flood_id``) upstream.
 
         Args:
             message: The outer PROPAGATE HiveMessage whose inner payload is a PING.
@@ -311,51 +302,44 @@ class HiveMindSlaveProtocol:
         inner = message.payload
         ping_payload = inner.payload if isinstance(inner.payload, dict) else {}
 
-        peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
-        pong_payload = {
-            "ping_id": ping_payload.get("ping_id", ""),
-            "timestamp": ping_payload.get("timestamp", 0.0),
-            "pong_timestamp": time.time(),
-            "peer": peer,
-            "site_id": self.site_id,
-        }
-        pong_inner = HiveMessage(HiveMessageType.PONG, pong_payload)
-        pong_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=pong_inner)
+        flood_id = ping_payload.get("flood_id", "")
 
-        LOG.debug(f"Sending PONG for ping_id={ping_payload.get('ping_id')}")
-        self.hm.emit(pong_outer)
-
+        # Emit bus event (always)
         if self.internal_protocol and self.internal_protocol.bus:
             self.internal_protocol.bus.emit(MycroftMessage(
                 "hive.ping.received",
                 {
-                    "ping_id": ping_payload.get("ping_id"),
+                    "flood_id": flood_id,
                     "peer": ping_payload.get("peer"),
                     "site_id": ping_payload.get("site_id"),
                 },
             ))
 
-    def _handle_pong(self, message: HiveMessage):
-        """Process a received PROPAGATE(PONG).
+        # Lazy init for tests that bypass bind()
+        if not hasattr(self, '_seen_flood_ids'):
+            self._seen_flood_ids = set()
 
-        Emits ``hive.pong.received`` on the internal bus so skills and the
-        ``hivemind-client ping`` CLI can react.
+        # Flood-loop prevention
+        if not flood_id or flood_id in self._seen_flood_ids:
+            return
+        # Cap set size to prevent unbounded memory growth
+        if len(self._seen_flood_ids) > 1000:
+            self._seen_flood_ids.clear()
+        self._seen_flood_ids.add(flood_id)
 
-        Args:
-            message: The outer PROPAGATE HiveMessage whose inner payload is a PONG.
-        """
-        inner = message.payload
-        pong_payload = inner.payload if isinstance(inner.payload, dict) else {}
+        # Build our own responsive PING with the same flood_id
+        peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
+        own_ping_payload = {
+            "flood_id": flood_id,
+            "peer": peer,
+            "site_id": self.site_id,
+            "timestamp": time.time(),
+        }
+        own_ping_inner = HiveMessage(HiveMessageType.PING, own_ping_payload)
+        own_ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=own_ping_inner)
 
-        LOG.debug(
-            f"Received PONG from {pong_payload.get('peer')} "
-            f"ping_id={pong_payload.get('ping_id')}"
-        )
-
-        if self.internal_protocol and self.internal_protocol.bus:
-            self.internal_protocol.bus.emit(
-                MycroftMessage("hive.pong.received", pong_payload)
-            )
+        LOG.debug(f"Sending responsive PING for flood_id={flood_id}")
+        self.hm.emit(own_ping_outer)
 
     def handle_intercom(self, message: HiveMessage):
         LOG.info(f"INTERCOM: {message.payload}")

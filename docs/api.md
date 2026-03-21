@@ -42,8 +42,7 @@ Enumeration of HiveMind message types.
 | `HELLO` | `"hello"` | Node announcement and session setup |
 | `QUERY` | `"query"` | Escalate until one node responds |
 | `CASCADE` | `"cascade"` | Propagate expecting responses from all nodes |
-| `PING` | `"ping"` | Network topology discovery |
-| `PONG` | `"pong"` | Response to PING |
+| `PING` | `"ping"` | Network topology discovery (flood-based; PONG removed) |
 | `BINARY` | `"bin"` | Raw binary data container |
 | `THIRDPRTY` | `"3rdparty"` | User-defined message type |
 
