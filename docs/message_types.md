@@ -183,6 +183,48 @@ hm_protocol.cascade_select_callback = select_best
 
 ---
 
+## Route Metadata
+
+Every `HiveMessage` has a `route` field: `List[Dict[str, Any]]` — an ordered list of hops tracking the network path.
+
+### Hop Structure
+
+Each hop is a dict: `{"source": "peer_id", "targets": ["peer_id1", "peer_id2"]}`.
+
+- `source`: the peer that forwarded the message at this hop
+- `targets`: the peers the message was sent to from this hop
+
+### Multi-Hop Example
+
+After S0 → R1 → M0 traversal:
+
+```python
+message.route == [
+    {"source": "S0_peer_id", "targets": ["R1_peer_id"]},
+    {"source": "R1_peer_id", "targets": ["M0_peer_id"]},
+]
+```
+
+### Route API
+
+```python
+# Record a hop (called automatically by protocol layer)
+message.update_hop_data()
+
+# Replace route (used when transferring between wrapper/inner messages)
+message.replace_route(other_message.route)
+
+# Read route (filters incomplete hops)
+for hop in message.route:
+    print(f"{hop['source']} → {hop['targets']}")
+```
+
+### Serialization
+
+Route survives `as_dict()` → `deserialize()` roundtrips. The `route` field is included in JSON serialization and restored on deserialization (`message.py:208-231`).
+
+---
+
 ## Serialization and Encryption
 
 Before being sent over the network, `HiveMessage` objects are:

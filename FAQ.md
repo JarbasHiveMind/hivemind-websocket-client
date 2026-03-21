@@ -16,3 +16,9 @@ Each satellite tracks `flood_id` values it has already responded to. If a PING a
 
 ### How do I handle binary data like audio?
 Subclass `BinaryDataCallbacks` and pass an instance to the `HiveMessageBusClient` constructor. This lets you define custom logic for when the hub sends TTS audio or files to the satellite.
+
+### What is `route` metadata on HiveMessage?
+An ordered list of hops (`[{"source": peer, "targets": [peers]}]`) tracking the network path a message has traversed. Populated by `update_hop_data()` at each node, transferred through wrappers via `replace_route()`. Survives `as_dict()` → `deserialize()` roundtrips. Type hint: `List[Dict[str, Any]]`, not `List[str]`.
+
+### Why was `deserialize()` dropping route/node/source_peer?
+Bug: `as_dict` serialized these fields but `deserialize()` didn't pass them to the constructor. Fixed in `message.py:208-231` — all three deserialize paths now restore `route`, `node`, and `source_peer`.
