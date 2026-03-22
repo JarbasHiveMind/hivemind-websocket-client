@@ -22,3 +22,6 @@ An ordered list of hops (`[{"source": peer, "targets": [peers]}]`) tracking the 
 
 ### Why was `deserialize()` dropping route/node/source_peer?
 Bug: `as_dict` serialized these fields but `deserialize()` didn't pass them to the constructor. Fixed in `message.py:208-231` — all three deserialize paths now restore `route`, `node`, and `source_peer`.
+
+### Why doesn't `deserialize()` restore `source_peer` and `node`?
+They are per-hop transient fields set fresh at each node by `update_source_peer()`. Restoring them through deserialization breaks `target_peers` fallback logic (`target_peers` returns `[source_peer]` when `_targets` is empty) and can cause PING flood loops in relay chains. Only `route` (hop trail) is restored — it accumulates across hops.
