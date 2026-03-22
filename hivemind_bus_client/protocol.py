@@ -249,12 +249,6 @@ class HiveMindSlaveProtocol:
             if site and site == self.site_id:
                 self.handle_bus(message.payload)
 
-        # if this device is also a hivemind server
-        # forward to HiveMindListenerInternalProtocol
-        data = message.as_dict  # fix: serialize() returns str; MycroftMessage.data must be dict
-        ctxt = {"source": self.node_id}
-        self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
-
     def _handle_propagate_intercom(self, message: HiveMessage):
         """Handle PROPAGATE(INTERCOM) via dispatch table.
 
@@ -284,12 +278,6 @@ class HiveMindSlaveProtocol:
                 # do not inject by default
                 pass  # TODO - when to inject ? add list of trusted peers?
                 # self.handle_bus(message.payload)
-
-        # if this device is also a hivemind server
-        # forward to HiveMindListenerInternalProtocol
-        data = message.as_dict  # fix: serialize() returns str; MycroftMessage.data must be dict
-        ctxt = {"source": self.node_id}
-        self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
 
     def _handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
