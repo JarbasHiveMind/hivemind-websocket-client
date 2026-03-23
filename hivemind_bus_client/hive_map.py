@@ -22,6 +22,7 @@ class NodeInfo:
     timestamp: Optional[float] = None       # sender's clock when they created the PING
     received_at: Optional[float] = None     # our local clock when we received it
     public_key: Optional[str] = None        # RSA public key if provided in PING
+    lang: Optional[str] = None             # locale announced by the node (e.g. "en-us")
     trusted: bool = False                   # whether this peer's key is in the trusted list
 
     @property
@@ -102,6 +103,7 @@ class HiveMapper:
             timestamp=payload.get("timestamp"),
             received_at=received_at,
             public_key=payload.get("public_key"),
+            lang=payload.get("lang"),
         )
 
         for hop in message.route:
@@ -156,6 +158,7 @@ class HiveMapper:
                 "timestamp": n.timestamp,
                 "latency_ms": n.latency_ms,
                 "public_key": n.public_key,
+                "lang": n.lang,
                 "trusted": n.trusted,
             }
             for n in self.nodes.values()

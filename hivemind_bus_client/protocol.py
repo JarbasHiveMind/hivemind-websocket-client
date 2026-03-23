@@ -1,6 +1,5 @@
 import random
 
-import pybase64
 import threading
 import time
 from dataclasses import dataclass, field
@@ -13,12 +12,12 @@ from ovos_bus_client.session import Session, SessionManager
 from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import HiveMessageBusClient
-from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers
+from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers, hybrid_decrypt
 from hivemind_bus_client.hive_map import HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
-from poorman_handshake.asymmetric.utils import decrypt_RSA, load_RSA_key
+from poorman_handshake.asymmetric.utils import load_RSA_key
 
 
 class CascadeAggregator:
@@ -422,12 +421,17 @@ class HiveMindSlaveProtocol:
 
         # Build our own responsive PING with the same flood_id
         peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
+        # announce lang from active session if available
+        sess = SessionManager.default_session
+        lang = getattr(sess, "lang", None) if sess else None
+
         own_ping_payload = {
             "flood_id": flood_id,
             "peer": peer,
             "site_id": self.site_id,
             "timestamp": time.time(),
-            # TODO: add pubkey and lang
+            "public_key": self.identity.public_key,
+            "lang": lang,
         }
         own_ping_inner = HiveMessage(HiveMessageType.PING, own_ping_payload)
         own_ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=own_ping_inner)
@@ -500,19 +504,17 @@ class HiveMindSlaveProtocol:
             return False
 
         pload = message.payload
-        if isinstance(pload, dict) and "ciphertext" in pload:
+        if isinstance(pload, dict) and "encrypted_key" in pload:
+            # hybrid encryption envelope (AES key RSA-encrypted)
             try:
-                ciphertext = pybase64.b64decode(pload["ciphertext"])
-                signature = pybase64.b64decode(pload["signature"])
-
                 private_key = load_RSA_key(self.identity.private_key)
-                decrypted = decrypt_RSA(private_key, ciphertext).decode("utf8")
+                decrypted = hybrid_decrypt(private_key, pload).decode("utf-8")
                 message._payload = HiveMessage.deserialize(decrypted)
             except Exception as e:
                 if k:
-                    LOG.error("failed to decrypt message!")
+                    LOG.error("failed to decrypt INTERCOM message!")
                 else:
-                    LOG.debug("failed to decrypt message, not for us")
+                    LOG.debug("failed to decrypt INTERCOM, not for us")
                 return False
 
         # explicitly targeted at us → always trust

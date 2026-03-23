@@ -19,8 +19,8 @@ from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers)
-from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
+                                            SupportedEncodings, SupportedCiphers, hybrid_encrypt)
+from poorman_handshake.asymmetric.utils import load_RSA_key, sign_RSA
 
 
 class BinaryDataCallbacks:
@@ -536,13 +536,17 @@ class HiveMessageBusClient(OVOSBusClient):
 
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
-                      pubkey: Union[str, bytes, RSA.RsaKey]):
+                      pubkey: Union[str, bytes, 'RSA.RsaKey']):
+        """Send an INTERCOM message using hybrid encryption.
 
-        encrypted_message = encrypt_RSA(pubkey, message.serialize())
+        Generates a random AES-256 key, encrypts the payload with AES-GCM,
+        then RSA-encrypts only the AES key with the target's public key.
+        The ciphertext is signed with this node's private key.
 
-        # sign message
+        Args:
+            message: The message to send.
+            pubkey: RSA public key of the target peer.
+        """
         private_key = load_RSA_key(self.identity.private_key)
-        signature = sign_RSA(private_key, encrypted_message)
-
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
-                                                                 "signature": pybase64.b64encode(signature)}))
+        envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload=envelope))
