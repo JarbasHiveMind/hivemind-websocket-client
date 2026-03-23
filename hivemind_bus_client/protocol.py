@@ -308,6 +308,7 @@ class HiveMindSlaveProtocol:
                 self.start_handshake()
 
     def handle_bus(self, message: HiveMessage):
+        """Dispatch event to the agent protocol bus"""
         LOG.info(f"BUS: {message.payload.msg_type}")
         assert message.payload.msg_type == HiveMessageType.BUS
         assert isinstance(message.payload, MycroftMessage)
@@ -326,6 +327,13 @@ class HiveMindSlaveProtocol:
         self.internal_protocol.bus.emit(pload)
 
     def handle_broadcast(self, message: HiveMessage):
+        """Handle a BROADCAST message received from the master.
+
+        By definition all messages from masters are trusted
+
+        Args:
+            message: The BROADCAST HiveMessage.
+        """
         LOG.info(f"BROADCAST: {message.payload}")
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
 
@@ -339,9 +347,15 @@ class HiveMindSlaveProtocol:
                 self.handle_bus(message.payload)
 
     def handle_propagate(self, message: HiveMessage):
+        """
+        TODO: we may receive untrusted messages from all across the hive.
+
+        we need to store trusted pubkeys before this is usable
+        """
         LOG.info(f"PROPAGATE: {message.payload}")
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM, HiveMessageType.PING]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
+            # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.PING:
             self._handle_ping(message)
@@ -353,7 +367,7 @@ class HiveMindSlaveProtocol:
                 # satellite anywhere in the hive
                 # do not inject by default
                 pass  # TODO - when to inject ? add list of trusted peers?
-                # self.handle_bus(message.payload)
+                # self.handle_bus(message.payload)  # sat A can inject bus into sat B if unchecked
 
     def _handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
@@ -384,6 +398,7 @@ class HiveMindSlaveProtocol:
             "peer": peer,
             "site_id": self.site_id,
             "timestamp": time.time(),
+            # TODO: add pubkey and lang
         }
         own_ping_inner = HiveMessage(HiveMessageType.PING, own_ping_payload)
         own_ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=own_ping_inner)
@@ -394,8 +409,7 @@ class HiveMindSlaveProtocol:
     def handle_query(self, message: HiveMessage):
         """Handle a QUERY message received from the master.
 
-        Response (is_response=True): Emit the inner BUS payload on the internal bus.
-        Request (is_response=False): Forward downstream if this node is also a master.
+        By definition all responses from masters are trusted
 
         Args:
             message: The QUERY HiveMessage.
@@ -403,12 +417,15 @@ class HiveMindSlaveProtocol:
         LOG.info(f"QUERY: {message.payload}")
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
+            # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
             self.handle_bus(message)
 
     def handle_cascade(self, message: HiveMessage):
         """Handle a CASCADE response received from the master.
+
+        Unlike QUERY we may receive untrusted responses from all across the hive
 
         Responses are buffered in a ``CascadeAggregator``. After
         ``cascade_timeout`` seconds the ``cascade_select_callback``
@@ -420,6 +437,7 @@ class HiveMindSlaveProtocol:
         LOG.info(f"CASCADE: {message.payload}")
         assert message.payload.msg_type == HiveMessageType.BUS
 
+        # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
         if self.cascade_aggregator is None or self.cascade_aggregator._resolved:
             select_cb = self.cascade_select_callback or random.choice
             expected = len(self.hive_mapper.nodes) if self.hive_mapper else None
@@ -432,6 +450,12 @@ class HiveMindSlaveProtocol:
         self.cascade_aggregator.add_response(message)
 
     def handle_intercom(self, message: HiveMessage):
+        """
+        TODO: end2end encrypted but we may receive untrusted messages from all across the hive.
+          sat A can inject bus into sat B unchecked
+
+        we need to store trusted pubkeys before this is usable
+        """
         LOG.info(f"INTERCOM: {message.payload}")
         assert message.payload.msg_type == HiveMessageType.BUS
 
@@ -463,5 +487,6 @@ class HiveMindSlaveProtocol:
                     LOG.debug("failed to decrypt message, not for us")
                 return False
 
-        self.handle_bus(message)
+        return False # TODO - no-op until safer
+        self.handle_bus(message) # TODO: currently assumes all peers are trusted
         return True
