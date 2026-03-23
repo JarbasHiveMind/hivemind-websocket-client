@@ -10,7 +10,7 @@
 - **Trusted Peers**: `NodeIdentity.trusted_keys` gates BUS injection for PROPAGATE and INTERCOM from untrusted sources.
 - **CASCADE Aggregation**: Collects responses from all nodes with timeout and early resolution via `HiveMapper`.
 - **PING Discovery**: Flood-based topology mapping with public key and locale announcement.
-- **Binary Support**: Optimized handling for binary payloads such as TTS audio and file transfers.
+- **Binary Support**: Optimized handling for binary payloads such as TTS audio and file transfers.\n- **Rendezvous Polling**: Optional background thread that periodically retrieves INTERCOM messages from one or more `hivemind-rendezvous` servers, enabling async communication with nodes from non-simultaneously-connected hives.
 - **Drop-in Replacement**: Designed to be mostly compatible with `ovos-bus-client`, allowing easy migration of existing OVOS skills or services to HiveMind.
 
 ## Primary Components

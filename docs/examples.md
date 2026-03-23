@@ -226,3 +226,64 @@ announcement = HiveMessage(
 )
 client.emit(announcement)
 ```
+
+---
+
+## Receiving INTERCOM messages via a rendezvous server
+
+Nodes in other hives can deposit INTERCOM messages at a shared rendezvous server. Enable polling to receive them asynchronously — no simultaneous connection required.
+
+```python
+from hivemind_bus_client.client import HiveMessageBusClient
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+
+client = HiveMessageBusClient(
+    key="my_access_key",
+    password="my_password",
+    host="ws://127.0.0.1",
+    rendezvous_urls=["http://rendezvous.example.com"],
+    rendezvous_poll_interval=30.0,
+)
+client.connect()
+
+# handler fires for both live WebSocket INTERCOM and rendezvous-retrieved ones
+client.on(HiveMessageType.INTERCOM, lambda msg: print("INTERCOM:", msg.payload))
+```
+
+## Depositing a message at a rendezvous server (sender side)
+
+The sender uses `hivemind-rendezvous` client helpers directly (no WebSocket needed):
+
+```python
+import json, time, urllib.request
+import base64
+from poorman_handshake.asymmetric.utils import sign_RSA, load_RSA_key
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_bus_client.identity import NodeIdentity
+
+identity = NodeIdentity()
+recipient_pubkey = "-----BEGIN PUBLIC KEY-----\n..."   # obtained e.g. via PING
+
+# Build and encrypt an INTERCOM payload
+from hivemind_bus_client.encryption import hybrid_encrypt
+from ovos_bus_client.message import Message as MycroftMessage
+
+private_key = load_RSA_key(identity.private_key)
+inner = MycroftMessage("speak", {"utterance": "hello from the other side"})
+envelope = hybrid_encrypt(recipient_pubkey, HiveMessage(HiveMessageType.BUS, inner).serialize(),
+                          sign_key=private_key)
+msg = HiveMessage(HiveMessageType.INTERCOM, payload=envelope)
+
+body = json.dumps({
+    "payload": msg.serialize(),
+    "target_pubkey": recipient_pubkey,
+}).encode()
+req = urllib.request.Request(
+    "http://rendezvous.example.com/deposit",
+    data=body,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(req) as resp:
+    print(json.loads(resp.read()))   # {"status": "ok", "deposit_id": "..."}
+```

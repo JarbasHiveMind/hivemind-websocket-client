@@ -22,6 +22,7 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`QUERY`** | Request-response upstream | Like ESCALATE, but first answering node sends a response back. Stops propagation on answer. |
 | **`CASCADE`** | Request-response flood | Like PROPAGATE, but expects responses from ALL nodes. Supports disambiguation. |
 | **`PING`** | Network discovery flood | Each node responds with its own PING (same `flood_id`). Carried inside PROPAGATE. Route metadata = hive path. |
+| **`RENDEZVOUS`** | Async dead-drop (HTTP plugin) | Sender deposits INTERCOM payload at a rendezvous server; recipient retrieves via pubkey proof. Implemented by `hivemind-rendezvous`; not dispatched over WebSocket. |
 | **`HELLO`** | Node announcement | Session sync at connection time. |
 | **`HANDSHAKE`** | Crypto negotiation | Key exchange at connection time. |
 | **`THIRDPRTY`** | User-land custom | Application-defined payload; HiveMind relays without interpretation. |
@@ -152,6 +153,38 @@ client.on(HiveMessageType.PING, on_ping)
 ```
 
 For automated topology collection use `HiveMapper` from `hivemind_core.hive_map`.
+
+---
+
+## RENDEZVOUS — Async Dead Drop
+
+`RENDEZVOUS` is implemented as a standalone HTTP plugin (`hivemind-rendezvous`), separate from the WebSocket protocol. It is **not dispatched over the WebSocket** — it is retrieved by the client via periodic HTTP polling.
+
+### Use Case
+
+Nodes from different, non-simultaneously-connected hives can exchange INTERCOM messages via a shared rendezvous server without ever establishing a direct connection or knowing each other's IP address.
+
+### Polling
+
+Configure `rendezvous_urls` in `HiveMessageBusClient` to enable background polling:
+
+```python
+client = HiveMessageBusClient(
+    key="...", password="...", host="ws://myhub",
+    rendezvous_urls=["http://rendezvous.example.com"],
+    rendezvous_poll_interval=60.0,
+)
+```
+
+Each poll cycle:
+1. Signs `pubkey + str(timestamp)` with the node's RSA private key (proof-of-ownership).
+2. POSTs to `{url}/retrieve` with `pubkey`, `timestamp`, and `signature`.
+3. Server verifies signature and freshness (timestamp within ±60 s), returns pending messages.
+4. Each returned serialised `HiveMessage` is fed into `_handle_hive_protocol()` — same path as live WebSocket messages.
+
+### Privacy
+
+The rendezvous server sees the recipient's pubkey SHA-256 fingerprint and deposit metadata. It cannot read INTERCOM payload content (E2E RSA-encrypted). Neither communicating node learns the other's IP address.
 
 ---
 

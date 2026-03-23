@@ -40,6 +40,31 @@ msg = HiveMessage(HiveMessageType.BUS,
 client.emit(msg) # Encrypts and sends via the WebSocket
 ```
 
+### Rendezvous Polling
+
+Pass `rendezvous_urls` to receive INTERCOM messages deposited at a `hivemind-rendezvous` server by nodes in other hives — even when those nodes are not simultaneously connected.
+
+A daemon thread polls each URL every `rendezvous_poll_interval` seconds (default: 60). Retrieved messages are fed into the same `_handle_hive_protocol` path as live WebSocket messages, so existing `INTERCOM` handlers work without modification.
+
+```python
+client = HiveMessageBusClient(
+    key="my_access_key",
+    password="my_password",
+    host="ws://127.0.0.1",
+    rendezvous_urls=[
+        "http://rendezvous.example.com",
+        "http://backup-rendezvous.example.com",
+    ],
+    rendezvous_poll_interval=30.0,   # poll every 30 seconds
+)
+client.connect()
+
+# INTERCOM messages retrieved from rendezvous are dispatched here
+client.on(HiveMessageType.INTERCOM, lambda msg: print("Got rendezvous message:", msg))
+```
+
+The poller stops automatically when the WebSocket connection closes (`on_close`).
+
 ## 2. `HiveMindHTTPClient`
 Use this for scenarios where a persistent WebSocket is not desired or possible.
 - **Source**: `hivemind_bus_client.http_client.HiveMindHTTPClient`

@@ -43,7 +43,7 @@ Enumeration of HiveMind message types.
 | `QUERY` | `"query"` | Request-response upstream; first answering node wins |
 | `CASCADE` | `"cascade"` | Request-response flood; collects responses from all nodes |
 | `PING` | `"ping"` | Network topology discovery (flood-based) |
-| `RENDEZVOUS` | `"rendezvous"` | Reserved for rendezvous nodes |
+| `RENDEZVOUS` | `"rendezvous"` | Async dead-drop via `hivemind-rendezvous` HTTP plugin; payload is INTERCOM; retrieved via pubkey proof |
 | `BINARY` | `"bin"` | Raw binary data container |
 | `THIRDPRTY` | `"3rdparty"` | User-defined message type |
 
@@ -69,6 +69,21 @@ Describes the content of a `BINARY` message.
 
 WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `key` | `str` | `None` | Access key credential |
+| `password` | `str` | `None` | Password credential |
+| `host` | `str` | `None` | Hub WebSocket URL (e.g. `"ws://192.168.1.10"`) |
+| `port` | `int` | `None` | Hub port (default 5678) |
+| `identity` | `NodeIdentity` | `None` | Pre-built identity; loaded from disk if omitted |
+| `rendezvous_urls` | `List[str]` | `None` | Rendezvous server base URLs to poll periodically (`client.py:106`) |
+| `rendezvous_poll_interval` | `float` | `60.0` | Polling interval in seconds (`client.py:107`) |
+| `share_bus` | `bool` | `False` | Share internal OVOS bus with hub (SHARED_BUS) |
+| `compress` | `bool` | `True` | Enable message compression |
+| `binarize` | `bool` | `True` | Use binary wire format when hub supports it |
+
 ### Core Methods
 
 - `connect(bus=FakeBus(), protocol=None, site_id=None)` (`client.py:193`): Connects to the HiveMind hub, starts the background thread, and waits for the handshake to complete.
@@ -78,6 +93,14 @@ WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 - `remove(event_name, func)` (`client.py:447`): Removes a registered handler.
 - `wait_for_handshake(timeout=5, max_retries=15)` (`client.py:236`): Blocks until the cryptographic handshake with the hub is finished.
 - `emit_intercom(message, pubkey)` (`client.py:538`): Sends a hybrid-encrypted (AES-GCM + RSA) message targeted at a specific node's public key.
+
+### Rendezvous Polling
+
+When `rendezvous_urls` is provided, a daemon thread (`"rendezvous-poller"`) starts automatically and polls each URL at `rendezvous_poll_interval` seconds.
+
+- `_start_rendezvous_polling()` (`client.py:250`): Start the poller thread (called automatically in `__init__`).
+- `_stop_rendezvous_polling()` (`client.py:263`): Stop the poller thread (called automatically in `on_close()`).
+- `_poll_rendezvous(base_url)` (`client.py:276`): Single poll cycle for one URL — signs proof-of-ownership, POSTs to `/retrieve`, feeds each returned `HiveMessage` into `_handle_hive_protocol()`.
 
 ### Waiting for Messages
 
