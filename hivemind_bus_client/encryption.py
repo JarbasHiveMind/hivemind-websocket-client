@@ -499,6 +499,84 @@ def decrypt_ChaCha20_Poly1305(key: Union[str, bytes],
     return cipher.decrypt_and_verify(ciphertext, tag)
 
 
+def hybrid_encrypt(public_key: Union[str, bytes, 'RSA.RsaKey'],
+                   plaintext: Union[str, bytes],
+                   sign_key: Optional[Union[str, bytes, 'RSA.RsaKey']] = None) -> Dict[str, str]:
+    """Hybrid-encrypt *plaintext* for the owner of *public_key*.
+
+    Generates a random 32-byte AES-GCM key, encrypts the payload with it,
+    then RSA-encrypts only the AES key with the target's public key.
+    Optionally signs the ciphertext with *sign_key*.
+
+    The returned dict is JSON-serialisable and safe to embed in a
+    ``HiveMessage`` payload.
+
+    Args:
+        public_key: RSA public key of the target peer.
+        plaintext: Data to encrypt.
+        sign_key: Optional RSA private key to sign the ciphertext.
+
+    Returns:
+        Dict with keys ``encrypted_key``, ``ciphertext``, ``tag``, ``nonce``,
+        and optionally ``signature`` — all base64-encoded strings.
+    """
+    from Cryptodome.Random import get_random_bytes
+    from poorman_handshake.asymmetric.utils import encrypt_RSA, sign_RSA
+
+    if isinstance(plaintext, str):
+        plaintext = plaintext.encode("utf-8")
+
+    # generate ephemeral symmetric key
+    sym_key = get_random_bytes(32)  # AES-256
+
+    # encrypt payload with AES-GCM
+    ciphertext, tag, nonce = encrypt_AES(sym_key, plaintext)
+
+    # RSA-encrypt the symmetric key
+    encrypted_key = encrypt_RSA(public_key, sym_key)
+
+    result = {
+        "encrypted_key": pybase64.b64encode(encrypted_key).decode("ascii"),
+        "ciphertext": pybase64.b64encode(ciphertext).decode("ascii"),
+        "tag": pybase64.b64encode(tag).decode("ascii"),
+        "nonce": pybase64.b64encode(nonce).decode("ascii"),
+    }
+
+    if sign_key is not None:
+        signature = sign_RSA(sign_key, ciphertext)
+        result["signature"] = pybase64.b64encode(signature).decode("ascii")
+
+    return result
+
+
+def hybrid_decrypt(private_key: Union[str, bytes, 'RSA.RsaKey'],
+                   envelope: Dict[str, str]) -> bytes:
+    """Decrypt a hybrid-encrypted envelope.
+
+    The envelope must contain ``encrypted_key``, ``ciphertext``, ``tag``,
+    and ``nonce`` — all base64-encoded.
+
+    Args:
+        private_key: RSA private key to decrypt the symmetric key.
+        envelope: The dict produced by ``hybrid_encrypt``.
+
+    Returns:
+        The decrypted plaintext bytes.
+    """
+    from poorman_handshake.asymmetric.utils import decrypt_RSA
+
+    encrypted_key = pybase64.b64decode(envelope["encrypted_key"])
+    ciphertext = pybase64.b64decode(envelope["ciphertext"])
+    tag = pybase64.b64decode(envelope["tag"])
+    nonce = pybase64.b64decode(envelope["nonce"])
+
+    # RSA-decrypt the symmetric key
+    sym_key = decrypt_RSA(private_key, encrypted_key)
+
+    # AES-GCM decrypt the payload
+    return decrypt_AES_128(sym_key, ciphertext, tag, nonce)
+
+
 if __name__ == "__main__":
     from Cryptodome.Random import get_random_bytes
 
