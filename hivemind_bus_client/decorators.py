@@ -233,6 +233,24 @@ def on_hello(payload_type: str,
     return wrapped_handler
 
 
+def on_query(payload_type: str,
+             bus: 'HiveMessageBusClient') -> Callable:
+    """Decorator: register the wrapped function for ``QUERY`` messages.
+
+    Args:
+        payload_type: The inner message type to match.
+        bus: The bus to register on.
+    """
+    def wrapped_handler(func: Callable) -> Callable:
+        waiter = HivePayloadListener(bus=bus, payload_type=payload_type,
+                                     message_type=HiveMessageType.QUERY)
+        waiter.add_handler(func)
+        waiter.listen()
+        func.shutdown = waiter.shutdown
+        return func
+    return wrapped_handler
+
+
 def on_cascade(payload_type: str,
                bus: 'HiveMessageBusClient') -> Callable:
     """Decorator: register the wrapped function for ``CASCADE`` messages.

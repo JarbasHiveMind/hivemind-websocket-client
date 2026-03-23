@@ -5,7 +5,11 @@
 ## Key Features
 
 - **Transparent Routing**: Automatically handles message routing between satellites and hubs.
-- **Security**: Built-in support for encrypted handshakes (RSA or Password-based) and secure message transmission.
+- **Per-link Encryption**: AES-GCM or ChaCha20-Poly1305, negotiated at handshake.
+- **Hybrid INTERCOM Encryption**: AES-256-GCM payload + RSA-encrypted ephemeral key per message — no size limits.
+- **Trusted Peers**: `NodeIdentity.trusted_keys` gates BUS injection for PROPAGATE and INTERCOM from untrusted sources.
+- **CASCADE Aggregation**: Collects responses from all nodes with timeout and early resolution via `HiveMapper`.
+- **PING Discovery**: Flood-based topology mapping with public key and locale announcement.
 - **Binary Support**: Optimized handling for binary payloads such as TTS audio and file transfers.
 - **Drop-in Replacement**: Designed to be mostly compatible with `ovos-bus-client`, allowing easy migration of existing OVOS skills or services to HiveMind.
 

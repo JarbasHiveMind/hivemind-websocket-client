@@ -8,6 +8,7 @@ from hivemind_bus_client.encryption import (
     encrypt_bin, decrypt_bin,
     encrypt_AES, decrypt_AES_128,
     encrypt_ChaCha20_Poly1305, decrypt_ChaCha20_Poly1305,
+    hybrid_encrypt, hybrid_decrypt,
     SupportedCiphers, SupportedEncodings,
     get_encoder, get_decoder,
     _norm_cipher, _norm_encoding,
@@ -117,6 +118,47 @@ class TestNormHelpers:
     def test_norm_encoding_invalid(self):
         with pytest.raises(InvalidEncoding):
             _norm_encoding("INVALID")
+
+
+class TestHybridEncryption:
+    """Test hybrid RSA+AES-GCM encrypt/decrypt roundtrip."""
+
+    @pytest.fixture(autouse=True)
+    def _keys(self):
+        from poorman_handshake.asymmetric.utils import create_RSA_key, load_RSA_key
+        self.pub_pem, self.priv_key_obj = create_RSA_key()
+        self.priv_key = self.priv_key_obj
+
+    def test_roundtrip(self):
+        plaintext = b"Hello from satellite!"
+        envelope = hybrid_encrypt(self.pub_pem, plaintext, sign_key=self.priv_key)
+        assert "encrypted_key" in envelope
+        assert "ciphertext" in envelope
+        assert "tag" in envelope
+        assert "nonce" in envelope
+        assert "signature" in envelope
+        recovered = hybrid_decrypt(self.priv_key, envelope)
+        assert recovered == plaintext
+
+    def test_roundtrip_without_signature(self):
+        plaintext = b"No signature"
+        envelope = hybrid_encrypt(self.pub_pem, plaintext)
+        assert "signature" not in envelope
+        recovered = hybrid_decrypt(self.priv_key, envelope)
+        assert recovered == plaintext
+
+    def test_string_plaintext(self):
+        plaintext = "unicode payload: café"
+        envelope = hybrid_encrypt(self.pub_pem, plaintext)
+        recovered = hybrid_decrypt(self.priv_key, envelope)
+        assert recovered == plaintext.encode("utf-8")
+
+    def test_wrong_key_fails(self):
+        from poorman_handshake.asymmetric.utils import create_RSA_key
+        other_pub, other_priv = create_RSA_key()
+        envelope = hybrid_encrypt(other_pub, b"secret")
+        with pytest.raises(Exception):
+            hybrid_decrypt(self.priv_key, envelope)
 
 
 class TestEncoderDecoder:

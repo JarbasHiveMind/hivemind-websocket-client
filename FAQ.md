@@ -49,6 +49,25 @@ The fundamental message unit. Wraps a payload with routing metadata (`msg_type`,
 ### Can I nest HiveMessages?
 Yes. `HiveMessage.__init__` normalizes nested `HiveMessage` payloads to dict via `as_dict`. The `payload` property reconstructs them on access.
 
+### How does CASCADE response aggregation work?
+`handle_cascade` (`protocol.py:436`) buffers responses in a `CascadeAggregator` (`protocol.py:21`). After `cascade_timeout` seconds (default 5.0) or when `expected_responses` are collected, the `cascade_select_callback` picks the best response. Default callback returns the first response. Set `HiveMindSlaveProtocol.cascade_select_callback` for custom disambiguation.
+
+### How does the satellite know how many CASCADE responses to expect?
+If `HiveMindSlaveProtocol.hive_mapper` is set (a `HiveMapper` instance from prior PING discovery), the aggregator uses `len(hive_mapper.nodes)` as the expected count and resolves early when all nodes respond. Without a mapper, it falls back to the timeout.
+
+### How does trust verification work for PROPAGATE and INTERCOM?
+PROPAGATE(BUS) and INTERCOM messages are only injected into the internal bus if the source peer's public key is in `NodeIdentity.trusted_keys`. Messages from untrusted peers are dropped with a warning. INTERCOM messages explicitly targeted at this node (via `target_public_key`) are always accepted. Source: `_is_source_trusted` — `protocol.py:310`, `handle_propagate` — `protocol.py:375`, `handle_intercom` — `protocol.py:478`.
+
+### How do I add a trusted peer?
+```python
+identity.add_trusted_key("hub-alias", "<peer_public_key>")
+identity.save()
+```
+Source: `NodeIdentity.add_trusted_key` — `identity.py:176`.
+
+### How does HiveMapper mark peers as trusted?
+After PING discovery, call `mapper.mark_trusted_nodes(identity.trusted_keys)` to set `NodeInfo.trusted` for each discovered node whose public key matches. Source: `HiveMapper.mark_trusted_nodes` — `hive_map.py:119`.
+
 ## Binary Protocol
 
 ### What is the binary serialization format?

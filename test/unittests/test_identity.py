@@ -160,6 +160,58 @@ class TestNodeIdentityProperties(unittest.TestCase):
             self.assertIn(".pem", store["secret_key"])
 
 
+class TestTrustedKeys(unittest.TestCase):
+
+    def _make_identity(self, data=None):
+        from hivemind_bus_client.identity import NodeIdentity
+        identity = NodeIdentity.__new__(NodeIdentity)
+        identity.IDENTITY_FILE = MagicMock()
+        store = data or {}
+        identity.IDENTITY_FILE.get = lambda k, default=None: store.get(k, default)
+        identity.IDENTITY_FILE.__getitem__ = lambda self_inner, k: store[k]
+        identity.IDENTITY_FILE.__setitem__ = lambda self_inner, k, v: store.__setitem__(k, v)
+        identity.IDENTITY_FILE.path = "/tmp/fake_identity.json"
+        return identity, store
+
+    def test_trusted_keys_empty_by_default(self):
+        identity, _ = self._make_identity({})
+        self.assertEqual(identity.trusted_keys, {})
+
+    def test_add_trusted_key(self):
+        identity, store = self._make_identity({})
+        self.assertTrue(identity.add_trusted_key("hub", "KEY_A"))
+        self.assertEqual(store["trusted_keys"]["hub"], "KEY_A")
+
+    def test_add_duplicate_alias_returns_false(self):
+        identity, _ = self._make_identity({"trusted_keys": {"hub": "KEY_A"}})
+        self.assertFalse(identity.add_trusted_key("hub", "KEY_B"))
+
+    def test_remove_trusted_key(self):
+        identity, store = self._make_identity({"trusted_keys": {"hub": "KEY_A", "relay": "KEY_B"}})
+        self.assertTrue(identity.remove_trusted_key("hub"))
+        self.assertNotIn("hub", store["trusted_keys"])
+        self.assertIn("relay", store["trusted_keys"])
+
+    def test_remove_missing_alias_returns_false(self):
+        identity, _ = self._make_identity({})
+        self.assertFalse(identity.remove_trusted_key("nope"))
+
+    def test_is_trusted_key_by_pubkey(self):
+        identity, _ = self._make_identity({"trusted_keys": {"hub": "KEY_A"}})
+        self.assertTrue(identity.is_trusted_key("KEY_A"))
+        self.assertFalse(identity.is_trusted_key("KEY_B"))
+
+    def test_get_trusted_alias(self):
+        identity, _ = self._make_identity({"trusted_keys": {"hub": "KEY_A"}})
+        self.assertEqual(identity.get_trusted_alias("KEY_A"), "hub")
+        self.assertIsNone(identity.get_trusted_alias("KEY_B"))
+
+    def test_trusted_keys_setter(self):
+        identity, store = self._make_identity({})
+        identity.trusted_keys = {"k1": "PUB1", "k2": "PUB2"}
+        self.assertEqual(store["trusted_keys"], {"k1": "PUB1", "k2": "PUB2"})
+
+
 class TestHiveMessageBusClientInit(unittest.TestCase):
 
     def _make_client(self, **kwargs):

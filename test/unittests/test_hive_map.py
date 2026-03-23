@@ -169,6 +169,67 @@ class TestHiveMapperToAscii:
         assert "nodeA" in tree
 
 
+class TestCheckFloodId:
+    def test_first_call_returns_false(self):
+        mapper = HiveMapper()
+        assert mapper.check_flood_id("abc") is False
+
+    def test_second_call_returns_true(self):
+        mapper = HiveMapper()
+        mapper.check_flood_id("abc")
+        assert mapper.check_flood_id("abc") is True
+
+    def test_empty_flood_id_always_seen(self):
+        mapper = HiveMapper()
+        assert mapper.check_flood_id("") is True
+
+    def test_different_ids_both_unseen(self):
+        mapper = HiveMapper()
+        assert mapper.check_flood_id("a") is False
+        assert mapper.check_flood_id("b") is False
+
+    def test_fifo_eviction(self):
+        mapper = HiveMapper()
+        for i in range(5):
+            mapper.check_flood_id(str(i), max_size=5)
+        # cache full, "0" is oldest
+        mapper.check_flood_id("new", max_size=5)
+        assert len(mapper._seen_flood_ids) == 5
+        # "0" was evicted, should be unseen now
+        assert mapper.check_flood_id("0", max_size=5) is False
+
+    def test_timestamps_recorded(self):
+        mapper = HiveMapper()
+        mapper.check_flood_id("abc")
+        assert isinstance(mapper._seen_flood_ids["abc"], float)
+
+    def test_clear_resets_flood_ids(self):
+        mapper = HiveMapper()
+        mapper.check_flood_id("abc")
+        mapper.clear()
+        assert mapper.check_flood_id("abc") is False
+
+
+class TestTrustMarking:
+    def test_mark_trusted_nodes(self):
+        mapper = HiveMapper()
+        mapper.nodes["peerA"] = NodeInfo(peer="peerA", public_key="KEY_A")
+        mapper.nodes["peerB"] = NodeInfo(peer="peerB", public_key="KEY_B")
+        mapper.nodes["peerC"] = NodeInfo(peer="peerC")  # no pubkey
+        mapper.mark_trusted_nodes({"hub": "KEY_A"})
+        assert mapper.nodes["peerA"].trusted is True
+        assert mapper.nodes["peerB"].trusted is False
+        assert mapper.nodes["peerC"].trusted is False
+
+    def test_is_peer_trusted(self):
+        mapper = HiveMapper()
+        mapper.nodes["peerA"] = NodeInfo(peer="peerA", public_key="KEY_A", trusted=True)
+        mapper.nodes["peerB"] = NodeInfo(peer="peerB", public_key="KEY_B")
+        assert mapper.is_peer_trusted("peerA") is True
+        assert mapper.is_peer_trusted("peerB") is False
+        assert mapper.is_peer_trusted("unknown") is False
+
+
 class TestHiveMapperClear:
     def test_clear_resets_state(self):
         mapper = HiveMapper()
@@ -178,3 +239,4 @@ class TestHiveMapperClear:
         assert mapper.nodes == {}
         assert mapper.edges == {}
         assert mapper._seen_pings == {}
+        assert mapper._seen_flood_ids == {}

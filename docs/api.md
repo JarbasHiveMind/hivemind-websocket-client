@@ -40,7 +40,10 @@ Enumeration of HiveMind message types.
 | `PROPAGATE` | `"propagate"` | Forward message to all slaves and masters |
 | `ESCALATE` | `"escalate"` | Forward message up the authority chain |
 | `HELLO` | `"hello"` | Node announcement and session setup |
+| `QUERY` | `"query"` | Request-response upstream; first answering node wins |
+| `CASCADE` | `"cascade"` | Request-response flood; collects responses from all nodes |
 | `PING` | `"ping"` | Network topology discovery (flood-based) |
+| `RENDEZVOUS` | `"rendezvous"` | Reserved for rendezvous nodes |
 | `BINARY` | `"bin"` | Raw binary data container |
 | `THIRDPRTY` | `"3rdparty"` | User-defined message type |
 
@@ -74,7 +77,7 @@ WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 - `on_mycroft(mycroft_msg_type, func)` (`client.py:429`): Explicitly registers a handler for an OVOS internal bus message.
 - `remove(event_name, func)` (`client.py:447`): Removes a registered handler.
 - `wait_for_handshake(timeout=5, max_retries=15)` (`client.py:236`): Blocks until the cryptographic handshake with the hub is finished.
-- `emit_intercom(message, pubkey)` (`client.py:538`): Sends an RSA-encrypted message targeted at a specific node's public key.
+- `emit_intercom(message, pubkey)` (`client.py:538`): Sends a hybrid-encrypted (AES-GCM + RSA) message targeted at a specific node's public key.
 
 ### Waiting for Messages
 
@@ -99,9 +102,80 @@ Base class for handling incoming binary data.
 
 Manages the node's identity, including credentials and RSA keys.
 
-- `save()` (`identity.py:153`): Persists identity settings to disk.
-- `reload()` (`identity.py:159`): Reloads settings from the identity file.
-- `create_keys()` (`identity.py:165`): Generates a new RSA key pair.
+### Persistence
+
+- `save()` (`identity.py:219`): Persists identity settings to disk.
+- `reload()` (`identity.py:225`): Reloads settings from the identity file.
+- `create_keys()` (`identity.py:231`): Generates a new RSA key pair.
+
+### Trusted Keys
+
+Trusted keys are stored as an alias → public key mapping in the identity file. Used by protocol handlers to gate BUS injection from PROPAGATE and INTERCOM messages.
+
+- `trusted_keys` (`identity.py:153`): `Dict[str, str]` — alias → public key mapping.
+- `add_trusted_key(alias, pubkey)` (`identity.py:176`): Add a peer. Returns `False` if alias already exists.
+- `remove_trusted_key(alias)` (`identity.py:195`): Remove by alias. Returns `False` if not found.
+- `is_trusted_key(pubkey)` (`identity.py:210`): Check if a public key is trusted.
+- `get_trusted_alias(pubkey)` (`identity.py:222`): Look up alias for a public key. Returns `None` if not found.
+
+---
+
+## `HiveMapper` (`hivemind_bus_client/hive_map.py:38`)
+
+Collects responsive PINGs from a flood and builds a directed hive topology graph.
+
+### Key Methods
+
+- `on_ping(message, received_at=None)` (`hive_map.py:66`): Ingest a PING and update topology.
+- `check_flood_id(flood_id, max_size=1000)` (`hive_map.py:119`): Flood-loop prevention with FIFO eviction.
+- `mark_trusted_nodes(trusted_keys)` (`hive_map.py:145`): Set `NodeInfo.trusted` based on `NodeIdentity.trusted_keys`.
+- `is_peer_trusted(peer)` (`hive_map.py:158`): Check if a discovered peer is trusted.
+- `to_ascii(root_peer=None)` (`hive_map.py:173`): Render topology as ASCII tree.
+- `to_dict()` / `to_json()` (`hive_map.py:147`): JSON-serialisable topology snapshot.
+
+### `NodeInfo` (`hive_map.py:15`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `peer` | `str` | Peer identifier |
+| `site_id` | `str?` | Location identifier |
+| `public_key` | `str?` | RSA public key announced in PING |
+| `lang` | `str?` | Locale announced by the node |
+| `trusted` | `bool` | Whether this peer's key is in the trusted list |
+| `timestamp` | `float?` | Sender's clock when PING was created |
+| `latency_ms` | `float?` | Estimated one-way latency (computed property) |
+
+---
+
+## Decorators (`hivemind_bus_client/decorators.py`)
+
+Convenience decorators for registering handlers on specific message types.
+
+| Decorator | Message Type | Source |
+|-----------|-------------|--------|
+| `on_query(payload_type, bus)` | `QUERY` | `decorators.py:236` |
+| `on_cascade(payload_type, bus)` | `CASCADE` | `decorators.py:253` |
+| `on_propagate(payload_type, bus)` | `PROPAGATE` | `decorators.py:164` |
+| `on_broadcast(payload_type, bus)` | `BROADCAST` | `decorators.py:128` |
+| `on_escalate(payload_type, bus)` | `ESCALATE` | `decorators.py:182` |
+| `on_ping(payload_type, bus)` | `PING` | `decorators.py:146` |
+| `on_mycroft_message(payload_type, bus)` | `BUS` | `decorators.py:92` |
+| `on_shared_bus(payload_type, bus)` | `SHARED_BUS` | `decorators.py:110` |
+| `on_hive_message(message_type, bus)` | any | `decorators.py:78` |
+
+---
+
+## Encryption (`hivemind_bus_client/encryption.py`)
+
+### Hybrid Encryption (INTERCOM)
+
+- `hybrid_encrypt(public_key, plaintext, sign_key=None)` (`encryption.py:502`): AES-256-GCM payload + RSA-encrypted ephemeral key. Returns a JSON-serialisable dict.
+- `hybrid_decrypt(private_key, envelope)` (`encryption.py:547`): Decrypts a hybrid-encrypted envelope.
+
+### Symmetric Encryption (per-link)
+
+- `encrypt_AES(key, text)` / `decrypt_AES_128(key, ciphertext, tag, nonce)` — AES-GCM
+- `encrypt_ChaCha20_Poly1305(key, text)` / `decrypt_ChaCha20_Poly1305(key, ciphertext, tag, nonce)` — ChaCha20-Poly1305
 
 ---
 

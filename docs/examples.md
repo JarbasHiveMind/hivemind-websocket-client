@@ -103,18 +103,52 @@ else:
 
 ---
 
-## Peer-to-peer encrypted message (INTERCOM)
+## QUERY — first-match request-response
 
-Send a message directly to another node using its RSA public key. The message is encrypted so only the target node can read it.
+QUERY propagates upstream and returns the first answer.
 
 ```python
-from hivemind_bus_client.client import HiveMessageBusClient
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_bus_client.decorators import on_query
+from ovos_bus_client.message import Message
+
+# send a QUERY
+inner = HiveMessage(HiveMessageType.BUS,
+                    Message("intent.request", {"utterance": "what time is it"}))
+client.emit(HiveMessage(HiveMessageType.QUERY, payload=inner))
+
+# listen for the response
+@on_query("speak", client)
+def on_answer(msg):
+    print("Answer:", msg.data["utterance"])
+```
+
+---
+
+## CASCADE — collect responses from all nodes
+
+CASCADE floods the network and collects all answers. The `CascadeAggregator` buffers them and calls `cascade_select_callback` to pick the best.
+
+```python
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from ovos_bus_client.message import Message
 
-client = HiveMessageBusClient(host="ws://192.168.1.10", port=5678)
-client.connect()
+inner = HiveMessage(HiveMessageType.BUS,
+                    Message("skill.list.request", {}))
+client.emit(HiveMessage(HiveMessageType.CASCADE, payload=inner))
 
+# on the protocol side, configure disambiguation:
+# proto.cascade_select_callback = lambda responses: best_of(responses)
+# proto.hive_mapper = mapper  # enables early resolution
+```
+
+---
+
+## Peer-to-peer encrypted message (INTERCOM)
+
+Send a message directly to another node using its RSA public key. Uses hybrid encryption (AES-256-GCM payload + RSA-encrypted ephemeral key) so there is no payload size limit.
+
+```python
 other_node_pubkey = "-----BEGIN PUBLIC KEY-----\n..."
 
 client.emit_intercom(
@@ -122,6 +156,37 @@ client.emit_intercom(
                 Message("speak", {"utterance": "private message"})),
     pubkey=other_node_pubkey,
 )
+```
+
+---
+
+## Managing trusted peers
+
+Only messages from trusted peers are injected into the internal bus via PROPAGATE and INTERCOM.
+
+```python
+from hivemind_bus_client.identity import NodeIdentity
+
+identity = NodeIdentity()
+
+# add a trusted peer
+identity.add_trusted_key("home-hub", "-----BEGIN PUBLIC KEY-----\n...")
+identity.add_trusted_key("office-relay", "-----BEGIN PUBLIC KEY-----\n...")
+identity.save()
+
+# check trust
+identity.is_trusted_key("-----BEGIN PUBLIC KEY-----\n...")  # True
+identity.get_trusted_alias("-----BEGIN PUBLIC KEY-----\n...")  # "home-hub"
+
+# remove
+identity.remove_trusted_key("office-relay")
+identity.save()
+```
+
+After PING discovery, mark discovered nodes as trusted:
+
+```python
+mapper.mark_trusted_nodes(identity.trusted_keys)
 ```
 
 ---

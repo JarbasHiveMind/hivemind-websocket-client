@@ -18,7 +18,7 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`ESCALATE`** | Upstream request | Used by a Slave Mind to ask a Master Mind for help. |
 | **`BROADCAST`** | Downstream flood (admin only) | Master pushes a message to all connected satellites. |
 | **`PROPAGATE`** | Bidirectional flood | Forwards to all peers in both directions. |
-| **`INTERCOM`** | End-to-end encrypted | Secure peer-to-peer messaging between Satellites. |
+| **`INTERCOM`** | End-to-end hybrid-encrypted | AES-GCM payload + RSA-encrypted ephemeral key. Only trusted peers or explicit targets are injected. |
 | **`QUERY`** | Request-response upstream | Like ESCALATE, but first answering node sends a response back. Stops propagation on answer. |
 | **`CASCADE`** | Request-response flood | Like PROPAGATE, but expects responses from ALL nodes. Supports disambiguation. |
 | **`PING`** | Network discovery flood | Each node responds with its own PING (same `flood_id`). Carried inside PROPAGATE. Route metadata = hive path. |
@@ -26,9 +26,97 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`HANDSHAKE`** | Crypto negotiation | Key exchange at connection time. |
 | **`THIRDPRTY`** | User-land custom | Application-defined payload; HiveMind relays without interpretation. |
 
+## QUERY — First-Match Request-Response
+
+QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond.
+
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_query` — `protocol.py:311`):
+- Inner payload must be `BUS` or `INTERCOM`.
+- `BUS` payloads are dispatched to `handle_bus`.
+- `INTERCOM` payloads are dispatched to `handle_intercom`.
+
+### Sending a QUERY (from satellite)
+
+```python
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from ovos_bus_client.message import Message
+
+inner = HiveMessage(HiveMessageType.BUS,
+                    Message("intent.request", {"utterance": "what time is it"}))
+query = HiveMessage(HiveMessageType.QUERY, payload=inner)
+client.emit(query)
+```
+
+### Listening for QUERY responses (decorator)
+
+```python
+from hivemind_bus_client.decorators import on_query
+
+@on_query("speak", bus)
+def on_speak(msg):
+    print(msg.data["utterance"])
+```
+
+## CASCADE — Collect-All Request-Response
+
+CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional — nodes that cannot answer simply stay silent.
+
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:436`):
+
+Responses are buffered in a `CascadeAggregator` (`protocol.py:21`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
+
+- Inner payload must be `BUS` or `INTERCOM`.
+- Default select callback returns the first response.
+- Set `cascade_select_callback` on the protocol to provide custom disambiguation.
+- Set `hive_mapper` to enable early resolution when all nodes have responded.
+
+### Sending a CASCADE (from satellite)
+
+```python
+inner = HiveMessage(HiveMessageType.BUS,
+                    Message("skill.list.request", {}))
+cascade = HiveMessage(HiveMessageType.CASCADE, payload=inner)
+client.emit(cascade)
+```
+
+### Custom disambiguation
+
+```python
+from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+from hivemind_bus_client.hive_map import HiveMapper
+
+def pick_best(responses):
+    # custom logic — e.g. highest confidence, specific node, etc.
+    return responses[0]
+
+proto.cascade_select_callback = pick_best
+proto.hive_mapper = mapper  # enables early resolution
+```
+
+### Listening for CASCADE responses (decorator)
+
+```python
+from hivemind_bus_client.decorators import on_cascade
+
+@on_cascade("skill.list.response", bus)
+def on_skills(msg):
+    print(msg.data["skills"])
+```
+
 ## PING Flood — Network Discovery
 
-PING messages are **always the inner payload of a PROPAGATE message**. They are never sent bare. Each node that receives a PING responds with its own PING carrying the same `flood_id`. The `flood_id` prevents infinite loops. PONG is no longer used.
+PING messages are **always the inner payload of a PROPAGATE message**. They are never sent bare. Each node that receives a PING responds with its own PING carrying the same `flood_id`. The `flood_id` prevents infinite loops (tracked via `HiveMapper.check_flood_id`). PONG is no longer used.
+
+### PING Payload Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `flood_id` | `str` | UUID preventing infinite loops |
+| `peer` | `str` | `{name}::{session_id}` identifier |
+| `site_id` | `str` | Location identifier |
+| `timestamp` | `float` | Sender's clock for RTT estimation |
+| `public_key` | `str?` | RSA public key — enables trust verification via `HiveMapper.mark_trusted_nodes` |
+| `lang` | `str?` | Node's locale (e.g. `"en-us"`) — enables localized INTERCOM communication |
 
 ### Sending a PING
 
@@ -44,6 +132,8 @@ ping_inner = HiveMessage(
         "timestamp": time.time(),
         "peer":      client.peer,
         "site_id":   client.site_id,
+        "public_key": identity.public_key,
+        "lang":      "en-us",
     }
 )
 ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=ping_inner)
