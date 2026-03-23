@@ -5,7 +5,9 @@ Every node responds to a PING by propagating its own PING (with the same
 ``flood_id`` prevents infinite loops.
 """
 import json
-from dataclasses import dataclass
+import time
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
 from hivemind_bus_client.message import HiveMessage
@@ -52,6 +54,8 @@ class HiveMapper:
         self.edges: Dict[str, Set[str]] = {}
         # flood_id → set of peer IDs that already sent a PING (deduplication)
         self._seen_pings: Dict[str, Set[str]] = {}
+        # flood_id → timestamp for flood-loop prevention (FIFO eviction by age)
+        self._seen_flood_ids: OrderedDict[str, float] = OrderedDict()
 
     def start_ping(self, flood_id: str) -> None:
         """Register a new PING session, clearing stale deduplication state for that ID.
@@ -221,8 +225,34 @@ class HiveMapper:
 
         return "\n".join(lines) if lines else "[No topology data]"
 
+    def check_flood_id(self, flood_id: str, max_size: int = 1000) -> bool:
+        """Check whether *flood_id* has been seen before, and register it.
+
+        Used for flood-loop prevention: the first call for a given
+        ``flood_id`` returns ``False`` (not seen), subsequent calls
+        return ``True``.  When the cache exceeds *max_size* the oldest
+        entries (by insertion time) are evicted first (FIFO).
+
+        Args:
+            flood_id: The flood identifier to check.
+            max_size: Maximum number of flood IDs to retain.
+
+        Returns:
+            ``True`` if the flood_id was already seen, ``False`` otherwise.
+        """
+        if not flood_id:
+            return True  # empty flood_id is always "seen" (rejected)
+        if flood_id in self._seen_flood_ids:
+            return True
+        # evict oldest entries when cache is full
+        while len(self._seen_flood_ids) >= max_size:
+            self._seen_flood_ids.popitem(last=False)  # FIFO — remove oldest
+        self._seen_flood_ids[flood_id] = time.time()
+        return False
+
     def clear(self) -> None:
         """Reset the mapper to an empty state."""
         self.nodes.clear()
         self.edges.clear()
         self._seen_pings.clear()
+        self._seen_flood_ids.clear()

@@ -1,7 +1,10 @@
+import random
+
 import pybase64
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, List, Optional
 
 from ovos_bus_client import Message as MycroftMessage
 from ovos_bus_client import MessageBusClient
@@ -11,10 +14,92 @@ from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers
+from hivemind_bus_client.hive_map import HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
 from poorman_handshake.asymmetric.utils import decrypt_RSA, load_RSA_key
+
+
+class CascadeAggregator:
+    """Collects CASCADE responses over a timeout window, then selects the best.
+
+    When the first response arrives a timer starts. Subsequent responses are
+    buffered until the timer expires **or** ``expected_responses`` have been
+    collected (whichever comes first), at which point ``select_callback``
+    picks the winner and ``emit_callback`` delivers it.
+
+    Args:
+        timeout: Seconds to wait after the first response before resolving.
+        select_callback: ``(List[HiveMessage]) -> Optional[HiveMessage]`` chooser.
+        emit_callback: Called with the selected message to deliver it.
+        expected_responses: If set, resolve early once this many responses arrive.
+    """
+
+    def __init__(self, timeout: float,
+                 select_callback: Callable[[List[HiveMessage]], Optional[HiveMessage]],
+                 emit_callback: Callable[[HiveMessage], None],
+                 expected_responses: Optional[int] = None) -> None:
+
+        self.timeout = timeout
+        self.select_callback = select_callback or random.choice
+        self.emit_callback = emit_callback
+        self.expected_responses = expected_responses
+        self.responses: List[HiveMessage] = []
+        self._timer: Optional[threading.Timer] = None
+        self._lock = threading.Lock()
+        self._resolved = False
+
+    def add_response(self, message: HiveMessage) -> None:
+        """Buffer a response and start the timer on the first one.
+
+        Resolves early if ``expected_responses`` have been collected.
+
+        Args:
+            message: A CASCADE response HiveMessage.
+        """
+        with self._lock:
+            if self._resolved:
+                return
+            self.responses.append(message)
+            if self._timer is None:
+                self._timer = threading.Timer(self.timeout, self._resolve)
+                self._timer.daemon = True
+                self._timer.start()
+            # early resolution when all expected responses have arrived
+            if (self.expected_responses is not None
+                    and len(self.responses) >= self.expected_responses):
+                if self._timer is not None:
+                    self._timer.cancel()
+                self._do_resolve()
+                return
+
+    def _resolve(self) -> None:
+        """Timer callback — resolve under lock."""
+        with self._lock:
+            self._do_resolve()
+
+    def _do_resolve(self) -> None:
+        """Select the best response and emit it.  Caller must hold ``_lock``."""
+        if self._resolved:
+            return
+        self._resolved = True
+        responses = self.responses
+        self.responses = []
+        self._timer = None
+        if responses:
+            selected = self.select_callback(responses)
+            if selected is not None:
+                self.emit_callback(selected)
+
+    def cancel(self) -> None:
+        """Cancel the pending timer without emitting."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            self.responses = []
+            self._resolved = True
 
 
 @dataclass()
@@ -91,7 +176,10 @@ class HiveMindSlaveProtocol:
     shared_bus: bool = False
     binarize: bool = False
     site_id: str = "unknown"
-    _seen_flood_ids: set = field(default_factory=set)
+    cascade_timeout: float = 5.0
+    cascade_select_callback: Optional[Callable[[List[HiveMessage]], Optional[HiveMessage]]] = None
+    hive_mapper: Optional[HiveMapper] = None
+    cascade_aggregator: Optional[CascadeAggregator] = field(default=None, repr=False)
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
@@ -281,18 +369,13 @@ class HiveMindSlaveProtocol:
 
         flood_id = ping_payload.get("flood_id", "")
 
-        # Lazy init for tests that bypass bind()
-        if not hasattr(self, '_seen_flood_ids'):
-            self._seen_flood_ids = set()
+        # Lazy init for tests / callers that don't set hive_mapper
+        if self.hive_mapper is None:
+            self.hive_mapper = HiveMapper()
 
-        # Flood-loop prevention
-        if not flood_id or flood_id in self._seen_flood_ids:
+        # Flood-loop prevention — delegated to HiveMapper
+        if self.hive_mapper.check_flood_id(flood_id):
             return
-        # Evict oldest entries when cache is full (FIFO-ish; avoids
-        # clearing the entire set which could let duplicates through)
-        while len(self._seen_flood_ids) >= 1000:
-            self._seen_flood_ids.pop()
-        self._seen_flood_ids.add(flood_id)
 
         # Build our own responsive PING with the same flood_id
         peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
@@ -325,17 +408,28 @@ class HiveMindSlaveProtocol:
             self.handle_bus(message)
 
     def handle_cascade(self, message: HiveMessage):
-        """Handle a CASCADE message received from the master.
+        """Handle a CASCADE response received from the master.
+
+        Responses are buffered in a ``CascadeAggregator``. After
+        ``cascade_timeout`` seconds the ``cascade_select_callback``
+        picks the best response and it is emitted on the internal bus.
 
         Args:
             message: The CASCADE HiveMessage.
         """
         LOG.info(f"CASCADE: {message.payload}")
-        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
-        if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
-        elif message.payload.msg_type == HiveMessageType.BUS:
-            self.handle_bus(message)
+        assert message.payload.msg_type == HiveMessageType.BUS
+
+        if self.cascade_aggregator is None or self.cascade_aggregator._resolved:
+            select_cb = self.cascade_select_callback or random.choice
+            expected = len(self.hive_mapper.nodes) if self.hive_mapper else None
+            self.cascade_aggregator = CascadeAggregator(
+                timeout=self.cascade_timeout,
+                select_callback=select_cb,
+                emit_callback=self.handle_bus,
+                expected_responses=expected,
+            )
+        self.cascade_aggregator.add_response(message)
 
     def handle_intercom(self, message: HiveMessage):
         LOG.info(f"INTERCOM: {message.payload}")
