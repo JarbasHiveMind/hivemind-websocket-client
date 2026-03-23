@@ -8,7 +8,7 @@ on:
 
 jobs:
   publish_alpha:
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.user.login != 'allcontributors[bot]' && github.event.pull_request.user.login != 'pre-commit-ci[bot]')
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     uses: OpenVoiceOS/gh-automations/.github/workflows/publish-alpha.yml@dev
     secrets: inherit
     with:
