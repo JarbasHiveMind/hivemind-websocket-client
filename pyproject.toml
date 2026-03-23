@@ -41,7 +41,7 @@ hivemind-client = "hivemind_bus_client.scripts:hmclient_cmds"
 hivemind-encoding-bench = "hivemind_bus_client.encodings.benchmark:main"
 
 [tool.setuptools]
-packages = ["hivemind_bus_client", "hivemind_bus_client.encodings"]
+packages = ["hivemind_bus_client"]
 
 [tool.setuptools.dynamic]
 version = {attr = "hivemind_bus_client.version.VERSION"}
