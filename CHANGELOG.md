@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.5.0a1) (2026-03-23)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.6a3...0.5.0a1)
+
+**Merged pull requests:**
+
+- feat: add flood-based PING network discovery and hive topology mapping [\#90](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/90) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.4.6a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.6a3) (2026-03-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.6a2...0.4.6a3)
