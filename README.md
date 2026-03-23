@@ -7,7 +7,7 @@ Python client library for [hivemind-core](https://github.com/JarbasHiveMind/Hive
 ## Install
 
 ```bash
-pip install hivemind_bus_client
+uv pip install hivemind_bus_client
 ```
 
 ## Usage
