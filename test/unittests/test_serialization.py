@@ -243,6 +243,66 @@ class TestDecodeBitstringRegressions(unittest.TestCase):
         self.assertEqual(decoded.payload.msg_type, "speak")
 
 
+class TestMycroft2Bitstring(unittest.TestCase):
+    """Test mycroft2bitstring helper."""
+
+    def test_from_message_object(self):
+        from hivemind_bus_client.serialization import mycroft2bitstring
+        msg = Message("speak", {"utterance": "hello"}, {"source": "test"})
+        result = mycroft2bitstring(msg, compressed=False)
+        self.assertTrue(len(result) > 0)
+
+    def test_from_json_string(self):
+        from hivemind_bus_client.serialization import mycroft2bitstring
+        msg = Message("speak", {"utterance": "hello"})
+        result = mycroft2bitstring(msg.serialize(), compressed=True)
+        self.assertTrue(len(result) > 0)
+
+    def test_roundtrip(self):
+        from hivemind_bus_client.serialization import mycroft2bitstring, decode_bitstring
+        msg = Message("speak", {"utterance": "roundtrip"}, {"lang": "en"})
+        bitstr = mycroft2bitstring(msg, compressed=False)
+        decoded = decode_bitstring(bitstr.bytes)
+        self.assertEqual(decoded.msg_type, HiveMessageType.BUS)
+
+    def test_auto_compression(self):
+        """get_bitstring with compressed=None picks the smaller encoding."""
+        from hivemind_bus_client.serialization import get_bitstring
+        msg = Message("speak", {"utterance": "a" * 500})
+        result = get_bitstring(hive_type=HiveMessageType.BUS, payload=msg, compressed=None)
+        self.assertTrue(len(result) > 0)
+
+    def test_unsupported_encode_version_raises(self):
+        from hivemind_bus_client.serialization import get_bitstring
+        from hivemind_bus_client.exceptions import UnsupportedProtocolVersion
+        with self.assertRaises(UnsupportedProtocolVersion):
+            get_bitstring(proto_version=999)
+
+    def test_unsupported_decode_version_raises(self):
+        """Craft a versioned bitstring with proto_version=99 and verify decode raises."""
+        from bitstring import BitArray
+        from hivemind_bus_client.serialization import decode_bitstring
+        from hivemind_bus_client.exceptions import UnsupportedProtocolVersion
+        s = BitArray()
+        s.append('uint:1=1')       # padding marker
+        s.append('uint:1=1')       # versioned=True
+        s.append('uint:8=99')      # proto_version=99 (unsupported)
+        s.append('uint:5=1')       # dummy hive_type
+        # Pad to byte boundary
+        while len(s) % 8 != 0:
+            s.insert('uint:1=0', 0)
+        with self.assertRaises(UnsupportedProtocolVersion):
+            decode_bitstring(s.bytes)
+
+    def test_versioned_encode_decode_roundtrip(self):
+        from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
+        msg = Message("speak", {"utterance": "versioned"})
+        bitstr = get_bitstring(hive_type=HiveMessageType.BUS, payload=msg,
+                               compressed=False, versioned=True)
+        decoded = decode_bitstring(bitstr.bytes)
+        self.assertEqual(decoded.msg_type, HiveMessageType.BUS)
+
+
 @unittest.skipUnless(os.path.isfile(_VECTORS_PATH),
                      f"vectors.json not found at {_VECTORS_PATH}")
 class TestCrossPlatformVectors(unittest.TestCase):

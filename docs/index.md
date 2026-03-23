@@ -40,6 +40,7 @@ client.emit(Message("recognizer_loop:utterance", {"utterances": ["hello world"]}
 - [API Reference](api.md) - `HiveMessage`, `HiveMessageType`, `HiveMessageBusClient`, `BinaryDataCallbacks`, `NodeIdentity`.
 - [Client API](client_api.md) - `HiveMessageBusClient` and `HiveMindHTTPClient` usage.
 - [Message Types](message_types.md) - `HiveMessage`, `HiveMessageType` enum, routing, serialization.
+- [Binary Serialization](serialization.md) - Bitstring wire format, `get_bitstring`, `decode_bitstring` (reference implementation).
 - [Binary Handlers](binary_handlers.md) - `BinaryDataCallbacks` for TTS audio and file transfers.
 - [Identity & Credentials](identity.md) - Managing node identity and settings.
 - [CLI Reference](cli.md) - `hivemind-client` commands (`terminal`, `ping`, `send-mycroft`, etc.).

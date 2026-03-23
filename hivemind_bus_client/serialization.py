@@ -5,6 +5,7 @@ from inspect import signature
 from bitstring import BitArray, BitStream
 
 from hivemind_bus_client.exceptions import UnsupportedProtocolVersion
+from ovos_bus_client.message import Message
 from hivemind_bus_client.message import HiveMessageType, HiveMessage, HiveMindBinaryPayloadType
 from hivemind_bus_client.util import compress_payload, decompress_payload, cast2bytes, bytes2str
 

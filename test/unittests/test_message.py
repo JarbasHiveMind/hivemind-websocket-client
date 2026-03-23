@@ -211,6 +211,63 @@ class TestHiveMessageStr:
         assert "3" in str(hm)  # length
 
 
+class TestHiveMessagePayloadSetter:
+    def test_set_message_payload(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        new_msg = Message("speak", {"utterance": "hi"})
+        hm.payload = new_msg
+        # Stored as dict internally
+        assert isinstance(hm._payload, dict)
+
+    def test_set_hive_message_payload(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        inner = HiveMessage(HiveMessageType.PING, {"flood_id": "x"})
+        hm.payload = inner
+        assert isinstance(hm._payload, dict)
+
+    def test_set_dict_payload(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        hm.payload = {"new": "data"}
+        assert hm._payload == {"new": "data"}
+
+    def test_set_bytes_payload(self):
+        hm = HiveMessage(HiveMessageType.BINARY, b"\x00")
+        hm.payload = b"\x01\x02"
+        assert hm._payload == b"\x01\x02"
+
+
+class TestHiveMessageTargetPeers:
+    def test_target_peers_with_source_peer_fallback(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="peer1")
+        assert hm.target_peers == ["peer1"]
+
+    def test_target_peers_explicit(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="peer1", target_peers=["peer2"])
+        assert hm.target_peers == ["peer2"]
+
+    def test_target_peers_no_source(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {})
+        assert hm.target_peers == []
+
+
+class TestHiveMessageUpdateHopData:
+    def test_update_hop_with_data_merge(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="a", target_peers=["b"])
+        hm.update_hop_data(data={"extra": "info"})
+        assert len(hm._route) == 1
+        assert hm._route[0]["extra"] == "info"
+
+    def test_update_hop_same_source_no_duplicate(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="a", target_peers=["b"])
+        hm.update_hop_data()
+        hm.update_hop_data()  # same source, should not duplicate
+        assert len(hm._route) == 1
+
+
 class TestDeserializePreservesFields:
     """Regression tests for deserialize() restoring serialized fields."""
 

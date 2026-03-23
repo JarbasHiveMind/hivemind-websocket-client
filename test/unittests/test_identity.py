@@ -79,6 +79,87 @@ class TestNodeIdentity(unittest.TestCase):
         identity.IDENTITY_FILE.__setitem__.assert_called_with("password", "secret")
 
 
+class TestNodeIdentityProperties(unittest.TestCase):
+    """Cover remaining property getters/setters and methods."""
+
+    def _make_identity(self, data=None):
+        from hivemind_bus_client.identity import NodeIdentity
+        identity = NodeIdentity.__new__(NodeIdentity)
+        identity.IDENTITY_FILE = MagicMock()
+        store = data or {}
+        identity.IDENTITY_FILE.get = lambda k, default=None: store.get(k, default)
+        identity.IDENTITY_FILE.__getitem__ = lambda self_inner, k: store[k]
+        identity.IDENTITY_FILE.__setitem__ = lambda self_inner, k, v: store.__setitem__(k, v)
+        identity.IDENTITY_FILE.path = "/tmp/fake_identity.json"
+        return identity, store
+
+    def test_name_fallback_from_key(self):
+        """When name is unset but key exists, name is derived from key basename."""
+        identity, store = self._make_identity({"key": "/some/path/my-device"})
+        self.assertEqual(identity.name, "my-device")
+
+    def test_name_default_unnamed(self):
+        identity, store = self._make_identity({})
+        self.assertEqual(identity.name, "unnamed-node")
+
+    def test_name_setter(self):
+        identity, store = self._make_identity({})
+        identity.name = "new-name"
+        self.assertEqual(store["name"], "new-name")
+
+    def test_public_key_get_set(self):
+        identity, store = self._make_identity({})
+        self.assertIsNone(identity.public_key)
+        identity.public_key = "RSA_KEY_DATA"
+        self.assertEqual(store["public_key"], "RSA_KEY_DATA")
+
+    def test_private_key_fallback(self):
+        identity, store = self._make_identity({})
+        # No secret_key set → falls back to path-based default
+        self.assertIn(".pem", identity.private_key)
+
+    def test_private_key_explicit(self):
+        identity, store = self._make_identity({"secret_key": "/my/key.pem"})
+        self.assertEqual(identity.private_key, "/my/key.pem")
+
+    def test_private_key_setter(self):
+        identity, store = self._make_identity({})
+        identity.private_key = "/new/key.pem"
+        self.assertEqual(store["secret_key"], "/new/key.pem")
+
+    def test_default_master_get_set(self):
+        identity, store = self._make_identity({})
+        self.assertIsNone(identity.default_master)
+        identity.default_master = "ws://hub.local"
+        self.assertEqual(store["default_master"], "ws://hub.local")
+
+    def test_default_port_get_set(self):
+        identity, store = self._make_identity({})
+        self.assertIsNone(identity.default_port)
+        identity.default_port = 5678
+        self.assertEqual(store["default_port"], 5678)
+
+    def test_save_calls_store(self):
+        identity, store = self._make_identity({})
+        identity.save()
+        identity.IDENTITY_FILE.store.assert_called_once()
+
+    def test_reload_calls_reload(self):
+        identity, store = self._make_identity({})
+        identity.reload()
+        identity.IDENTITY_FILE.reload.assert_called_once()
+
+    def test_create_keys(self):
+        from hivemind_bus_client.identity import NodeIdentity
+        identity, store = self._make_identity({})
+        with patch("hivemind_bus_client.identity.create_RSA_key", return_value=("PUB", "SECRET")), \
+             patch("hivemind_bus_client.identity.export_RSA_key") as mock_export:
+            identity.create_keys()
+            mock_export.assert_called_once()
+            self.assertEqual(store["public_key"], "PUB")
+            self.assertIn(".pem", store["secret_key"])
+
+
 class TestHiveMessageBusClientInit(unittest.TestCase):
 
     def _make_client(self, **kwargs):

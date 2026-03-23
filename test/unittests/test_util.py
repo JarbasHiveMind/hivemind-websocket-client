@@ -1,4 +1,5 @@
 import unittest
+import warnings
 
 from ovos_bus_client import Message
 
@@ -7,6 +8,8 @@ from hivemind_bus_client.util import (
     compress_payload, decompress_payload,
     cast2bytes, bytes2str,
     serialize_message, get_payload, get_hivemsg, get_mycroft_msg,
+    payload2dict,
+    encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
 )
 
 
@@ -146,6 +149,88 @@ class TestGetMycroftMsg(unittest.TestCase):
         d = {"type": "speak", "data": {"utterance": "hello"}, "context": {}}
         result = get_mycroft_msg(json.dumps(d))
         self.assertIsInstance(result, Message)
+
+
+class TestPayload2Dict(unittest.TestCase):
+    def test_from_hive_message(self):
+        inner = Message("speak", {"utterance": "hi"})
+        hm = HiveMessage(HiveMessageType.BUS, inner)
+        result = payload2dict(hm)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["msg_type"], HiveMessageType.BUS)
+
+    def test_from_ovos_message(self):
+        msg = Message("speak", {"utterance": "hi"})
+        result = payload2dict(msg)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["type"], "speak")
+
+    def test_from_dict(self):
+        d = {"key": "val"}
+        result = payload2dict(d)
+        self.assertEqual(result, {"key": "val"})
+
+    def test_nested_message_in_list(self):
+        inner = Message("speak", {"utterance": "hi"})
+        d = {"items": [inner]}
+        result = payload2dict(d)
+        self.assertIsInstance(result["items"][0], dict)
+        self.assertEqual(result["items"][0]["type"], "speak")
+
+    def test_nested_dict_value(self):
+        d = {"inner": {"nested": "data"}}
+        result = payload2dict(d)
+        self.assertEqual(result["inner"]["nested"], "data")
+
+
+class TestDeprecatedEncryptionWrappers(unittest.TestCase):
+    """Test that deprecated wrappers emit warnings and delegate correctly."""
+
+    def test_encrypt_as_json_warns(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = encrypt_as_json("a" * 16, {"key": "val"})
+            self.assertTrue(any("deprecated" in str(warning.message).lower() for warning in w))
+            self.assertIsInstance(result, str)
+
+    def test_decrypt_from_json_warns(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            encrypted = encrypt_as_json("a" * 16, {"key": "val"})
+            result = decrypt_from_json("a" * 16, encrypted)
+            dep_warnings = [x for x in w if "deprecated" in str(x.message).lower()]
+            self.assertTrue(len(dep_warnings) >= 1)
+
+    def test_encrypt_decrypt_bin_warns(self):
+        key = "a" * 16
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            encrypted = encrypt_bin(key, b"hello")
+            self.assertIsInstance(encrypted, bytes)
+            dep = [x for x in w if "deprecated" in str(x.message).lower()]
+            self.assertTrue(len(dep) >= 1)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            decrypted = decrypt_bin(key, encrypted)
+            self.assertEqual(decrypted, b"hello")
+            dep = [x for x in w if "deprecated" in str(x.message).lower()]
+            self.assertTrue(len(dep) >= 1)
+
+    def test_encrypt_decrypt_json_roundtrip(self):
+        key = "b" * 16
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            encrypted = encrypt_as_json(key, "hello world")
+            decrypted = decrypt_from_json(key, encrypted)
+            self.assertEqual(decrypted, "hello world")
+
+    def test_encrypt_as_json_b64(self):
+        key = "c" * 16
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = encrypt_as_json(key, "test", b64=True)
+            self.assertIsInstance(result, str)
 
 
 if __name__ == "__main__":
