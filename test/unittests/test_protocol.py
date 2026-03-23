@@ -82,53 +82,37 @@ class TestHandleQuery:
         proto.internal_protocol.bus = MagicMock()
         return proto
 
-    def test_response_emits_inner_bus_on_internal_bus(self):
-        """QUERY with is_response=True should call handle_bus with the inner BUS message."""
+    def test_bus_payload_dispatches_to_handle_bus(self):
+        """QUERY with inner BUS payload should call handle_bus."""
         proto = self._make_protocol_with_bus()
         inner_bus = HiveMessage(HiveMessageType.BUS,
                                 {"type": "speak", "data": {"utterance": "hello"}, "context": {}})
-        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner_bus,
-                                metadata={"is_response": True})
+        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner_bus)
 
         with patch.object(proto, 'handle_bus') as mock_bus:
             proto.handle_query(query_msg)
-            mock_bus.assert_called_once()
-            arg = mock_bus.call_args[0][0]
-            assert arg.msg_type == HiveMessageType.BUS
+            mock_bus.assert_called_once_with(query_msg)
 
-    def test_response_ignores_non_bus_inner(self):
-        """QUERY response with non-BUS inner payload should not call handle_bus."""
+    def test_intercom_payload_dispatches_to_handle_intercom(self):
+        """QUERY with inner INTERCOM payload should call handle_intercom."""
+        proto = self._make_protocol_with_bus()
+        inner_bus = HiveMessage(HiveMessageType.BUS,
+                                {"type": "speak", "data": {}, "context": {}})
+        inner_intercom = HiveMessage(HiveMessageType.INTERCOM, payload=inner_bus)
+        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner_intercom)
+
+        with patch.object(proto, 'handle_intercom') as mock_intercom:
+            proto.handle_query(query_msg)
+            mock_intercom.assert_called_once_with(query_msg)
+
+    def test_invalid_inner_type_raises(self):
+        """QUERY with non-BUS/INTERCOM inner payload should raise AssertionError."""
         proto = self._make_protocol_with_bus()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "x"})
-        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner,
-                                metadata={"is_response": True})
+        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner)
 
-        with patch.object(proto, 'handle_bus') as mock_bus:
+        with pytest.raises(AssertionError):
             proto.handle_query(query_msg)
-            mock_bus.assert_not_called()
-
-    def test_request_forwards_downstream(self):
-        """QUERY request (is_response=False) should emit hive.send.downstream on internal bus."""
-        proto = self._make_protocol_with_bus()
-        inner_bus = HiveMessage(HiveMessageType.BUS,
-                                {"type": "recognize", "data": {}, "context": {}})
-        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner_bus)
-
-        proto.handle_query(query_msg)
-
-        proto.internal_protocol.bus.emit.assert_called_once()
-        emitted = proto.internal_protocol.bus.emit.call_args[0][0]
-        assert emitted.msg_type == 'hive.send.downstream'
-
-    def test_request_default_no_metadata(self):
-        """QUERY with no metadata defaults to request mode (forwards downstream)."""
-        proto = self._make_protocol_with_bus()
-        inner_bus = HiveMessage(HiveMessageType.BUS,
-                                {"type": "test", "data": {}, "context": {}})
-        query_msg = HiveMessage(HiveMessageType.QUERY, payload=inner_bus)
-
-        proto.handle_query(query_msg)
-        proto.internal_protocol.bus.emit.assert_called_once()
 
 
 class TestHandleCascade:
@@ -139,53 +123,37 @@ class TestHandleCascade:
         proto.internal_protocol.bus = MagicMock()
         return proto
 
-    def test_response_emits_inner_bus_on_internal_bus(self):
-        """CASCADE with is_response=True should call handle_bus with the inner BUS message."""
+    def test_bus_payload_dispatches_to_handle_bus(self):
+        """CASCADE with inner BUS payload should call handle_bus."""
         proto = self._make_protocol_with_bus()
         inner_bus = HiveMessage(HiveMessageType.BUS,
                                 {"type": "speak", "data": {"utterance": "hi"}, "context": {}})
-        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner_bus,
-                                  metadata={"is_response": True})
+        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner_bus)
 
         with patch.object(proto, 'handle_bus') as mock_bus:
             proto.handle_cascade(cascade_msg)
-            mock_bus.assert_called_once()
-            arg = mock_bus.call_args[0][0]
-            assert arg.msg_type == HiveMessageType.BUS
+            mock_bus.assert_called_once_with(cascade_msg)
 
-    def test_response_ignores_non_bus_inner(self):
-        """CASCADE response with non-BUS inner payload should not call handle_bus."""
+    def test_intercom_payload_dispatches_to_handle_intercom(self):
+        """CASCADE with inner INTERCOM payload should call handle_intercom."""
+        proto = self._make_protocol_with_bus()
+        inner_bus = HiveMessage(HiveMessageType.BUS,
+                                {"type": "speak", "data": {}, "context": {}})
+        inner_intercom = HiveMessage(HiveMessageType.INTERCOM, payload=inner_bus)
+        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner_intercom)
+
+        with patch.object(proto, 'handle_intercom') as mock_intercom:
+            proto.handle_cascade(cascade_msg)
+            mock_intercom.assert_called_once_with(cascade_msg)
+
+    def test_invalid_inner_type_raises(self):
+        """CASCADE with non-BUS/INTERCOM inner payload should raise AssertionError."""
         proto = self._make_protocol_with_bus()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "x"})
-        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner,
-                                  metadata={"is_response": True})
+        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner)
 
-        with patch.object(proto, 'handle_bus') as mock_bus:
+        with pytest.raises(AssertionError):
             proto.handle_cascade(cascade_msg)
-            mock_bus.assert_not_called()
-
-    def test_request_forwards_downstream(self):
-        """CASCADE request (is_response=False) should emit hive.send.downstream on internal bus."""
-        proto = self._make_protocol_with_bus()
-        inner_bus = HiveMessage(HiveMessageType.BUS,
-                                {"type": "recognize", "data": {}, "context": {}})
-        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner_bus)
-
-        proto.handle_cascade(cascade_msg)
-
-        proto.internal_protocol.bus.emit.assert_called_once()
-        emitted = proto.internal_protocol.bus.emit.call_args[0][0]
-        assert emitted.msg_type == 'hive.send.downstream'
-
-    def test_request_default_no_metadata(self):
-        """CASCADE with no metadata defaults to request mode (forwards downstream)."""
-        proto = self._make_protocol_with_bus()
-        inner_bus = HiveMessage(HiveMessageType.BUS,
-                                {"type": "test", "data": {}, "context": {}})
-        cascade_msg = HiveMessage(HiveMessageType.CASCADE, payload=inner_bus)
-
-        proto.handle_cascade(cascade_msg)
-        proto.internal_protocol.bus.emit.assert_called_once()
 
 
 class TestHandlePropagate:

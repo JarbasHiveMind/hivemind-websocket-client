@@ -28,11 +28,12 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 
 ## QUERY — First-Match Request-Response
 
-QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond. The hub sets `metadata.is_response = True` on the response and wraps the answer in a BUS inner payload.
+QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond.
 
 **Satellite behaviour** (`HiveMindSlaveProtocol.handle_query` — `protocol.py:311`):
-- **Response** (`is_response=True`): Inner BUS message is emitted on the internal OVOS bus via `handle_bus`.
-- **Request** (`is_response=False`): Forwarded downstream via `hive.send.downstream` (only relevant when the satellite is also a master).
+- Inner payload must be `BUS` or `INTERCOM`.
+- `BUS` payloads are dispatched to `handle_bus`.
+- `INTERCOM` payloads are dispatched to `handle_intercom`.
 
 ### Sending a QUERY (from satellite)
 
@@ -60,9 +61,10 @@ def on_speak(msg):
 
 CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional — nodes that cannot answer simply stay silent.
 
-**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:336`):
-- **Response** (`is_response=True`): Inner BUS message is emitted on the internal OVOS bus via `handle_bus`.
-- **Request** (`is_response=False`): Forwarded downstream via `hive.send.downstream`.
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:327`):
+- Inner payload must be `BUS` or `INTERCOM`.
+- `BUS` payloads are dispatched to `handle_bus`.
+- `INTERCOM` payloads are dispatched to `handle_intercom`.
 
 ### Sending a CASCADE (from satellite)
 
