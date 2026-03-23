@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.6.0a1) (2026-03-23)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.5.0a6...0.6.0a1)
+
+**Merged pull requests:**
+
+- feat: implement QUERY and CASCADE message handlers \(satellite side\) [\#101](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/101) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.5.0a6](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.5.0a6) (2026-03-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.5.0a5...0.5.0a6)
