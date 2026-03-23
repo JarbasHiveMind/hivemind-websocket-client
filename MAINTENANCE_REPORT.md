@@ -1,5 +1,15 @@
 # Maintenance Report — hivemind-websocket-client
 
+## 2026-03-23 (3)
+
+- **AI Model**: Claude Opus 4.6
+- **Actions Taken**:
+  - Added `trusted_keys` (alias→pubkey dict) to `NodeIdentity` with add/remove/is_trusted/get_alias methods
+  - Added `_is_source_trusted` helper, trust-gated `handle_propagate` and `handle_intercom`
+  - Added `public_key`/`trusted` fields to `NodeInfo`, `mark_trusted_nodes`/`is_peer_trusted` to `HiveMapper`
+  - Updated `docs/identity.md`, `FAQ.md`, `AUDIT.md`
+- **Oversight**: Human review pending before push
+
 ## 2026-03-23 (2)
 
 - **AI Model**: Claude Opus 4.6

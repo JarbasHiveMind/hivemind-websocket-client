@@ -18,6 +18,30 @@ Every HiveMind client node has a **NodeIdentity** — a persisted set of credent
 | `site_id` | Location identifier injected into every OVOS message context |
 | `public_key` | RSA public key for this node |
 | `secret_key` | Path to the RSA private key PEM file |
+| `trusted_keys` | Dict of alias → public key for trusted peers (see below) |
+
+## Trusted Keys
+
+Peers whose public key is in `trusted_keys` are allowed to inject BUS
+messages via PROPAGATE and INTERCOM.  Untrusted peers are silently dropped.
+
+```python
+from hivemind_bus_client.identity import NodeIdentity
+
+identity = NodeIdentity()
+identity.add_trusted_key("living-room-hub", "<RSA_PUBLIC_KEY>")
+identity.save()
+
+# Check trust
+identity.is_trusted_key("<RSA_PUBLIC_KEY>")  # True
+identity.get_trusted_alias("<RSA_PUBLIC_KEY>")  # "living-room-hub"
+
+# Remove
+identity.remove_trusted_key("living-room-hub")
+identity.save()
+```
+
+Source: `NodeIdentity.trusted_keys` — `identity.py:153`
 
 ## Setting identity from the CLI
 
