@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0a6](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.5.0a6) (2026-03-23)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.5.0a5...0.5.0a6)
+
+**Merged pull requests:**
+
+- chore: remove dead code [\#99](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/99) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.5.0a5](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.5.0a5) (2026-03-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.5.0a4...0.5.0a5)
