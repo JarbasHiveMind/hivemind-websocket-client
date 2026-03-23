@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.5.0a2) (2026-03-23)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.5.0a1...0.5.0a2)
+
 ## [0.5.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.5.0a1) (2026-03-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.6a3...0.5.0a1)
