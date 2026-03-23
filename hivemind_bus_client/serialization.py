@@ -100,7 +100,7 @@ def _decode_bitstring_v1(s):
     binmap = {e: e.value for e in HiveMindBinaryPayloadType}
 
     hive_type = _INT2TYPE.get(s.read(5).uint, 11)
-    compressed = bool(s.read(1))
+    compressed = s.read(1).bool  # note: bool(BitStream) checks length (always True), .bool reads the actual bit
 
     metalen = s.read(8).uint * 8
     meta = s.read(metalen)

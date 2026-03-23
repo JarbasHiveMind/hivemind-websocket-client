@@ -76,6 +76,8 @@ class HiveMessage:
             payload = {"type": payload.msg_type,
                        "data": payload.data,
                        "context": payload.context}
+        elif isinstance(payload, HiveMessage):
+            payload = payload.as_dict
         elif isinstance(payload, str):
             payload = json.loads(payload)
         self._payload = payload or {}
@@ -119,7 +121,7 @@ class HiveMessage:
 
     @property
     def route(self) -> List[str]:
-        return [r for r in self._route if r.get("targets") and r.get("source")]
+        return [r for r in self._route if isinstance(r, dict) and r.get("targets") and r.get("source")]
 
     @property
     def payload(self) -> Union['HiveMessage', Message, dict, bytes]:
@@ -208,7 +210,7 @@ class HiveMessage:
                                    metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
-            except:
+            except Exception:
                 pass  # not a hivemind message
 
         if "type" in payload:
@@ -219,7 +221,7 @@ class HiveMessage:
                                    metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
-            except:
+            except Exception:
                 pass  # not a mycroft message
 
         return HiveMessage(HiveMessageType.THIRDPRTY, payload,

@@ -233,11 +233,23 @@ class HiveMessageBusClient(OVOSBusClient):
         self.crypto_key = None
         super().on_close(*args)
 
-    def wait_for_handshake(self, timeout=5):
+    def wait_for_handshake(self, timeout=5, max_retries=15):
+        """
+        Waits for the HiveMind handshake to complete; if the handshake is not set and the websocket connection is open, starts the handshake, otherwise waits for the websocket to open and retries.
+
+        Parameters:
+            timeout (float): Number of seconds to wait for each handshake or connection attempt before retrying.
+        """
         self.handshake_event.wait(timeout=timeout)
         if not self.handshake_event.is_set():
-            self.protocol.start_handshake()
-            self.wait_for_handshake()
+            if max_retries <= 0:
+                raise RuntimeError("timed out waiting for handshake")
+            if self.connected_event.is_set():
+                self.protocol.start_handshake()
+            else:
+                LOG.warning("Can't start handshake because websocket connection is not yet open...")
+                self.connected_event.wait(timeout=timeout)
+            self.wait_for_handshake(timeout, max_retries - 1)
 
     @staticmethod
     def build_url(key, host='127.0.0.1', port=5678,
@@ -353,12 +365,12 @@ class HiveMessageBusClient(OVOSBusClient):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
         if not self.connected_event.is_set():
-            LOG.warning("hivemind connection not ready")
+            LOG.warning("hivemind connection not ready!")
             if not self.connected_event.wait(10):
                 if not self.started_running:
                     raise ValueError('You must execute run_forever() '
                                      'before emitting messages')
-                self.connected_event.wait()
+                raise RuntimeError(f"Can not send messages before opening the websocket connection. Failed to emit : {message.serialize()}")
 
         try:
             # auto inject context for proper routing, this is confusing for

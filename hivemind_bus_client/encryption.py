@@ -270,7 +270,11 @@ def decrypt_from_json(key: Union[str, bytes], ciphertext_json: Union[str, bytes]
 
     decoder = get_decoder(encoding)
 
-    ciphertext: bytes = decoder(ciphertext_json["ciphertext"])
+    # JSON stores encoded values as str; decoders expect bytes
+    def _to_bytes(val):
+        return val.encode("utf-8") if isinstance(val, str) else val
+
+    ciphertext: bytes = decoder(_to_bytes(ciphertext_json["ciphertext"]))
 
     if "tag" not in ciphertext_json:  # web crypto compatibility
         if cipher in AES_CIPHERS:
@@ -278,8 +282,8 @@ def decrypt_from_json(key: Union[str, bytes], ciphertext_json: Union[str, bytes]
         else:
             ciphertext, tag = ciphertext[:-CHACHA20_TAG_SIZE], ciphertext[-CHACHA20_TAG_SIZE:]
     else:
-        tag = decoder(ciphertext_json["tag"])
-    nonce = decoder(ciphertext_json["nonce"])
+        tag = decoder(_to_bytes(ciphertext_json["tag"]))
+    nonce = decoder(_to_bytes(ciphertext_json["nonce"]))
 
     try:
         ciphertext = decrypt_bin(key=key,
