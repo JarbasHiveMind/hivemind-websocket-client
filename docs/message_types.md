@@ -18,7 +18,7 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`ESCALATE`** | Upstream request | Used by a Slave Mind to ask a Master Mind for help. |
 | **`BROADCAST`** | Downstream flood (admin only) | Master pushes a message to all connected satellites. |
 | **`PROPAGATE`** | Bidirectional flood | Forwards to all peers in both directions. |
-| **`INTERCOM`** | End-to-end encrypted | Secure peer-to-peer messaging between Satellites. |
+| **`INTERCOM`** | End-to-end hybrid-encrypted | AES-GCM payload + RSA-encrypted ephemeral key. Only trusted peers or explicit targets are injected. |
 | **`QUERY`** | Request-response upstream | Like ESCALATE, but first answering node sends a response back. Stops propagation on answer. |
 | **`CASCADE`** | Request-response flood | Like PROPAGATE, but expects responses from ALL nodes. Supports disambiguation. |
 | **`PING`** | Network discovery flood | Each node responds with its own PING (same `flood_id`). Carried inside PROPAGATE. Route metadata = hive path. |
@@ -105,7 +105,18 @@ def on_skills(msg):
 
 ## PING Flood — Network Discovery
 
-PING messages are **always the inner payload of a PROPAGATE message**. They are never sent bare. Each node that receives a PING responds with its own PING carrying the same `flood_id`. The `flood_id` prevents infinite loops. PONG is no longer used.
+PING messages are **always the inner payload of a PROPAGATE message**. They are never sent bare. Each node that receives a PING responds with its own PING carrying the same `flood_id`. The `flood_id` prevents infinite loops (tracked via `HiveMapper.check_flood_id`). PONG is no longer used.
+
+### PING Payload Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `flood_id` | `str` | UUID preventing infinite loops |
+| `peer` | `str` | `{name}::{session_id}` identifier |
+| `site_id` | `str` | Location identifier |
+| `timestamp` | `float` | Sender's clock for RTT estimation |
+| `public_key` | `str?` | RSA public key — enables trust verification via `HiveMapper.mark_trusted_nodes` |
+| `lang` | `str?` | Node's locale (e.g. `"en-us"`) — enables localized INTERCOM communication |
 
 ### Sending a PING
 
@@ -121,6 +132,8 @@ ping_inner = HiveMessage(
         "timestamp": time.time(),
         "peer":      client.peer,
         "site_id":   client.site_id,
+        "public_key": identity.public_key,
+        "lang":      "en-us",
     }
 )
 ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=ping_inner)
