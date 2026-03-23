@@ -228,9 +228,9 @@ Route survives `as_dict()` → `deserialize()` roundtrips. The `route` field is 
 ## Serialization and Encryption
 
 Before being sent over the network, `HiveMessage` objects are:
-1. **Serialized**: Using `hivemind_bus_client.serialization.HiveMessageSerializer`.
-2. **Encrypted**: Using AES-256-GCM in `hivemind_bus_client.encryption.HiveMessageEncryptor`.
-3. **Encoded**: Frequently using Z85+Base91 for safe text transport in `hivemind_bus_client.encodings`.
+1. **Serialized**: Using functions in `hivemind_bus_client.serialization` (`get_bitstring`, `decode_bitstring`).
+2. **Encrypted**: Using AES-256-GCM via functions in `hivemind_bus_client.encryption`.
+3. **Encoded**: Frequently using Z85+Base91 for safe text transport via `hivemind_bus_client.encodings`.
 
 ### Examples
 

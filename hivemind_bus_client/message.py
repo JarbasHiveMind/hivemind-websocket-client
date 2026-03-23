@@ -208,6 +208,7 @@ class HiveMessage:
             try:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
+                                   route=payload.get("route"),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:

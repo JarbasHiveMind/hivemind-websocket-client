@@ -37,8 +37,5 @@ client.connect()
 
 ## Available Callback Methods
 
-- **`handle_receive_tts`**: Called when the AI generates audio from text.
-- **`handle_microphone_input`**: Called when the satellite streams its local microphone audio to the Mind.
-- **`handle_receive_file`**: Called for generic file transfers.
-- **`handle_numpy_image`**: Called for image data (requires `numpy`).
-- **`handle_stt_transcribe_request`**: Called for raw STT transcription requests.
+- **`handle_receive_tts`**: Called when the AI generates audio from text (`client.py:27`).
+- **`handle_receive_file`**: Called for generic file transfers (`client.py:33`).
