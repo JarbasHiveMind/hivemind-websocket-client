@@ -16,6 +16,7 @@ from hivemind_bus_client.decorators import (
     on_handshake,
     on_hello,
     on_cascade,
+    on_query,
     on_rendezvous,
     on_shared_bus,
     on_payload,
@@ -170,6 +171,9 @@ class TestPayloadDecorators(unittest.TestCase):
 
     def test_on_hello(self):
         self._test_decorator(on_hello, HiveMessageType.HELLO, "speak")
+
+    def test_on_query(self):
+        self._test_decorator(on_query, HiveMessageType.QUERY, "speak")
 
     def test_on_cascade(self):
         self._test_decorator(on_cascade, HiveMessageType.CASCADE, "speak")
