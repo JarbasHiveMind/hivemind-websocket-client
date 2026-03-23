@@ -135,6 +135,7 @@ class HiveMindSlaveProtocol:
         # may also send HELLO with their pubkey
         # only want this on the first connection
         LOG.info(f"HELLO: {message.payload}")
+        assert message.payload.msg_type == HiveMessageType.HELLO
         if not self.node_id:
             self.mpubkey = message.payload.get("pubkey")
             node_id = message.payload.get("node_id", "")
@@ -184,6 +185,7 @@ class HiveMindSlaveProtocol:
 
     def handle_handshake(self, message: HiveMessage):
         LOG.info(f"HANDSHAKE: {message.payload}")
+        assert message.payload.msg_type == HiveMessageType.HANDSHAKE
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
@@ -219,6 +221,7 @@ class HiveMindSlaveProtocol:
 
     def handle_bus(self, message: HiveMessage):
         LOG.info(f"BUS: {message.payload.msg_type}")
+        assert message.payload.msg_type == HiveMessageType.BUS
         assert isinstance(message.payload, MycroftMessage)
         # master wants to inject message into mycroft bus
         pload = message.payload
@@ -236,12 +239,11 @@ class HiveMindSlaveProtocol:
 
     def handle_broadcast(self, message: HiveMessage):
         LOG.info(f"BROADCAST: {message.payload}")
+        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
 
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            if self.handle_intercom(message):
-                return True
-
-        if message.payload.msg_type == HiveMessageType.BUS:
+            self.handle_intercom(message)
+        elif message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
             site = message.target_site_id
             if site and site == self.site_id:
@@ -250,14 +252,12 @@ class HiveMindSlaveProtocol:
 
     def handle_propagate(self, message: HiveMessage):
         LOG.info(f"PROPAGATE: {message.payload}")
-
+        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM, HiveMessageType.PING]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            if self.handle_intercom(message):
-                return True
+            self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.PING:
             self._handle_ping(message)
-
-        if message.payload.msg_type == HiveMessageType.BUS:
+        elif message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
             site = message.target_site_id
             if site and site == self.site_id:
@@ -317,51 +317,31 @@ class HiveMindSlaveProtocol:
         Args:
             message: The QUERY HiveMessage.
         """
-        metadata = message.metadata or {}
-        is_response = metadata.get("is_response", False)
-        LOG.info(f"QUERY (is_response={is_response}): {message.payload}")
-
-        if is_response:
-            # Response — emit the inner BUS message on the internal bus
-            inner = message.payload
-            if isinstance(inner, HiveMessage) and inner.msg_type == HiveMessageType.BUS:
-                self.handle_bus(inner)
-            return
-
-        # Request from master — forward downstream if this node is also a master
-        data = message.as_dict
-        ctxt = {"source": self.node_id}
-        self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
+        LOG.info(f"QUERY: {message.payload}")
+        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
+        if message.payload.msg_type == HiveMessageType.INTERCOM:
+            self.handle_intercom(message)
+        elif message.payload.msg_type == HiveMessageType.BUS:
+            self.handle_bus(message)
 
     def handle_cascade(self, message: HiveMessage):
         """Handle a CASCADE message received from the master.
 
-        Response (is_response=True): Emit the inner BUS payload on the internal bus.
-        Request (is_response=False): Forward downstream if this node is also a master.
-
         Args:
             message: The CASCADE HiveMessage.
         """
-        metadata = message.metadata or {}
-        is_response = metadata.get("is_response", False)
-        LOG.info(f"CASCADE (is_response={is_response}): {message.payload}")
-
-        if is_response:
-            # Response — emit the inner BUS message on the internal bus
-            inner = message.payload
-            if isinstance(inner, HiveMessage) and inner.msg_type == HiveMessageType.BUS:
-                self.handle_bus(inner)
-            return
-
-        # Request from master — forward downstream if this node is also a master
-        data = message.as_dict
-        ctxt = {"source": self.node_id}
-        self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
+        LOG.info(f"CASCADE: {message.payload}")
+        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
+        if message.payload.msg_type == HiveMessageType.INTERCOM:
+            self.handle_intercom(message)
+        elif message.payload.msg_type == HiveMessageType.BUS:
+            self.handle_bus(message)
 
     def handle_intercom(self, message: HiveMessage):
         LOG.info(f"INTERCOM: {message.payload}")
+        assert message.payload.msg_type == HiveMessageType.BUS
 
-        # if the message targets our site_id, send it to internal bus
+        # if the message targets our public_key, send it to internal bus
         k = message.target_public_key
         if k and k != self.identity.public_key:
             # not for us
@@ -389,13 +369,5 @@ class HiveMindSlaveProtocol:
                     LOG.debug("failed to decrypt message, not for us")
                 return False
 
-        if message.msg_type == HiveMessageType.BUS:
-            self.handle_bus(message)
-            return True
-        elif message.msg_type == HiveMessageType.PROPAGATE:
-            self.handle_propagate(message)
-            return True
-        elif message.msg_type == HiveMessageType.BROADCAST:
-            self.handle_broadcast(message)
-            return True
-        return False
+        self.handle_bus(message)
+        return True
