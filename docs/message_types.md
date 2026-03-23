@@ -61,10 +61,14 @@ def on_speak(msg):
 
 CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional — nodes that cannot answer simply stay silent.
 
-**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:327`):
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:436`):
+
+Responses are buffered in a `CascadeAggregator` (`protocol.py:21`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
+
 - Inner payload must be `BUS` or `INTERCOM`.
-- `BUS` payloads are dispatched to `handle_bus`.
-- `INTERCOM` payloads are dispatched to `handle_intercom`.
+- Default select callback returns the first response.
+- Set `cascade_select_callback` on the protocol to provide custom disambiguation.
+- Set `hive_mapper` to enable early resolution when all nodes have responded.
 
 ### Sending a CASCADE (from satellite)
 
@@ -73,6 +77,20 @@ inner = HiveMessage(HiveMessageType.BUS,
                     Message("skill.list.request", {}))
 cascade = HiveMessage(HiveMessageType.CASCADE, payload=inner)
 client.emit(cascade)
+```
+
+### Custom disambiguation
+
+```python
+from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+from hivemind_bus_client.hive_map import HiveMapper
+
+def pick_best(responses):
+    # custom logic — e.g. highest confidence, specific node, etc.
+    return responses[0]
+
+proto.cascade_select_callback = pick_best
+proto.hive_mapper = mapper  # enables early resolution
 ```
 
 ### Listening for CASCADE responses (decorator)
