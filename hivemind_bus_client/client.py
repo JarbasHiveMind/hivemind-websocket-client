@@ -129,6 +129,7 @@ class HiveMessageBusClient(OVOSBusClient):
         self._rendezvous_poll_interval: float = rendezvous_poll_interval
         self._rendezvous_stop_event: Event = Event()
         self._rendezvous_thread: Optional[Thread] = None
+        self._rendezvous_server_pubkeys: dict = {}  # base_url -> cached server pubkey
 
         # if you want to reduce CPU usage in exchange for more bandwidth set below to False
         self.compress = compress  # None -> auto
@@ -287,22 +288,47 @@ class HiveMessageBusClient(OVOSBusClient):
                 except Exception:
                     LOG.exception("Rendezvous poll error for %s", url)
 
+    def _fetch_rendezvous_server_pubkey(self, base_url: str) -> str:
+        """Fetch and cache the rendezvous server's RSA public key from ``GET /pubkey``.
+
+        Args:
+            base_url: Rendezvous server base URL (trailing slash already stripped).
+
+        Returns:
+            PEM-encoded RSA public key string, or empty string on failure.
+        """
+        if base_url in self._rendezvous_server_pubkeys:
+            return self._rendezvous_server_pubkeys[base_url]
+        try:
+            req = urllib.request.Request(f"{base_url}/pubkey", method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+            server_pubkey: str = data.get("pubkey", "")
+            self._rendezvous_server_pubkeys[base_url] = server_pubkey
+            return server_pubkey
+        except Exception as exc:
+            LOG.warning("Rendezvous: could not fetch server pubkey from %s: %s", base_url, exc)
+            return ""
+
     def _poll_rendezvous(self, base_url: str) -> None:
         """Retrieve pending messages from one rendezvous server and inject them.
 
-        Builds a signed proof-of-ownership, POSTs to ``{base_url}/retrieve``,
-        and feeds each returned serialised :class:`HiveMessage` into
-        :meth:`_handle_hive_protocol`.
+        Fetches the server's public key (cached after first call), builds a
+        server-bound domain-separated proof-of-ownership, POSTs to
+        ``{base_url}/retrieve``, and feeds each returned serialised
+        :class:`HiveMessage` into :meth:`_handle_hive_protocol`.
 
         Args:
             base_url: Rendezvous server base URL (trailing slash already stripped).
         """
         from hivemind_rendezvous.auth import sign_ownership
 
+        server_pubkey: str = self._fetch_rendezvous_server_pubkey(base_url)
         pubkey: str = self.identity.public_key
         private_key = load_RSA_key(self.identity.private_key)
         timestamp: int = int(time.time())
-        signature: str = sign_ownership(private_key, pubkey, timestamp)
+        signature: str = sign_ownership(private_key, pubkey, timestamp,
+                                        server_pubkey=server_pubkey)
 
         body = json.dumps({
             "pubkey": pubkey,
@@ -650,5 +676,7 @@ class HiveMessageBusClient(OVOSBusClient):
             pubkey: RSA public key of the target peer.
         """
         private_key = load_RSA_key(self.identity.private_key)
-        envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
+        envelope = hybrid_encrypt(pubkey, message.serialize(),
+                                  sign_key=private_key,
+                                  recipient_pubkey=pubkey)
         self.emit(HiveMessage(HiveMessageType.INTERCOM, payload=envelope))

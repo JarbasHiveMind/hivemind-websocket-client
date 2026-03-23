@@ -501,36 +501,65 @@ def decrypt_ChaCha20_Poly1305(key: Union[str, bytes],
 
 def hybrid_encrypt(public_key: Union[str, bytes, 'RSA.RsaKey'],
                    plaintext: Union[str, bytes],
-                   sign_key: Optional[Union[str, bytes, 'RSA.RsaKey']] = None) -> Dict[str, str]:
+                   sign_key: Optional[Union[str, bytes, 'RSA.RsaKey']] = None,
+                   recipient_pubkey: Optional[Union[str, bytes, 'RSA.RsaKey']] = None) -> Dict[str, str]:
     """Hybrid-encrypt *plaintext* for the owner of *public_key*.
 
     Generates a random 32-byte AES-GCM key, encrypts the payload with it,
     then RSA-encrypts only the AES key with the target's public key.
-    Optionally signs the ciphertext with *sign_key*.
+
+    Optionally signs the ciphertext with *sign_key* (sender authentication).
+
+    When *recipient_pubkey* is provided, the SHA-256 fingerprint of the
+    recipient's public key is used as AES-GCM Additional Authenticated Data
+    (AAD) and stored as ``recipient_fingerprint`` in the envelope.  This
+    cryptographically binds the ciphertext to the intended recipient: decryption
+    will fail with an authentication error if the envelope is presented to the
+    wrong recipient or tampered with.
 
     The returned dict is JSON-serialisable and safe to embed in a
     ``HiveMessage`` payload.
 
     Args:
-        public_key: RSA public key of the target peer.
+        public_key: RSA public key of the target peer (used to RSA-encrypt the
+            symmetric key).
         plaintext: Data to encrypt.
-        sign_key: Optional RSA private key to sign the ciphertext.
+        sign_key: Optional RSA private key to sign the ciphertext (PSS-SHA256).
+        recipient_pubkey: Optional RSA public key of the recipient.  When
+            provided, its SHA-256 fingerprint is bound into the GCM tag as AAD.
+            Pass the same key as *public_key* when encrypting INTERCOM messages.
 
     Returns:
         Dict with keys ``encrypted_key``, ``ciphertext``, ``tag``, ``nonce``,
-        and optionally ``signature`` — all base64-encoded strings.
+        and optionally ``signature`` and ``recipient_fingerprint`` — all
+        base64-encoded strings.
     """
+    import hashlib
+    from Cryptodome.PublicKey import RSA as _RSA
     from Cryptodome.Random import get_random_bytes
     from poorman_handshake.asymmetric.utils import encrypt_RSA, sign_RSA
 
     if isinstance(plaintext, str):
         plaintext = plaintext.encode("utf-8")
 
-    # generate ephemeral symmetric key
-    sym_key = get_random_bytes(32)  # AES-256
+    # Compute recipient AAD fingerprint when binding is requested
+    aad: Optional[bytes] = None
+    if recipient_pubkey is not None:
+        if isinstance(recipient_pubkey, _RSA.RsaKey):
+            rp_pem = recipient_pubkey.public_key().export_key("PEM").decode("utf-8")
+        elif isinstance(recipient_pubkey, bytes):
+            rp_pem = recipient_pubkey.decode("utf-8")
+        else:
+            rp_pem = recipient_pubkey
+        aad = hashlib.sha256(rp_pem.encode("utf-8")).digest()
 
-    # encrypt payload with AES-GCM
-    ciphertext, tag, nonce = encrypt_AES(sym_key, plaintext)
+    # Generate ephemeral symmetric key and encrypt payload with AES-GCM
+    sym_key = get_random_bytes(32)  # AES-256
+    nonce_bytes = get_random_bytes(16)
+    cipher = AES.new(sym_key, AES.MODE_GCM, nonce=nonce_bytes)
+    if aad is not None:
+        cipher.update(aad)
+    ciphertext, tag = cipher.encrypt_and_digest(plaintext)
 
     # RSA-encrypt the symmetric key
     encrypted_key = encrypt_RSA(public_key, sym_key)
@@ -539,8 +568,11 @@ def hybrid_encrypt(public_key: Union[str, bytes, 'RSA.RsaKey'],
         "encrypted_key": pybase64.b64encode(encrypted_key).decode("ascii"),
         "ciphertext": pybase64.b64encode(ciphertext).decode("ascii"),
         "tag": pybase64.b64encode(tag).decode("ascii"),
-        "nonce": pybase64.b64encode(nonce).decode("ascii"),
+        "nonce": pybase64.b64encode(nonce_bytes).decode("ascii"),
     }
+
+    if aad is not None:
+        result["recipient_fingerprint"] = pybase64.b64encode(aad).decode("ascii")
 
     if sign_key is not None:
         signature = sign_RSA(sign_key, ciphertext)
@@ -550,20 +582,55 @@ def hybrid_encrypt(public_key: Union[str, bytes, 'RSA.RsaKey'],
 
 
 def hybrid_decrypt(private_key: Union[str, bytes, 'RSA.RsaKey'],
-                   envelope: Dict[str, str]) -> bytes:
+                   envelope: Dict[str, str],
+                   verify_key: Optional[Union[str, bytes, 'RSA.RsaKey']] = None,
+                   expected_recipient: Optional[Union[str, bytes, 'RSA.RsaKey']] = None) -> bytes:
     """Decrypt a hybrid-encrypted envelope.
 
     The envelope must contain ``encrypted_key``, ``ciphertext``, ``tag``,
     and ``nonce`` — all base64-encoded.
 
+    **Sender authentication** (*verify_key*): when provided, the ``signature``
+    field in the envelope is verified (PSS-SHA256 over the ciphertext) against
+    *verify_key*.  If the envelope contains a signature and *verify_key* is
+    provided but verification fails, :exc:`ValueError` is raised.  If the
+    envelope has no signature but *verify_key* is provided, :exc:`ValueError`
+    is raised (missing expected authentication).
+
+    **Recipient binding** (*expected_recipient*): when provided, and the
+    envelope contains a ``recipient_fingerprint`` field, the SHA-256 fingerprint
+    of *expected_recipient* is used as AES-GCM AAD.  The GCM tag authentication
+    will fail (raising :exc:`ValueError`) if the envelope was encrypted for a
+    different recipient.
+
     Args:
         private_key: RSA private key to decrypt the symmetric key.
-        envelope: The dict produced by ``hybrid_encrypt``.
+        envelope: The dict produced by :func:`hybrid_encrypt`.
+        verify_key: Optional RSA public key of the expected sender.  When
+            provided, the ``signature`` field is verified before decryption.
+        expected_recipient: Optional RSA public key of this node (the intended
+            recipient).  When provided and ``recipient_fingerprint`` is present
+            in the envelope, verifies recipient binding via AES-GCM AAD.
 
     Returns:
         The decrypted plaintext bytes.
+
+    Raises:
+        ValueError: If signature verification fails, expected signature is
+            absent, or AES-GCM authentication (including AAD) fails.
     """
-    from poorman_handshake.asymmetric.utils import decrypt_RSA
+    import hashlib
+    from Cryptodome.PublicKey import RSA as _RSA
+    from poorman_handshake.asymmetric.utils import decrypt_RSA, verify_RSA
+
+    # --- Sender authentication ---
+    if verify_key is not None:
+        if "signature" not in envelope:
+            raise ValueError("Expected signed INTERCOM envelope but 'signature' field is absent")
+        ciphertext_bytes = pybase64.b64decode(envelope["ciphertext"])
+        sig_bytes = pybase64.b64decode(envelope["signature"])
+        if not verify_RSA(verify_key, ciphertext_bytes, sig_bytes):
+            raise ValueError("INTERCOM signature verification failed — message may be tampered")
 
     encrypted_key = pybase64.b64decode(envelope["encrypted_key"])
     ciphertext = pybase64.b64decode(envelope["ciphertext"])
@@ -573,8 +640,22 @@ def hybrid_decrypt(private_key: Union[str, bytes, 'RSA.RsaKey'],
     # RSA-decrypt the symmetric key
     sym_key = decrypt_RSA(private_key, encrypted_key)
 
-    # AES-GCM decrypt the payload
-    return decrypt_AES_128(sym_key, ciphertext, tag, nonce)
+    # Compute AAD for recipient binding if the envelope has it
+    aad: Optional[bytes] = None
+    if "recipient_fingerprint" in envelope and expected_recipient is not None:
+        if isinstance(expected_recipient, _RSA.RsaKey):
+            rp_pem = expected_recipient.public_key().export_key("PEM").decode("utf-8")
+        elif isinstance(expected_recipient, bytes):
+            rp_pem = expected_recipient.decode("utf-8")
+        else:
+            rp_pem = expected_recipient
+        aad = hashlib.sha256(rp_pem.encode("utf-8")).digest()
+
+    # AES-GCM decrypt and authenticate (including AAD when present)
+    cipher = AES.new(sym_key, AES.MODE_GCM, nonce=nonce)
+    if aad is not None:
+        cipher.update(aad)
+    return cipher.decrypt_and_verify(ciphertext, tag)
 
 
 if __name__ == "__main__":

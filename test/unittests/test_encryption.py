@@ -168,3 +168,190 @@ class TestEncoderDecoder:
         decoder = get_decoder(encoding)
         data = b"test data 12345"
         assert decoder(encoder(data)) == data
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: hybrid_decrypt sender authentication
+# ---------------------------------------------------------------------------
+
+class TestHybridDecryptSignatureVerification:
+    """verify_key parameter in hybrid_decrypt (Fix 3)."""
+
+    @pytest.fixture(scope="class")
+    def sender_keys(self):
+        from Cryptodome.PublicKey import RSA
+        key = RSA.generate(2048)
+        return key.public_key().export_key("PEM").decode(), key.export_key("PEM").decode()
+
+    @pytest.fixture(scope="class")
+    def recipient_keys(self):
+        from Cryptodome.PublicKey import RSA
+        key = RSA.generate(2048)
+        return key.public_key().export_key("PEM").decode(), key.export_key("PEM").decode()
+
+    def test_verify_key_accepts_valid_signature(self, sender_keys, recipient_keys):
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        import tempfile, os
+        _, sender_priv_pem = sender_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(sender_priv_pem)
+            tmp = f.name
+        try:
+            sender_priv = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        recipient_pub, recipient_priv_pem = recipient_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(recipient_priv_pem)
+            tmp2 = f.name
+        try:
+            recipient_priv = load_RSA_key(tmp2)
+        finally:
+            os.unlink(tmp2)
+        envelope = hybrid_encrypt(recipient_pub, b"hello", sign_key=sender_priv)
+        plaintext = hybrid_decrypt(recipient_priv, envelope, verify_key=sender_keys[0])
+        assert plaintext == b"hello"
+
+    def test_verify_key_rejects_wrong_sender(self, sender_keys, recipient_keys):
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        from Cryptodome.PublicKey import RSA
+        import tempfile, os
+        _, sender_priv_pem = sender_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(sender_priv_pem)
+            tmp = f.name
+        try:
+            sender_priv = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        recipient_pub, recipient_priv_pem = recipient_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(recipient_priv_pem)
+            tmp2 = f.name
+        try:
+            recipient_priv = load_RSA_key(tmp2)
+        finally:
+            os.unlink(tmp2)
+        envelope = hybrid_encrypt(recipient_pub, b"hello", sign_key=sender_priv)
+        wrong_pub = RSA.generate(2048).public_key().export_key("PEM").decode()
+        with pytest.raises(ValueError, match="signature verification failed"):
+            hybrid_decrypt(recipient_priv, envelope, verify_key=wrong_pub)
+
+    def test_verify_key_requires_signature_present(self, sender_keys, recipient_keys):
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        import tempfile, os
+        recipient_pub, recipient_priv_pem = recipient_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(recipient_priv_pem)
+            tmp = f.name
+        try:
+            recipient_priv = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        # Unsigned envelope
+        envelope = hybrid_encrypt(recipient_pub, b"hello")
+        with pytest.raises(ValueError, match="signature.*absent"):
+            hybrid_decrypt(recipient_priv, envelope, verify_key=sender_keys[0])
+
+    def test_no_verify_key_ignores_signature(self, sender_keys, recipient_keys):
+        """Without verify_key, a signed envelope still decrypts cleanly."""
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        import tempfile, os
+        _, sender_priv_pem = sender_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(sender_priv_pem)
+            tmp = f.name
+        try:
+            sender_priv = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        recipient_pub, recipient_priv_pem = recipient_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(recipient_priv_pem)
+            tmp2 = f.name
+        try:
+            recipient_priv = load_RSA_key(tmp2)
+        finally:
+            os.unlink(tmp2)
+        envelope = hybrid_encrypt(recipient_pub, b"hello", sign_key=sender_priv)
+        plaintext = hybrid_decrypt(recipient_priv, envelope)
+        assert plaintext == b"hello"
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: hybrid_encrypt/decrypt recipient binding via AAD
+# ---------------------------------------------------------------------------
+
+class TestHybridRecipientBinding:
+    """recipient_pubkey / expected_recipient AAD binding (Fix 4)."""
+
+    @pytest.fixture(scope="class")
+    def recipient_a_keys(self):
+        from Cryptodome.PublicKey import RSA
+        key = RSA.generate(2048)
+        return key.public_key().export_key("PEM").decode(), key.export_key("PEM").decode()
+
+    @pytest.fixture(scope="class")
+    def recipient_b_keys(self):
+        from Cryptodome.PublicKey import RSA
+        key = RSA.generate(2048)
+        return key.public_key().export_key("PEM").decode(), key.export_key("PEM").decode()
+
+    def test_correct_recipient_decrypts(self, recipient_a_keys):
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        import tempfile, os
+        pub_a, priv_a_pem = recipient_a_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(priv_a_pem)
+            tmp = f.name
+        try:
+            priv_a = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        envelope = hybrid_encrypt(pub_a, b"secret", recipient_pubkey=pub_a)
+        assert "recipient_fingerprint" in envelope
+        plaintext = hybrid_decrypt(priv_a, envelope, expected_recipient=pub_a)
+        assert plaintext == b"secret"
+
+    def test_wrong_recipient_aad_fails(self, recipient_a_keys, recipient_b_keys):
+        """Decryption with expected_recipient=B for an envelope bound to A fails GCM auth."""
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        import tempfile, os
+        pub_a, _ = recipient_a_keys
+        pub_b, priv_b_pem = recipient_b_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(priv_b_pem)
+            tmp = f.name
+        try:
+            priv_b = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        # Encrypt to A, but try to verify as if intended for B
+        envelope = hybrid_encrypt(pub_b, b"secret", recipient_pubkey=pub_a)
+        with pytest.raises(ValueError):
+            hybrid_decrypt(priv_b, envelope, expected_recipient=pub_b)
+
+    def test_no_recipient_binding_still_decrypts(self, recipient_a_keys):
+        """Envelope without recipient_fingerprint decrypts even with expected_recipient."""
+        from hivemind_bus_client.encryption import hybrid_encrypt, hybrid_decrypt
+        from poorman_handshake.asymmetric.utils import load_RSA_key
+        import tempfile, os
+        pub_a, priv_a_pem = recipient_a_keys
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w") as f:
+            f.write(priv_a_pem)
+            tmp = f.name
+        try:
+            priv_a = load_RSA_key(tmp)
+        finally:
+            os.unlink(tmp)
+        # No recipient_pubkey → no AAD → expected_recipient is ignored
+        envelope = hybrid_encrypt(pub_a, b"legacy")
+        assert "recipient_fingerprint" not in envelope
+        plaintext = hybrid_decrypt(priv_a, envelope, expected_recipient=pub_a)
+        assert plaintext == b"legacy"

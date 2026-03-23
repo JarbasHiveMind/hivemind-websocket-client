@@ -16,6 +16,9 @@ from hivemind_bus_client.message import HiveMessage, HiveMessageType
 # Helpers
 # ---------------------------------------------------------------------------
 
+_FAKE_SERVER_PUBKEY = "-----BEGIN PUBLIC KEY-----\nSERVER\n-----END PUBLIC KEY-----"
+
+
 def _make_client(rendezvous_urls=None, poll_interval=60.0):
     """Build a HiveMessageBusClient with rendezvous attrs, bypassing network init."""
     client = HiveMessageBusClient.__new__(HiveMessageBusClient)
@@ -23,6 +26,8 @@ def _make_client(rendezvous_urls=None, poll_interval=60.0):
     client._rendezvous_poll_interval = poll_interval
     client._rendezvous_stop_event = Event()
     client._rendezvous_thread = None
+    # Pre-populate server pubkey cache so tests don't need a real GET /pubkey
+    client._rendezvous_server_pubkeys = {"http://r1.example.com": _FAKE_SERVER_PUBKEY}
     client.identity = MagicMock()
     client.identity.public_key = "-----BEGIN PUBLIC KEY-----\nFAKE\n-----END PUBLIC KEY-----"
     client.identity.private_key = "/fake/key.pem"

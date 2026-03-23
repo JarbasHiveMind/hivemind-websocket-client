@@ -508,7 +508,34 @@ class HiveMindSlaveProtocol:
             # hybrid encryption envelope (AES key RSA-encrypted)
             try:
                 private_key = load_RSA_key(self.identity.private_key)
-                decrypted = hybrid_decrypt(private_key, pload).decode("utf-8")
+
+                # Resolve sender's public key for signature verification.
+                # Prefer HiveMapper (populated via PING); fall back to None
+                # (signature check skipped for legacy/unsigned envelopes).
+                sender_pubkey = None
+                if self.hive_mapper and message.source_peer:
+                    node = self.hive_mapper.nodes.get(message.source_peer)
+                    if node:
+                        sender_pubkey = node.public_key
+
+                # Pass verify_key only when envelope carries a signature AND
+                # we know the sender's key — avoids false rejections for
+                # envelopes from nodes not yet discovered via PING.
+                verify_key = sender_pubkey if (
+                    sender_pubkey and "signature" in pload
+                ) else None
+
+                # Bind decryption to our own pubkey when the envelope carries
+                # recipient_fingerprint (protects against mailbox misdirection).
+                expected_recipient = self.identity.public_key if (
+                    "recipient_fingerprint" in pload
+                ) else None
+
+                decrypted = hybrid_decrypt(
+                    private_key, pload,
+                    verify_key=verify_key,
+                    expected_recipient=expected_recipient,
+                ).decode("utf-8")
                 message._payload = HiveMessage.deserialize(decrypted)
             except Exception as e:
                 if k:
