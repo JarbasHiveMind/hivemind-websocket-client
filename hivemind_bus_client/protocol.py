@@ -268,9 +268,8 @@ class HiveMindSlaveProtocol:
     def _handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
 
-        Emits ``hive.ping.received`` on the internal bus, then — if this
-        ``flood_id`` has not been seen before — builds and sends this node's
-        own responsive PING (same ``flood_id``) upstream.
+        If this ``flood_id`` has not been seen before, builds and sends
+        this node's own responsive PING (same ``flood_id``) upstream.
 
         Args:
             message: The outer PROPAGATE HiveMessage whose inner payload is a PING.
@@ -287,9 +286,10 @@ class HiveMindSlaveProtocol:
         # Flood-loop prevention
         if not flood_id or flood_id in self._seen_flood_ids:
             return
-        # Cap set size to prevent unbounded memory growth
-        if len(self._seen_flood_ids) > 1000:
-            self._seen_flood_ids.clear()
+        # Evict oldest entries when cache is full (FIFO-ish; avoids
+        # clearing the entire set which could let duplicates through)
+        while len(self._seen_flood_ids) >= 1000:
+            self._seen_flood_ids.pop()
         self._seen_flood_ids.add(flood_id)
 
         # Build our own responsive PING with the same flood_id

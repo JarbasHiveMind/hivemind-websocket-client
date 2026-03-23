@@ -6,21 +6,21 @@ from hivemind_bus_client.message import HiveMessage, HiveMessageType
 
 
 class TestNodeInfo:
-    def test_rtt_ms_both_timestamps(self):
+    def test_latency_ms_both_timestamps(self):
         node = NodeInfo(peer="a", timestamp=100.0, received_at=100.05)
-        assert node.rtt_ms == pytest.approx(50.0)
+        assert node.latency_ms == pytest.approx(50.0)
 
-    def test_rtt_ms_missing_timestamp(self):
+    def test_latency_ms_missing_timestamp(self):
         node = NodeInfo(peer="a", received_at=100.0)
-        assert node.rtt_ms is None
+        assert node.latency_ms is None
 
-    def test_rtt_ms_missing_received(self):
+    def test_latency_ms_missing_received(self):
         node = NodeInfo(peer="a", timestamp=100.0)
-        assert node.rtt_ms is None
+        assert node.latency_ms is None
 
-    def test_rtt_ms_both_none(self):
+    def test_latency_ms_both_none(self):
         node = NodeInfo(peer="a")
-        assert node.rtt_ms is None
+        assert node.latency_ms is None
 
 
 def _make_ping(flood_id: str, peer: str, site_id: str = "",
@@ -54,6 +54,19 @@ class TestHiveMapperOnPing:
         msg = _make_ping("flood1", "")
         assert mapper.on_ping(msg) is False
 
+    def test_empty_flood_id_ignored(self):
+        mapper = HiveMapper()
+        msg = _make_ping("", "nodeA")
+        assert mapper.on_ping(msg) is False
+
+    def test_malformed_route_hop_skipped(self):
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        route = [{"source": "hub", "targets": ["nodeA"]}, "malformed"]
+        msg = _make_ping("f1", "nodeA", route=route)
+        mapper.on_ping(msg)
+        assert "hub" in mapper.edges
+
     def test_non_dict_payload_ignored(self):
         mapper = HiveMapper()
         # HiveMessageType.PING with a non-dict payload (raw string won't happen
@@ -83,7 +96,7 @@ class TestHiveMapperOnPing:
         mapper.on_ping(msg, received_at=1000.05)
         node = mapper.nodes["nodeA"]
         assert node.site_id == "kitchen"
-        assert node.rtt_ms == pytest.approx(50.0)
+        assert node.latency_ms == pytest.approx(50.0)
 
     def test_auto_creates_seen_set_for_unknown_flood_id(self):
         mapper = HiveMapper()

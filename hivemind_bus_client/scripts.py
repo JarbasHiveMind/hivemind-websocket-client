@@ -230,12 +230,12 @@ def ping(key: str, password: str, host: str, port: int, siteid: str,
     siteid = siteid or identity.site_id or "unknown"
     port = port or identity.default_port or 5678
 
-    if not host.startswith("ws://") and not host.startswith("wss://"):
-        host = "ws://" + host
-
     if not key or not password or not host:
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
+
+    if not host.startswith("ws://") and not host.startswith("wss://"):
+        host = "ws://" + host
 
     mapper = HiveMapper()
     flood_id = str(uuid.uuid4())
@@ -243,7 +243,9 @@ def ping(key: str, password: str, host: str, port: int, siteid: str,
 
     node = HiveMessageBusClient(key, host=host, port=port, password=password)
     node.connect(FakeBus(), site_id=siteid)
-    node.connected_event.wait(timeout=10)
+    if not node.connected_event.wait(timeout=10):
+        print("[ERROR] Failed to connect to HiveMind within 10 seconds")
+        return
     print(f"== connected to HiveMind, sending PING (timeout={timeout}s)")
 
     mapper.start_ping(flood_id)

@@ -21,8 +21,13 @@ class NodeInfo:
     received_at: Optional[float] = None     # our local clock when we received it
 
     @property
-    def rtt_ms(self) -> Optional[float]:
-        """Round-trip time in milliseconds, or None if timestamps are unavailable."""
+    def latency_ms(self) -> Optional[float]:
+        """Estimated one-way latency in milliseconds (receiver clock minus sender clock).
+
+        This is a clock-difference estimate, **not** a true round-trip
+        measurement.  On unsynchronised clocks it may be negative or
+        inaccurate.  Returns None if either timestamp is unavailable.
+        """
         if self.received_at is not None and self.timestamp is not None:
             return (self.received_at - self.timestamp) * 1000
         return None
@@ -77,7 +82,7 @@ class HiveMapper:
         flood_id = payload.get("flood_id", "")
         peer = payload.get("peer", "")
 
-        if not peer:
+        if not flood_id or not peer:
             return False
 
         seen = self._seen_pings.setdefault(flood_id, set())
@@ -93,6 +98,8 @@ class HiveMapper:
         )
 
         for hop in message.route:
+            if not isinstance(hop, dict):
+                continue
             source = hop.get("source", "")
             targets = hop.get("targets") or []
             if source:
@@ -115,7 +122,7 @@ class HiveMapper:
                 "peer": n.peer,
                 "site_id": n.site_id,
                 "timestamp": n.timestamp,
-                "rtt_ms": n.rtt_ms,
+                "latency_ms": n.latency_ms,
             }
             for n in self.nodes.values()
         ]
@@ -164,9 +171,9 @@ class HiveMapper:
                 connector = "└── " if is_last else "├── "
                 node = self.nodes.get(peer)
                 site = f"  site={node.site_id}" if node and node.site_id else ""
-                rtt = (f"  rtt={node.rtt_ms:.0f}ms"
-                       if node and node.rtt_ms is not None else "")
-                lines.append(f"{prefix}{connector}{peer}{site}{rtt}")
+                lat = (f"  latency={node.latency_ms:.0f}ms"
+                       if node and node.latency_ms is not None else "")
+                lines.append(f"{prefix}{connector}{peer}{site}{lat}")
                 kids = display_children.get(peer, [])
                 child_prefix = prefix + ("    " if is_last else "│   ")
                 for i, kid in enumerate(kids):
@@ -196,9 +203,9 @@ class HiveMapper:
                 connector = "└── " if is_last else "├── "
                 node = self.nodes.get(peer)
                 site = f"  site={node.site_id}" if node and node.site_id else ""
-                rtt = (f"  rtt={node.rtt_ms:.0f}ms"
-                       if node and node.rtt_ms is not None else "")
-                lines.append(f"{prefix}{connector}{peer}{site}{rtt}")
+                lat = (f"  latency={node.latency_ms:.0f}ms"
+                       if node and node.latency_ms is not None else "")
+                lines.append(f"{prefix}{connector}{peer}{site}{lat}")
                 kids = children.get(peer, [])
                 child_prefix = prefix + ("    " if is_last else "│   ")
                 for i, kid in enumerate(kids):

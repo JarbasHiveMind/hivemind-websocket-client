@@ -121,7 +121,7 @@ class HiveMessage:
 
     @property
     def route(self) -> List[str]:
-        return [r for r in self._route if r.get("targets") and r.get("source")]
+        return [r for r in self._route if isinstance(r, dict) and r.get("targets") and r.get("source")]
 
     @property
     def payload(self) -> Union['HiveMessage', Message, dict, bytes]:

@@ -56,15 +56,14 @@ class TestHandlePing:
         proto.hm.emit.assert_not_called()
 
     def test_flood_id_set_capped(self):
-        """When _seen_flood_ids exceeds 1000, it should be cleared."""
+        """When _seen_flood_ids reaches 1000, oldest entries are evicted."""
         proto = _make_protocol()
-        proto._seen_flood_ids = {str(i) for i in range(1001)}
+        proto._seen_flood_ids = {str(i) for i in range(1000)}
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "new", "peer": "other"})
         outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
         proto._handle_ping(outer)
-        # Set was cleared and "new" was added
         assert "new" in proto._seen_flood_ids
-        assert len(proto._seen_flood_ids) == 1
+        assert len(proto._seen_flood_ids) == 1000
 
     def test_different_flood_ids_both_processed(self):
         proto = _make_protocol()
