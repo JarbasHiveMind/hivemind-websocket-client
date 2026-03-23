@@ -209,3 +209,98 @@ class TestHiveMessageStr:
         hm = HiveMessage(HiveMessageType.BINARY, b"\x00\x01\x02")
         assert "BINARY" in str(hm)
         assert "3" in str(hm)  # length
+
+
+class TestHiveMessagePayloadSetter:
+    def test_set_message_payload(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        new_msg = Message("speak", {"utterance": "hi"})
+        hm.payload = new_msg
+        # Stored as dict internally
+        assert isinstance(hm._payload, dict)
+
+    def test_set_hive_message_payload(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        inner = HiveMessage(HiveMessageType.PING, {"flood_id": "x"})
+        hm.payload = inner
+        assert isinstance(hm._payload, dict)
+
+    def test_set_dict_payload(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        hm.payload = {"new": "data"}
+        assert hm._payload == {"new": "data"}
+
+    def test_set_bytes_payload(self):
+        hm = HiveMessage(HiveMessageType.BINARY, b"\x00")
+        hm.payload = b"\x01\x02"
+        assert hm._payload == b"\x01\x02"
+
+
+class TestHiveMessageTargetPeers:
+    def test_target_peers_with_source_peer_fallback(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="peer1")
+        assert hm.target_peers == ["peer1"]
+
+    def test_target_peers_explicit(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="peer1", target_peers=["peer2"])
+        assert hm.target_peers == ["peer2"]
+
+    def test_target_peers_no_source(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {})
+        assert hm.target_peers == []
+
+
+class TestHiveMessageUpdateHopData:
+    def test_update_hop_with_data_merge(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="a", target_peers=["b"])
+        hm.update_hop_data(data={"extra": "info"})
+        assert len(hm._route) == 1
+        assert hm._route[0]["extra"] == "info"
+
+    def test_update_hop_same_source_no_duplicate(self):
+        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+                          source_peer="a", target_peers=["b"])
+        hm.update_hop_data()
+        hm.update_hop_data()  # same source, should not duplicate
+        assert len(hm._route) == 1
+
+
+class TestDeserializePreservesFields:
+    """Regression tests for deserialize() restoring serialized fields."""
+
+    def test_serialize_deserialize_preserves_route(self):
+        route = [{"source": "peer-A", "targets": ["peer-B", "peer-C"]}]
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload=Message("test", {}, {}),
+                          source_peer="peer-A", target_peers=["peer-B", "peer-C"])
+        msg.replace_route(route)
+        restored = HiveMessage.deserialize(msg.as_dict)
+        assert restored.route == route
+
+    def test_source_peer_not_preserved_through_deserialize(self):
+        """source_peer is per-hop transient — intentionally NOT restored."""
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload=Message("test", {}, {}),
+                          source_peer="peer-X")
+        restored = HiveMessage.deserialize(msg.serialize())
+        assert restored.source_peer is None
+
+    def test_node_not_preserved_through_deserialize(self):
+        """node is per-hop transient — intentionally NOT restored."""
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload=Message("test", {}, {}),
+                          node="node-42")
+        restored = HiveMessage.deserialize(msg.serialize())
+        assert restored.node_id is None
+
+    def test_route_entries_are_dicts(self):
+        route = [{"source": "p1", "targets": ["p2"]}, {"source": "p2", "targets": ["p3"]}]
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}))
+        msg.replace_route(route)
+        for hop in msg.route:
+            assert isinstance(hop, dict)
+            assert "source" in hop
+            assert "targets" in hop

@@ -40,9 +40,7 @@ Enumeration of HiveMind message types.
 | `PROPAGATE` | `"propagate"` | Forward message to all slaves and masters |
 | `ESCALATE` | `"escalate"` | Forward message up the authority chain |
 | `HELLO` | `"hello"` | Node announcement and session setup |
-| `QUERY` | `"query"` | Escalate until one node responds |
-| `CASCADE` | `"cascade"` | Propagate expecting responses from all nodes |
-| `PING` | `"ping"` | Network topology discovery (flood-based; PONG removed) |
+| `PING` | `"ping"` | Network topology discovery (flood-based) |
 | `BINARY` | `"bin"` | Raw binary data container |
 | `THIRDPRTY` | `"3rdparty"` | User-defined message type |
 
