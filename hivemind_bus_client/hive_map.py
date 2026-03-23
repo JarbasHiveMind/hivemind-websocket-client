@@ -21,6 +21,8 @@ class NodeInfo:
     site_id: Optional[str] = None
     timestamp: Optional[float] = None       # sender's clock when they created the PING
     received_at: Optional[float] = None     # our local clock when we received it
+    public_key: Optional[str] = None        # RSA public key if provided in PING
+    trusted: bool = False                   # whether this peer's key is in the trusted list
 
     @property
     def latency_ms(self) -> Optional[float]:
@@ -99,6 +101,7 @@ class HiveMapper:
             site_id=payload.get("site_id"),
             timestamp=payload.get("timestamp"),
             received_at=received_at,
+            public_key=payload.get("public_key"),
         )
 
         for hop in message.route:
@@ -114,6 +117,31 @@ class HiveMapper:
 
         return True
 
+    def mark_trusted_nodes(self, trusted_keys: Dict[str, str]) -> None:
+        """Mark nodes whose public key is in the trusted keys mapping.
+
+        Should be called after PING discovery completes to update each
+        ``NodeInfo.trusted`` flag based on the identity's trusted keys.
+
+        Args:
+            trusted_keys: Alias → public key mapping from ``NodeIdentity.trusted_keys``.
+        """
+        trusted_values = set(trusted_keys.values())
+        for node in self.nodes.values():
+            node.trusted = node.public_key is not None and node.public_key in trusted_values
+
+    def is_peer_trusted(self, peer: str) -> bool:
+        """Check if a peer is trusted based on prior PING discovery.
+
+        Args:
+            peer: The peer identifier string.
+
+        Returns:
+            True if the peer was discovered and marked as trusted.
+        """
+        node = self.nodes.get(peer)
+        return node is not None and node.trusted
+
     def to_dict(self) -> dict:
         """Return a JSON-serialisable snapshot of the current topology.
 
@@ -127,6 +155,8 @@ class HiveMapper:
                 "site_id": n.site_id,
                 "timestamp": n.timestamp,
                 "latency_ms": n.latency_ms,
+                "public_key": n.public_key,
+                "trusted": n.trusted,
             }
             for n in self.nodes.values()
         ]

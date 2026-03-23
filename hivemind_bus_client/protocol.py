@@ -307,6 +307,34 @@ class HiveMindSlaveProtocol:
                 self.pswd_handshake = PasswordHandShake(self.identity.password)
                 self.start_handshake()
 
+    def _is_source_trusted(self, message: HiveMessage) -> bool:
+        """Check if the message originates from a trusted peer.
+
+        Checks the message's source_peer against the HiveMapper's trust
+        data (populated from ``NodeIdentity.trusted_keys`` via
+        ``HiveMapper.mark_trusted_nodes``).  Also checks the identity's
+        trusted keys directly against any public key in the route.
+
+        Args:
+            message: The HiveMessage to check.
+
+        Returns:
+            True if the source peer is trusted.
+        """
+        # check HiveMapper trust data first (fast path)
+        if self.hive_mapper and message.source_peer:
+            if self.hive_mapper.is_peer_trusted(message.source_peer):
+                return True
+        # fallback: check route for any known trusted public key
+        if self.identity:
+            for hop in message.route:
+                source = hop.get("source", "")
+                if self.hive_mapper:
+                    node = self.hive_mapper.nodes.get(source)
+                    if node and node.public_key and self.identity.is_trusted_key(node.public_key):
+                        return True
+        return False
+
     def handle_bus(self, message: HiveMessage):
         """Dispatch event to the agent protocol bus"""
         LOG.info(f"BUS: {message.payload.msg_type}")
@@ -347,27 +375,28 @@ class HiveMindSlaveProtocol:
                 self.handle_bus(message.payload)
 
     def handle_propagate(self, message: HiveMessage):
-        """
-        TODO: we may receive untrusted messages from all across the hive.
+        """Handle a PROPAGATE message (bidirectional flood).
 
-        we need to store trusted pubkeys before this is usable
+        BUS payloads are only injected if the source peer is trusted
+        (via ``NodeIdentity.trusted_keys``).  Untrusted BUS payloads
+        are silently dropped to prevent cross-satellite injection.
+
+        Args:
+            message: The PROPAGATE HiveMessage.
         """
         LOG.info(f"PROPAGATE: {message.payload}")
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM, HiveMessageType.PING]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.PING:
             self._handle_ping(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
-            # if the message targets our site_id, send it to internal bus
             site = message.target_site_id
             if site and site == self.site_id:
-                # might originate from untrusted
-                # satellite anywhere in the hive
-                # do not inject by default
-                pass  # TODO - when to inject ? add list of trusted peers?
-                # self.handle_bus(message.payload)  # sat A can inject bus into sat B if unchecked
+                if self._is_source_trusted(message):
+                    self.handle_bus(message.payload)
+                else:
+                    LOG.warning(f"Dropping untrusted PROPAGATE(BUS) from {message.source_peer}")
 
     def _handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
@@ -450,19 +479,24 @@ class HiveMindSlaveProtocol:
         self.cascade_aggregator.add_response(message)
 
     def handle_intercom(self, message: HiveMessage):
-        """
-        TODO: end2end encrypted but we may receive untrusted messages from all across the hive.
-          sat A can inject bus into sat B unchecked
+        """Handle an INTERCOM (end-to-end encrypted) message.
 
-        we need to store trusted pubkeys before this is usable
+        Decrypts the payload if it contains a ciphertext envelope,
+        then injects the inner BUS message only if:
+        - The message is explicitly targeted at us (target_public_key matches), OR
+        - The source peer is in the trusted keys list.
+
+        Untrusted, non-targeted INTERCOM messages are silently dropped.
+
+        Args:
+            message: The INTERCOM HiveMessage.
         """
         LOG.info(f"INTERCOM: {message.payload}")
         assert message.payload.msg_type == HiveMessageType.BUS
 
-        # if the message targets our public_key, send it to internal bus
         k = message.target_public_key
         if k and k != self.identity.public_key:
-            # not for us
+            # explicitly targeted at someone else — not for us
             return False
 
         pload = message.payload
@@ -471,14 +505,8 @@ class HiveMindSlaveProtocol:
                 ciphertext = pybase64.b64decode(pload["ciphertext"])
                 signature = pybase64.b64decode(pload["signature"])
 
-                # TODO allow verifying, but we need to store known pubkeys before this is possible
-                # pubkey = ""
-                # verified: bool = verify_RSA(pubkey, ciphertext, signature)
-
                 private_key = load_RSA_key(self.identity.private_key)
-
                 decrypted = decrypt_RSA(private_key, ciphertext).decode("utf8")
-
                 message._payload = HiveMessage.deserialize(decrypted)
             except Exception as e:
                 if k:
@@ -487,6 +515,15 @@ class HiveMindSlaveProtocol:
                     LOG.debug("failed to decrypt message, not for us")
                 return False
 
-        return False # TODO - no-op until safer
-        self.handle_bus(message) # TODO: currently assumes all peers are trusted
-        return True
+        # explicitly targeted at us → always trust
+        if k and k == self.identity.public_key:
+            self.handle_bus(message)
+            return True
+
+        # not targeted — only inject if source is trusted
+        if self._is_source_trusted(message):
+            self.handle_bus(message)
+            return True
+
+        LOG.warning(f"Dropping untrusted INTERCOM from {message.source_peer}")
+        return False
