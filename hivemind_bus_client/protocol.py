@@ -113,6 +113,8 @@ class HiveMindSlaveProtocol:
         self.hm.on(HiveMessageType.INTERCOM, self.handle_intercom)
         self.hm.on(HiveMessageType.ESCALATE, self.handle_illegal_msg)
         self.hm.on(HiveMessageType.SHARED_BUS, self.handle_illegal_msg)
+        self.hm.on(HiveMessageType.QUERY, self.handle_query)
+        self.hm.on(HiveMessageType.CASCADE, self.handle_cascade)
         self.hm.on(HiveMessageType.BUS, self.handle_bus)
         self.hm.on(HiveMessageType.HANDSHAKE, self.handle_handshake)
 
@@ -305,6 +307,56 @@ class HiveMindSlaveProtocol:
 
         LOG.debug(f"Sending responsive PING for flood_id={flood_id}")
         self.hm.emit(own_ping_outer)
+
+    def handle_query(self, message: HiveMessage):
+        """Handle a QUERY message received from the master.
+
+        Response (is_response=True): Emit the inner BUS payload on the internal bus.
+        Request (is_response=False): Forward downstream if this node is also a master.
+
+        Args:
+            message: The QUERY HiveMessage.
+        """
+        metadata = message.metadata or {}
+        is_response = metadata.get("is_response", False)
+        LOG.info(f"QUERY (is_response={is_response}): {message.payload}")
+
+        if is_response:
+            # Response — emit the inner BUS message on the internal bus
+            inner = message.payload
+            if isinstance(inner, HiveMessage) and inner.msg_type == HiveMessageType.BUS:
+                self.handle_bus(inner)
+            return
+
+        # Request from master — forward downstream if this node is also a master
+        data = message.as_dict
+        ctxt = {"source": self.node_id}
+        self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
+
+    def handle_cascade(self, message: HiveMessage):
+        """Handle a CASCADE message received from the master.
+
+        Response (is_response=True): Emit the inner BUS payload on the internal bus.
+        Request (is_response=False): Forward downstream if this node is also a master.
+
+        Args:
+            message: The CASCADE HiveMessage.
+        """
+        metadata = message.metadata or {}
+        is_response = metadata.get("is_response", False)
+        LOG.info(f"CASCADE (is_response={is_response}): {message.payload}")
+
+        if is_response:
+            # Response — emit the inner BUS message on the internal bus
+            inner = message.payload
+            if isinstance(inner, HiveMessage) and inner.msg_type == HiveMessageType.BUS:
+                self.handle_bus(inner)
+            return
+
+        # Request from master — forward downstream if this node is also a master
+        data = message.as_dict
+        ctxt = {"source": self.node_id}
+        self.internal_protocol.bus.emit(MycroftMessage('hive.send.downstream', data, ctxt))
 
     def handle_intercom(self, message: HiveMessage):
         LOG.info(f"INTERCOM: {message.payload}")

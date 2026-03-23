@@ -26,6 +26,63 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`HANDSHAKE`** | Crypto negotiation | Key exchange at connection time. |
 | **`THIRDPRTY`** | User-land custom | Application-defined payload; HiveMind relays without interpretation. |
 
+## QUERY — First-Match Request-Response
+
+QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond. The hub sets `metadata.is_response = True` on the response and wraps the answer in a BUS inner payload.
+
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_query` — `protocol.py:311`):
+- **Response** (`is_response=True`): Inner BUS message is emitted on the internal OVOS bus via `handle_bus`.
+- **Request** (`is_response=False`): Forwarded downstream via `hive.send.downstream` (only relevant when the satellite is also a master).
+
+### Sending a QUERY (from satellite)
+
+```python
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from ovos_bus_client.message import Message
+
+inner = HiveMessage(HiveMessageType.BUS,
+                    Message("intent.request", {"utterance": "what time is it"}))
+query = HiveMessage(HiveMessageType.QUERY, payload=inner)
+client.emit(query)
+```
+
+### Listening for QUERY responses (decorator)
+
+```python
+from hivemind_bus_client.decorators import on_query
+
+@on_query("speak", bus)
+def on_speak(msg):
+    print(msg.data["utterance"])
+```
+
+## CASCADE — Collect-All Request-Response
+
+CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional — nodes that cannot answer simply stay silent.
+
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:336`):
+- **Response** (`is_response=True`): Inner BUS message is emitted on the internal OVOS bus via `handle_bus`.
+- **Request** (`is_response=False`): Forwarded downstream via `hive.send.downstream`.
+
+### Sending a CASCADE (from satellite)
+
+```python
+inner = HiveMessage(HiveMessageType.BUS,
+                    Message("skill.list.request", {}))
+cascade = HiveMessage(HiveMessageType.CASCADE, payload=inner)
+client.emit(cascade)
+```
+
+### Listening for CASCADE responses (decorator)
+
+```python
+from hivemind_bus_client.decorators import on_cascade
+
+@on_cascade("skill.list.response", bus)
+def on_skills(msg):
+    print(msg.data["skills"])
+```
+
 ## PING Flood — Network Discovery
 
 PING messages are **always the inner payload of a PROPAGATE message**. They are never sent bare. Each node that receives a PING responds with its own PING carrying the same `flood_id`. The `flood_id` prevents infinite loops. PONG is no longer used.
