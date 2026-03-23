@@ -1,7 +1,10 @@
 import json
 import ssl
-from threading import Event
-from typing import Union, Optional, Callable
+import time
+import urllib.error
+import urllib.request
+from threading import Event, Thread
+from typing import Union, Optional, Callable, List
 
 import pybase64
 from Cryptodome.PublicKey import RSA
@@ -103,7 +106,9 @@ class HiveMessageBusClient(OVOSBusClient):
                  binarize: bool = True,
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
-                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
+                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks(),
+                 rendezvous_urls: Optional[List[str]] = None,
+                 rendezvous_poll_interval: float = 60.0):
         self.bin_callbacks = bin_callbacks
         self.json_encoding = SupportedEncodings.JSON_HEX  # server defaults before it was made configurable
         self.cipher = SupportedCiphers.AES_GCM  # server defaults before it was made configurable
@@ -120,6 +125,10 @@ class HiveMessageBusClient(OVOSBusClient):
         self.allow_self_signed = self_signed
         self.share_bus = share_bus
         self.handshake_event = Event()
+        self._rendezvous_urls: List[str] = list(rendezvous_urls) if rendezvous_urls else []
+        self._rendezvous_poll_interval: float = rendezvous_poll_interval
+        self._rendezvous_stop_event: Event = Event()
+        self._rendezvous_thread: Optional[Thread] = None
 
         # if you want to reduce CPU usage in exchange for more bandwidth set below to False
         self.compress = compress  # None -> auto
@@ -141,6 +150,9 @@ class HiveMessageBusClient(OVOSBusClient):
         host = self._host.replace("ws://", "").replace("wss://", "").strip()
         super().__init__(host=host, port=self._port, ssl=use_ssl,
                          emitter=EventEmitter(), session=sess)
+
+        if self._rendezvous_urls:
+            self._start_rendezvous_polling()
 
     def init_identity(self, site_id=None):
         self.identity = self.identity or NodeIdentity()
@@ -231,7 +243,97 @@ class HiveMessageBusClient(OVOSBusClient):
     def on_close(self, *args):
         self.handshake_event.clear()
         self.crypto_key = None
+        self._stop_rendezvous_polling()
         super().on_close(*args)
+
+    # ------------------------------------------------------------------
+    # Rendezvous polling
+    # ------------------------------------------------------------------
+
+    def _start_rendezvous_polling(self) -> None:
+        """Start the background thread that periodically polls rendezvous URLs.
+
+        Does nothing if no URLs are configured or a thread is already running.
+        """
+        if not self._rendezvous_urls or self._rendezvous_thread is not None:
+            return
+        self._rendezvous_stop_event.clear()
+        self._rendezvous_thread = Thread(
+            target=self._rendezvous_poll_loop,
+            daemon=True,
+            name="rendezvous-poller",
+        )
+        self._rendezvous_thread.start()
+        LOG.info("Rendezvous polling started (%d URLs, interval=%.0fs)",
+                 len(self._rendezvous_urls), self._rendezvous_poll_interval)
+
+    def _stop_rendezvous_polling(self) -> None:
+        """Signal the rendezvous polling thread to stop and wait for it to exit."""
+        stop_event = getattr(self, "_rendezvous_stop_event", None)
+        if stop_event is None:
+            return
+        stop_event.set()
+        thread = getattr(self, "_rendezvous_thread", None)
+        if thread is not None:
+            thread.join(timeout=5)
+            self._rendezvous_thread = None
+
+    def _rendezvous_poll_loop(self) -> None:
+        """Background loop: poll every configured rendezvous URL at the configured interval."""
+        while not self._rendezvous_stop_event.wait(timeout=self._rendezvous_poll_interval):
+            for url in self._rendezvous_urls:
+                try:
+                    self._poll_rendezvous(url.rstrip("/"))
+                except Exception:
+                    LOG.exception("Rendezvous poll error for %s", url)
+
+    def _poll_rendezvous(self, base_url: str) -> None:
+        """Retrieve pending messages from one rendezvous server and inject them.
+
+        Builds a signed proof-of-ownership, POSTs to ``{base_url}/retrieve``,
+        and feeds each returned serialised :class:`HiveMessage` into
+        :meth:`_handle_hive_protocol`.
+
+        Args:
+            base_url: Rendezvous server base URL (trailing slash already stripped).
+        """
+        from hivemind_rendezvous.auth import sign_ownership
+
+        pubkey: str = self.identity.public_key
+        private_key = load_RSA_key(self.identity.private_key)
+        timestamp: int = int(time.time())
+        signature: str = sign_ownership(private_key, pubkey, timestamp)
+
+        body = json.dumps({
+            "pubkey": pubkey,
+            "timestamp": timestamp,
+            "signature": signature,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{base_url}/retrieve",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            LOG.warning("Rendezvous retrieve failed (%s): HTTP %d", base_url, exc.code)
+            return
+        except OSError as exc:
+            LOG.warning("Rendezvous retrieve connection error (%s): %s", base_url, exc)
+            return
+
+        messages = result.get("messages", [])
+        if messages:
+            LOG.info("Rendezvous: received %d message(s) from %s", len(messages), base_url)
+        for serialised in messages:
+            try:
+                msg = HiveMessage.deserialize(serialised)
+                self._handle_hive_protocol(msg)
+            except Exception:
+                LOG.exception("Rendezvous: failed to process retrieved message")
 
     def wait_for_handshake(self, timeout=5, max_retries=15):
         """
