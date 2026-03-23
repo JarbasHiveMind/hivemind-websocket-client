@@ -109,6 +109,7 @@ Options:
 
 Commands:
   escalate      escalate a single mycroft message
+  ping          send a PING and display the reachable hive map
   propagate     propagate a single mycroft message
   send-mycroft  send a single mycroft message
   terminal      simple cli interface to inject utterances and print speech
