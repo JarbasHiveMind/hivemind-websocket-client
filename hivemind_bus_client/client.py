@@ -20,7 +20,7 @@ from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
                                             SupportedEncodings, SupportedCiphers)
-from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
+from poorman_handshake.asymmetric.utils import hybrid_encrypt_RSA, load_RSA_key, sign_RSA
 
 
 class BinaryDataCallbacks:
@@ -538,11 +538,12 @@ class HiveMessageBusClient(OVOSBusClient):
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
                       pubkey: Union[str, bytes, RSA.RsaKey]):
 
-        encrypted_message = encrypt_RSA(pubkey, message.serialize())
+        encrypted_message = hybrid_encrypt_RSA(pubkey, message.serialize())
 
         # sign message
         private_key = load_RSA_key(self.identity.private_key)
         signature = sign_RSA(private_key, encrypted_message)
 
         self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
-                                                                 "signature": pybase64.b64encode(signature)}))
+                                                                 "signature": pybase64.b64encode(signature),
+                                                                 "sender_pubkey": self.identity.public_key}))

@@ -209,3 +209,41 @@ class TestHiveMessageStr:
         hm = HiveMessage(HiveMessageType.BINARY, b"\x00\x01\x02")
         assert "BINARY" in str(hm)
         assert "3" in str(hm)  # length
+
+
+class TestDeserializePreservesFields:
+    """Regression tests for deserialize() restoring serialized fields."""
+
+    def test_serialize_deserialize_preserves_route(self):
+        route = [{"source": "peer-A", "targets": ["peer-B", "peer-C"]}]
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload=Message("test", {}, {}),
+                          source_peer="peer-A", target_peers=["peer-B", "peer-C"])
+        msg.replace_route(route)
+        restored = HiveMessage.deserialize(msg.as_dict)
+        assert restored.route == route
+
+    def test_source_peer_not_preserved_through_deserialize(self):
+        """source_peer is per-hop transient — intentionally NOT restored."""
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload=Message("test", {}, {}),
+                          source_peer="peer-X")
+        restored = HiveMessage.deserialize(msg.serialize())
+        assert restored.source_peer is None
+
+    def test_node_not_preserved_through_deserialize(self):
+        """node is per-hop transient — intentionally NOT restored."""
+        msg = HiveMessage(HiveMessageType.BUS,
+                          payload=Message("test", {}, {}),
+                          node="node-42")
+        restored = HiveMessage.deserialize(msg.serialize())
+        assert restored.node_id is None
+
+    def test_route_entries_are_dicts(self):
+        route = [{"source": "p1", "targets": ["p2"]}, {"source": "p2", "targets": ["p3"]}]
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}))
+        msg.replace_route(route)
+        for hop in msg.route:
+            assert isinstance(hop, dict)
+            assert "source" in hop
+            assert "targets" in hop
