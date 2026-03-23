@@ -14,3 +14,4 @@ jobs:
       branch: 'master'
       version_file: 'hivemind_bus_client/version.py'
       publish_release: true
+      publish_pypi: true
