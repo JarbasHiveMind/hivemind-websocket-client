@@ -18,7 +18,7 @@ from hivemind_bus_client.hive_map import HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
-from poorman_handshake.asymmetric.utils import load_RSA_key, decrypt_RSA
+from poorman_handshake.asymmetric.utils import load_RSA_key, decrypt_RSA, verify_RSA
 
 
 class CascadeAggregator:
@@ -335,6 +335,18 @@ class HiveMindSlaveProtocol:
                         return True
         return False
 
+    def _get_peer_public_key(self, peer: Optional[str]) -> Optional[str]:
+        """Look up a known RSA public key for a peer ID."""
+        if not peer:
+            return None
+        if peer == self.node_id and self.mpubkey:
+            return self.mpubkey
+        if self.hive_mapper:
+            node = self.hive_mapper.nodes.get(peer)
+            if node and node.public_key:
+                return node.public_key
+        return None
+
     def handle_bus(self, message: HiveMessage):
         """Dispatch event to the agent protocol bus"""
         LOG.info(f"BUS: {message.payload.msg_type}")
@@ -508,11 +520,24 @@ class HiveMindSlaveProtocol:
         if isinstance(pload, dict) and "ciphertext" in pload:
             try:
                 private_key = load_RSA_key(self.identity.private_key)
+                sender_key = self._get_peer_public_key(message.source_peer)
+                if not sender_key:
+                    LOG.warning(f"Missing public key for INTERCOM sender {message.source_peer}")
+                    return False
+
+                signature = pybase64.b64decode(pload["signature"])
                 if "encrypted_key" in pload:
                     # Backward-compatible with older hybrid AES+RSA envelopes.
+                    ciphertext = pybase64.b64decode(pload["ciphertext"])
+                    if not verify_RSA(sender_key, ciphertext, signature):
+                        LOG.warning(f"Invalid INTERCOM signature from {message.source_peer}")
+                        return False
                     decrypted = hybrid_decrypt(private_key, pload).decode("utf-8")
                 else:
                     ciphertext = pybase64.b64decode(pload["ciphertext"])
+                    if not verify_RSA(sender_key, ciphertext, signature):
+                        LOG.warning(f"Invalid INTERCOM signature from {message.source_peer}")
+                        return False
                     decrypted = decrypt_RSA(private_key, ciphertext).decode("utf-8")
                 message._payload = HiveMessage.deserialize(decrypted)
             except Exception:
@@ -555,6 +580,10 @@ class HiveMindSlaveProtocol:
             return True
         if message.msg_type == HiveMessageType.CASCADE:
             self.handle_cascade(message)
+            return True
+        if message.msg_type == HiveMessageType.PING:
+            wrapper = HiveMessage(HiveMessageType.PROPAGATE, payload=message)
+            self._handle_ping(wrapper)
             return True
         if message.msg_type == HiveMessageType.BINARY:
             self.hm._handle_binary(message)
