@@ -386,11 +386,13 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"PROPAGATE: {message.payload}")
         assert message.msg_type == HiveMessageType.PROPAGATE
-        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM, HiveMessageType.PING]
+        assert message.payload.msg_type in [HiveMessageType.BUS,
+                                            HiveMessageType.INTERCOM,
+                                            HiveMessageType.PING]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             self.handle_intercom(message.payload)
         elif message.payload.msg_type == HiveMessageType.PING:
-            self._handle_ping(message)
+            self.handle_ping(message.payload)
         elif message.payload.msg_type == HiveMessageType.BUS:
             site = message.target_site_id
             if site and site == self.site_id:
@@ -399,7 +401,7 @@ class HiveMindSlaveProtocol:
                 else:
                     LOG.warning(f"Dropping untrusted PROPAGATE(BUS) from {message.source_peer}")
 
-    def _handle_ping(self, message: HiveMessage):
+    def handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
 
         If this ``flood_id`` has not been seen before, builds and sends

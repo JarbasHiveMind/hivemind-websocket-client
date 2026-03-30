@@ -25,7 +25,7 @@ class TestHandlePing:
         proto = _make_protocol()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "abc", "peer": "other"})
         outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto._handle_ping(outer)
+        proto.handle_ping(outer)
 
         proto.hm.emit.assert_called_once()
         sent = proto.hm.emit.call_args[0][0]
@@ -42,18 +42,18 @@ class TestHandlePing:
         proto = _make_protocol()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "abc", "peer": "other"})
         outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto._handle_ping(outer)
+        proto.handle_ping(outer)
         proto.hm.emit.reset_mock()
 
         # Second call with same flood_id
-        proto._handle_ping(outer)
+        proto.handle_ping(outer)
         proto.hm.emit.assert_not_called()
 
     def test_empty_flood_id_ignored(self):
         proto = _make_protocol()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "", "peer": "other"})
         outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto._handle_ping(outer)
+        proto.handle_ping(outer)
         proto.hm.emit.assert_not_called()
 
     def test_flood_id_set_capped(self):
@@ -66,7 +66,7 @@ class TestHandlePing:
             mapper.check_flood_id(str(i))
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "new", "peer": "other"})
         outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto._handle_ping(outer)
+        proto.handle_ping(outer)
         proto.hm.emit.assert_called_once()  # "new" was not seen, so ping sent
 
     def test_different_flood_ids_both_processed(self):
@@ -74,7 +74,7 @@ class TestHandlePing:
         for fid in ["flood1", "flood2"]:
             inner = HiveMessage(HiveMessageType.PING, {"flood_id": fid, "peer": "other"})
             outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-            proto._handle_ping(outer)
+            proto.handle_ping(outer)
         assert proto.hm.emit.call_count == 2
 
 
