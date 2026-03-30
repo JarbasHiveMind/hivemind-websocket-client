@@ -222,7 +222,8 @@ class HiveMindSlaveProtocol:
         # may also send HELLO with their pubkey
         # only want this on the first connection
         LOG.info(f"HELLO: {message.payload}")
-        assert message.payload.msg_type == HiveMessageType.HELLO
+        # HELLO carries a plain dict payload, not a nested HiveMessage.
+        assert message.msg_type == HiveMessageType.HELLO
         if not self.node_id:
             self.mpubkey = message.payload.get("pubkey")
             node_id = message.payload.get("node_id", "")
@@ -272,7 +273,8 @@ class HiveMindSlaveProtocol:
 
     def handle_handshake(self, message: HiveMessage):
         LOG.info(f"HANDSHAKE: {message.payload}")
-        assert message.payload.msg_type == HiveMessageType.HANDSHAKE
+        # HANDSHAKE also carries a plain dict payload negotiated on the wire.
+        assert message.msg_type == HiveMessageType.HANDSHAKE
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
@@ -285,21 +287,19 @@ class HiveMindSlaveProtocol:
 
         # master is requesting handshake start
         else:
-            # required = message.payload.get("handshake")
-            # if not required:
-            #    self.hm.handshake_event.set()  # don't wait
-            #    return
-
             encodings = message.payload.get("encodings") or [SupportedEncodings.JSON_HEX]
             ciphers = message.payload.get("ciphers") or [SupportedCiphers.AES_GCM]
             LOG.debug(f"Server supported encodings: {encodings}")
             LOG.debug(f"Server supported ciphers: {ciphers}")
-            if message.payload.get("crypto_key") and self.hm.crypto_key:
-                pass
-                # we can use the pre-shared key instead of handshake
-                # TODO - flag to give preference to pre-shared key over handshake
 
             self.binarize = message.payload.get("binarize", False)
+            required = message.payload.get("handshake", True)
+            if not required:
+                # HiveMind-core uses this to indicate the connection can proceed
+                # without a key-exchange round trip.
+                self.hm.handshake_event.set()
+                return
+
             # TODO - flag to give preference to / require password or use RSA handshake
             # currently if password is set then it is always used
             if message.payload.get("password") and self.identity.password:
@@ -337,7 +337,8 @@ class HiveMindSlaveProtocol:
     def handle_bus(self, message: HiveMessage):
         """Dispatch event to the agent protocol bus"""
         LOG.info(f"BUS: {message.payload.msg_type}")
-        assert message.payload.msg_type == HiveMessageType.BUS
+        # BUS frames carry a Mycroft Message payload.
+        assert message.msg_type == HiveMessageType.BUS
         assert isinstance(message.payload, MycroftMessage)
         # master wants to inject message into mycroft bus
         pload = message.payload
