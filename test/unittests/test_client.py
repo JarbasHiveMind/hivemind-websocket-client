@@ -256,5 +256,25 @@ class TestBuildUrl(unittest.TestCase):
         self.assertTrue(url.startswith("ws://"))
 
 
+class TestEmitIntercom(unittest.TestCase):
+    @patch("hivemind_bus_client.client.sign_RSA", return_value=b"signature")
+    @patch("hivemind_bus_client.client.load_RSA_key", return_value=object())
+    @patch("hivemind_bus_client.client.encrypt_RSA", return_value=b"ciphertext")
+    def test_emit_intercom_uses_core_compatible_envelope(self, mock_encrypt, mock_load_key, mock_sign):
+        client = _make_client()
+        client.emit = MagicMock()
+        msg = Message("speak", {"utterance": "hello"})
+
+        client.emit_intercom(msg, pubkey="target-pubkey")
+
+        mock_encrypt.assert_called_once()
+        mock_sign.assert_called_once()
+        emitted = client.emit.call_args[0][0]
+        self.assertEqual(emitted.msg_type, HiveMessageType.INTERCOM)
+        self.assertIn("ciphertext", emitted.payload)
+        self.assertIn("signature", emitted.payload)
+        self.assertNotIn("encrypted_key", emitted.payload)
+
+
 if __name__ == "__main__":
     unittest.main()

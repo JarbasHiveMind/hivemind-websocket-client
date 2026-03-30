@@ -19,8 +19,8 @@ from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers, hybrid_encrypt)
-from poorman_handshake.asymmetric.utils import load_RSA_key, sign_RSA
+                                            SupportedEncodings, SupportedCiphers)
+from poorman_handshake.asymmetric.utils import load_RSA_key, sign_RSA, encrypt_RSA
 
 
 class BinaryDataCallbacks:
@@ -537,16 +537,19 @@ class HiveMessageBusClient(OVOSBusClient):
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
                       pubkey: Union[str, bytes, 'RSA.RsaKey']):
-        """Send an INTERCOM message using hybrid encryption.
+        """Send an INTERCOM message using the core-compatible RSA envelope.
 
-        Generates a random AES-256 key, encrypts the payload with AES-GCM,
-        then RSA-encrypts only the AES key with the target's public key.
-        The ciphertext is signed with this node's private key.
+        The serialized payload is RSA-encrypted for the target peer and the
+        ciphertext is signed with this node's private key. This matches the
+        envelope format currently handled by HiveMind-core.
 
         Args:
             message: The message to send.
             pubkey: RSA public key of the target peer.
         """
+        encrypted_message = encrypt_RSA(pubkey, message.serialize())
         private_key = load_RSA_key(self.identity.private_key)
-        envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload=envelope))
+        signature = sign_RSA(private_key, encrypted_message)
+        self.emit(HiveMessage(HiveMessageType.INTERCOM,
+                              payload={"ciphertext": pybase64.b64encode(encrypted_message).decode("ascii"),
+                                       "signature": pybase64.b64encode(signature).decode("ascii")}))

@@ -1,4 +1,5 @@
 import random
+import pybase64
 
 import threading
 import time
@@ -17,7 +18,7 @@ from hivemind_bus_client.hive_map import HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from poorman_handshake import HandShake, PasswordHandShake
-from poorman_handshake.asymmetric.utils import load_RSA_key
+from poorman_handshake.asymmetric.utils import load_RSA_key, decrypt_RSA
 
 
 class CascadeAggregator:
@@ -365,7 +366,7 @@ class HiveMindSlaveProtocol:
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
 
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
+            self.handle_intercom(message.payload)
         elif message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
             site = message.target_site_id
@@ -386,7 +387,7 @@ class HiveMindSlaveProtocol:
         LOG.info(f"PROPAGATE: {message.payload}")
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM, HiveMessageType.PING]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
+            self.handle_intercom(message.payload)
         elif message.payload.msg_type == HiveMessageType.PING:
             self._handle_ping(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
@@ -451,7 +452,7 @@ class HiveMindSlaveProtocol:
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
-            self.handle_intercom(message)
+            self.handle_intercom(message.payload)
         elif message.payload.msg_type == HiveMessageType.BUS:
             self.handle_bus(message)
 
@@ -496,7 +497,7 @@ class HiveMindSlaveProtocol:
             message: The INTERCOM HiveMessage.
         """
         LOG.info(f"INTERCOM: {message.payload}")
-        assert message.payload.msg_type == HiveMessageType.BUS
+        assert message.msg_type == HiveMessageType.INTERCOM
 
         k = message.target_public_key
         if k and k != self.identity.public_key:
@@ -504,28 +505,62 @@ class HiveMindSlaveProtocol:
             return False
 
         pload = message.payload
-        if isinstance(pload, dict) and "encrypted_key" in pload:
-            # hybrid encryption envelope (AES key RSA-encrypted)
+        if isinstance(pload, dict) and "ciphertext" in pload:
             try:
                 private_key = load_RSA_key(self.identity.private_key)
-                decrypted = hybrid_decrypt(private_key, pload).decode("utf-8")
+                if "encrypted_key" in pload:
+                    # Backward-compatible with older hybrid AES+RSA envelopes.
+                    decrypted = hybrid_decrypt(private_key, pload).decode("utf-8")
+                else:
+                    ciphertext = pybase64.b64decode(pload["ciphertext"])
+                    decrypted = decrypt_RSA(private_key, ciphertext).decode("utf-8")
                 message._payload = HiveMessage.deserialize(decrypted)
-            except Exception as e:
+            except Exception:
                 if k:
                     LOG.error("failed to decrypt INTERCOM message!")
                 else:
                     LOG.debug("failed to decrypt INTERCOM, not for us")
                 return False
+        elif isinstance(pload, dict) and "msg_type" in pload:
+            message._payload = HiveMessage.deserialize(pload)
+
+        inner = message.payload
+        if not isinstance(inner, HiveMessage):
+            LOG.warning("Dropping INTERCOM without an embedded HiveMessage payload")
+            return False
 
         # explicitly targeted at us → always trust
         if k and k == self.identity.public_key:
-            self.handle_bus(message)
-            return True
+            return self._dispatch_intercom_payload(inner)
 
         # not targeted — only inject if source is trusted
         if self._is_source_trusted(message):
-            self.handle_bus(message)
-            return True
+            return self._dispatch_intercom_payload(inner)
 
         LOG.warning(f"Dropping untrusted INTERCOM from {message.source_peer}")
+        return False
+
+    def _dispatch_intercom_payload(self, message: HiveMessage) -> bool:
+        if message.msg_type == HiveMessageType.BUS:
+            self.handle_bus(message)
+            return True
+        if message.msg_type == HiveMessageType.BROADCAST:
+            self.handle_broadcast(message)
+            return True
+        if message.msg_type == HiveMessageType.PROPAGATE:
+            self.handle_propagate(message)
+            return True
+        if message.msg_type == HiveMessageType.QUERY:
+            self.handle_query(message)
+            return True
+        if message.msg_type == HiveMessageType.CASCADE:
+            self.handle_cascade(message)
+            return True
+        if message.msg_type == HiveMessageType.BINARY:
+            self.hm._handle_binary(message)
+            return True
+        if message.msg_type in [HiveMessageType.ESCALATE, HiveMessageType.SHARED_BUS]:
+            self.handle_illegal_msg(message)
+            return True
+        LOG.warning(f"Unsupported INTERCOM payload type: {message.msg_type}")
         return False
