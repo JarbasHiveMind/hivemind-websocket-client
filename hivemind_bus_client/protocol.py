@@ -406,6 +406,7 @@ class HiveMindSlaveProtocol:
         Args:
             message: The outer PROPAGATE HiveMessage whose inner payload is a PING.
         """
+        assert message.msg_type == HiveMessageType.PROPAGATE
         inner = message.payload
         ping_payload = inner.payload if isinstance(inner.payload, dict) else {}
 
