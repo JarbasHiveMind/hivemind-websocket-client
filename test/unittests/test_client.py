@@ -215,6 +215,24 @@ class TestHandleHiveProtocol(unittest.TestCase):
         client.emitter.emit.assert_called()
 
 
+class TestHiveMessageBusClientEmit(unittest.TestCase):
+    def test_bus_message_gets_full_session_context(self):
+        client = _make_client()
+        client.connected_event.set()
+        client.internal_bus = MagicMock()
+        client.protocol = MagicMock()
+        client.protocol.binarize = False
+
+        client.emit(Message("recognizer_loop:utterance", {"utterances": ["hello"]}))
+
+        emitted = client.internal_bus.emit.call_args[0][0]
+        session = emitted.context["session"]
+        self.assertEqual(session["session_id"], "test-session-id")
+        self.assertEqual(session["site_id"], client.site_id)
+        self.assertIn("pipeline", session)
+        self.assertIn("context", session)
+
+
 class TestHandleBinary(unittest.TestCase):
     def test_tts_audio_callback(self):
         cb = MagicMock()

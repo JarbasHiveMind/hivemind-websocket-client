@@ -384,10 +384,15 @@ class HiveMessageBusClient(OVOSBusClient):
                     updated_payload.context["platform"] = self.useragent
                 if "destination" not in updated_payload.context:
                     updated_payload.context["destination"] = "HiveMind"
-                if "session" not in updated_payload.context:
-                    updated_payload.context["session"] = {}
-                updated_payload.context["session"]["session_id"] = self.session_id
-                updated_payload.context["session"]["site_id"] = self.site_id
+                raw_session = updated_payload.context.get("session") or {}
+                if isinstance(raw_session, dict):
+                    session = Session.deserialize(raw_session).serialize()
+                    session.update(raw_session)
+                else:
+                    session = Session(self.session_id).serialize()
+                session["session_id"] = self.session_id
+                session["site_id"] = self.site_id
+                updated_payload.context["session"] = session
                 message.payload = updated_payload
 
                 # also send event to client registered handlers
