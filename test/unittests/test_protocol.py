@@ -24,8 +24,7 @@ class TestHandlePing:
     def test_sends_responsive_ping(self):
         proto = _make_protocol()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "abc", "peer": "other"})
-        outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto.handle_ping(outer)
+        proto.handle_ping(inner)
 
         proto.hm.emit.assert_called_once()
         sent = proto.hm.emit.call_args[0][0]
@@ -41,19 +40,17 @@ class TestHandlePing:
     def test_duplicate_flood_id_ignored(self):
         proto = _make_protocol()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "abc", "peer": "other"})
-        outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto.handle_ping(outer)
+        proto.handle_ping(inner)
         proto.hm.emit.reset_mock()
 
         # Second call with same flood_id
-        proto.handle_ping(outer)
+        proto.handle_ping(inner)
         proto.hm.emit.assert_not_called()
 
     def test_empty_flood_id_ignored(self):
         proto = _make_protocol()
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "", "peer": "other"})
-        outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto.handle_ping(outer)
+        proto.handle_ping(inner)
         proto.hm.emit.assert_not_called()
 
     def test_flood_id_set_capped(self):
@@ -65,16 +62,14 @@ class TestHandlePing:
         for i in range(1000):
             mapper.check_flood_id(str(i))
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "new", "peer": "other"})
-        outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-        proto.handle_ping(outer)
+        proto.handle_ping(inner)
         proto.hm.emit.assert_called_once()  # "new" was not seen, so ping sent
 
     def test_different_flood_ids_both_processed(self):
         proto = _make_protocol()
         for fid in ["flood1", "flood2"]:
             inner = HiveMessage(HiveMessageType.PING, {"flood_id": fid, "peer": "other"})
-            outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
-            proto.handle_ping(outer)
+            proto.handle_ping(inner)
         assert proto.hm.emit.call_count == 2
 
 
@@ -285,6 +280,9 @@ class TestHandlePropagate:
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "abc", "peer": "x"})
         outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
 
-        with patch.object(proto, '_handle_ping') as mock_ping:
+        with patch.object(proto, 'handle_ping') as mock_ping:
             proto.handle_propagate(outer)
-            mock_ping.assert_called_once_with(outer)
+            mock_ping.assert_called_once()
+            called_with = mock_ping.call_args[0][0]
+            assert called_with.msg_type == HiveMessageType.PING
+            assert called_with.payload == {"flood_id": "abc", "peer": "x"}

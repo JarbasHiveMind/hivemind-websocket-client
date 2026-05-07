@@ -411,8 +411,7 @@ class HiveMindSlaveProtocol:
             message: The outer PROPAGATE HiveMessage whose inner payload is a PING.
         """
         assert message.msg_type == HiveMessageType.PING
-        inner = message.payload
-        ping_payload = inner.payload if isinstance(inner.payload, dict) else {}
+        ping_payload = message.payload if isinstance(message.payload, dict) else {}
 
         flood_id = ping_payload.get("flood_id", "")
 
