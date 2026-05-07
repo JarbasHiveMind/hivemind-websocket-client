@@ -222,7 +222,7 @@ class HiveMindSlaveProtocol:
         # may also send HELLO with their pubkey
         # only want this on the first connection
         LOG.info(f"HELLO: {message.payload}")
-        assert message.payload.msg_type == HiveMessageType.HELLO
+        assert message.msg_type == HiveMessageType.HELLO
         if not self.node_id:
             self.mpubkey = message.payload.get("pubkey")
             node_id = message.payload.get("node_id", "")
@@ -272,7 +272,7 @@ class HiveMindSlaveProtocol:
 
     def handle_handshake(self, message: HiveMessage):
         LOG.info(f"HANDSHAKE: {message.payload}")
-        assert message.payload.msg_type == HiveMessageType.HANDSHAKE
+        assert message.msg_type == HiveMessageType.HANDSHAKE
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
@@ -336,9 +336,9 @@ class HiveMindSlaveProtocol:
 
     def handle_bus(self, message: HiveMessage):
         """Dispatch event to the agent protocol bus"""
-        LOG.info(f"BUS: {message.payload.msg_type}")
-        assert message.payload.msg_type == HiveMessageType.BUS
+        assert message.msg_type == HiveMessageType.BUS
         assert isinstance(message.payload, MycroftMessage)
+        LOG.info(f"BUS: {message.payload.msg_type}")
         # master wants to inject message into mycroft bus
         pload = message.payload
 
@@ -362,10 +362,11 @@ class HiveMindSlaveProtocol:
             message: The BROADCAST HiveMessage.
         """
         LOG.info(f"BROADCAST: {message.payload}")
+        assert message.msg_type == HiveMessageType.BROADCAST
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
 
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
+            self.handle_intercom(message.payload)
         elif message.payload.msg_type == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
             site = message.target_site_id
@@ -384,11 +385,14 @@ class HiveMindSlaveProtocol:
             message: The PROPAGATE HiveMessage.
         """
         LOG.info(f"PROPAGATE: {message.payload}")
-        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM, HiveMessageType.PING]
+        assert message.msg_type == HiveMessageType.PROPAGATE
+        assert message.payload.msg_type in [HiveMessageType.BUS,
+                                            HiveMessageType.INTERCOM,
+                                            HiveMessageType.PING]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
-            self.handle_intercom(message)
+            self.handle_intercom(message.payload)
         elif message.payload.msg_type == HiveMessageType.PING:
-            self._handle_ping(message)
+            self.handle_ping(message.payload)
         elif message.payload.msg_type == HiveMessageType.BUS:
             site = message.target_site_id
             if site and site == self.site_id:
@@ -397,7 +401,7 @@ class HiveMindSlaveProtocol:
                 else:
                     LOG.warning(f"Dropping untrusted PROPAGATE(BUS) from {message.source_peer}")
 
-    def _handle_ping(self, message: HiveMessage):
+    def handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
 
         If this ``flood_id`` has not been seen before, builds and sends
@@ -406,8 +410,8 @@ class HiveMindSlaveProtocol:
         Args:
             message: The outer PROPAGATE HiveMessage whose inner payload is a PING.
         """
-        inner = message.payload
-        ping_payload = inner.payload if isinstance(inner.payload, dict) else {}
+        assert message.msg_type == HiveMessageType.PING
+        ping_payload = message.payload if isinstance(message.payload, dict) else {}
 
         flood_id = ping_payload.get("flood_id", "")
 
@@ -448,6 +452,7 @@ class HiveMindSlaveProtocol:
             message: The QUERY HiveMessage.
         """
         LOG.info(f"QUERY: {message.payload}")
+        assert message.msg_type == HiveMessageType.QUERY
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
@@ -468,6 +473,7 @@ class HiveMindSlaveProtocol:
             message: The CASCADE HiveMessage.
         """
         LOG.info(f"CASCADE: {message.payload}")
+        assert message.msg_type == HiveMessageType.CASCADE
         assert message.payload.msg_type == HiveMessageType.BUS
 
         # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
@@ -496,6 +502,7 @@ class HiveMindSlaveProtocol:
             message: The INTERCOM HiveMessage.
         """
         LOG.info(f"INTERCOM: {message.payload}")
+        assert message.msg_type == HiveMessageType.INTERCOM
         assert message.payload.msg_type == HiveMessageType.BUS
 
         k = message.target_public_key
