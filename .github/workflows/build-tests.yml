@@ -14,4 +14,4 @@ jobs:
       install_extras: 'test'
       # hivescope is required by tests/e2e/
       pre_install_pip: '"hivescope @ git+https://github.com/JarbasHiveMind/hivescope@dev"'
-      test_path: 'test tests/e2e/'
+      test_path: 'tests/'
