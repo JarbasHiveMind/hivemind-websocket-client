@@ -1,51 +1,38 @@
-"""
-E2E tests for HiveMessageBusClient encryption negotiation.
+"""E2E encryption negotiation tests for HiveMessageBusClient."""
 
-Tests cipher and encoding selection between client and master.
-"""
-
-import pytest
+from hivemind_bus_client.client import HiveMessageBusClient
+from hivemind_bus_client.identity import NodeIdentity
 from hivescope import TopologyBuilder
 
 
-class TestEncryptionNegotiation:
-    """Test cipher and encoding selection."""
+def _make_client(url, key, password, name="test-client"):
+    host, port = url.replace("ws://", "").rstrip("/").split(":")
+    port = int(port)
+    identity = NodeIdentity()
+    identity.access_key = key
+    identity.password = password
+    identity.default_master = f"ws://{host}"
+    identity.default_port = port
+    identity.name = name
+    identity.site_id = f"{name}-site"
+    return HiveMessageBusClient(
+        key=key, password=password,
+        host=f"ws://{host}", port=port,
+        useragent=name, self_signed=False,
+        identity=identity,
+    )
 
-    def test_client_and_master_agree_on_encryption(self):
-        """Client and master negotiate matching cipher and encoding."""
-        b = TopologyBuilder()
-        m = b.add_master("M0", use_loopback=True)
-        m.register_satellite("test-key", password="test-password")
-        b.start_all()
 
-        try:
-            from hivemind_bus_client.client import HiveMessageBusClient
-            from hivemind_bus_client.identity import NodeIdentity
-
-            ws_url = m.network_protocol.url
-            parts = ws_url.replace("ws://", "").replace("wss://", "").rstrip("/").split(":")
-            host, port = parts[0], int(parts[1])
-
-            identity = NodeIdentity()
-            identity.access_key = "test-key"
-            identity.password = "test-password"
-            identity.name = "test-client"
-
-            client = HiveMessageBusClient(
-                key="test-key",
-                password="test-password",
-                host=f"ws://{host}",
-                port=port,
-                identity=identity,
-            )
-
-            client.connect(site_id="test-site")
-            client.wait_for_handshake(timeout=10)
-
-            # Both should have negotiated encryption
-            # (actual cipher/encoding comparison depends on availability)
-            assert client.crypto_key is not None, "No crypto key"
-
-            client.close()
-        finally:
-            b.stop_all()
+def test_client_and_master_agree_on_encryption():
+    b = TopologyBuilder()
+    m = b.add_master("M0", use_loopback=True)
+    m.register_satellite("test-key", password="test-password")
+    b.start_all()
+    try:
+        client = _make_client(m.network_protocol.url, "test-key", "test-password")
+        client.connect(site_id="loopback-site")
+        client.wait_for_handshake(timeout=10)
+        assert client.crypto_key is not None
+        client.close()
+    finally:
+        b.stop_all()
