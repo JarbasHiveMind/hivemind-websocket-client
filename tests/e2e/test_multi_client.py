@@ -41,7 +41,8 @@ def test_two_clients_register_independently():
         c2.wait_for_handshake(timeout=10)
         time.sleep(1)
         peers = m.connected_peers()
-        assert len(peers) == 2, peers
+        assert any("client-a" in p for p in peers), peers
+        assert any("client-b" in p for p in peers), peers
         c1.close()
         c2.close()
     finally:

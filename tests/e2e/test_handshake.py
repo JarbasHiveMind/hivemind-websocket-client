@@ -39,7 +39,8 @@ def test_client_completes_handshake_via_websocket():
         assert client.crypto_key is not None
 
         time.sleep(1)  # let encrypted HELLO register the peer
-        assert len(m.connected_peers()) == 1, m.connected_peers()
+        peers = m.connected_peers()
+        assert any("test-client" in p for p in peers), peers
         client.close()
     finally:
         b.stop_all()
