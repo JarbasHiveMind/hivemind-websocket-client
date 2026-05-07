@@ -12,12 +12,6 @@ jobs:
     with:
       python_versions: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
       install_extras: 'test'
-      test_path: 'test'
-
-  e2e:
-    uses: OpenVoiceOS/gh-automations/.github/workflows/build-tests.yml@dev
-    secrets: inherit
-    with:
-      python_versions: '["3.11"]'
+      # hivescope is required by tests/e2e/
       pre_install_pip: '"hivescope @ git+https://github.com/JarbasHiveMind/hivescope@dev"'
-      test_path: 'tests/e2e/'
+      test_path: 'test tests/e2e/'
