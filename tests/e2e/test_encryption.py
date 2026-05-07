@@ -27,8 +27,8 @@ def test_client_and_master_agree_on_encryption():
     b = TopologyBuilder()
     m = b.add_master("M0", use_loopback=True)
     m.register_satellite("test-key", password="test-password")
-    b.start_all()
     try:
+        b.start_all()
         client = _make_client(m.network_protocol.url, "test-key", "test-password")
         client.connect(site_id="loopback-site")
         client.wait_for_handshake(timeout=10)
