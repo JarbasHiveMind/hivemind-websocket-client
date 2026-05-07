@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.7.0a1) (2026-05-07)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.6.1a1...0.7.0a1)
+
+**Merged pull requests:**
+
+- feat\(tests\): hivescope e2e suite + CI [\#112](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/112) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.6.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.6.1a1) (2026-05-07)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.6.0a1...0.6.1a1)
