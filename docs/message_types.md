@@ -30,7 +30,7 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 
 QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond.
 
-**Satellite behaviour** (`HiveMindSlaveProtocol.handle_query` — `protocol.py:311`):
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_query` — `protocol.py:446`):
 - Inner payload must be `BUS` or `INTERCOM`.
 - `BUS` payloads are dispatched to `handle_bus`.
 - `INTERCOM` payloads are dispatched to `handle_intercom`.
@@ -61,7 +61,7 @@ def on_speak(msg):
 
 CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional — nodes that cannot answer simply stay silent.
 
-**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:436`):
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:463`):
 
 Responses are buffered in a `CascadeAggregator` (`protocol.py:21`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
 
@@ -102,6 +102,10 @@ from hivemind_bus_client.decorators import on_cascade
 def on_skills(msg):
     print(msg.data["skills"])
 ```
+
+**Satellite behaviour** (`HiveMindSlaveProtocol.handle_ping` — `protocol.py:404`):
+
+`handle_propagate` extracts the inner PING `HiveMessage` from the PROPAGATE wrapper and calls `handle_ping(message.payload)` (`protocol.py:395`). `handle_ping` receives the inner PING directly — its `msg_type` is asserted to be `HiveMessageType.PING`. If the `flood_id` has not been seen before, the node builds and emits its own responsive PING (same `flood_id`) wrapped in a new PROPAGATE.
 
 ## PING Flood — Network Discovery
 
