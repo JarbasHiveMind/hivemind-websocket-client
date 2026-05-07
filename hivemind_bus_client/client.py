@@ -19,8 +19,8 @@ from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers)
-from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
+                                            SupportedEncodings, SupportedCiphers, hybrid_encrypt)
+from poorman_handshake.asymmetric.utils import load_RSA_key, sign_RSA
 
 
 class BinaryDataCallbacks:
@@ -233,11 +233,23 @@ class HiveMessageBusClient(OVOSBusClient):
         self.crypto_key = None
         super().on_close(*args)
 
-    def wait_for_handshake(self, timeout=5):
+    def wait_for_handshake(self, timeout=5, max_retries=15):
+        """
+        Waits for the HiveMind handshake to complete; if the handshake is not set and the websocket connection is open, starts the handshake, otherwise waits for the websocket to open and retries.
+
+        Parameters:
+            timeout (float): Number of seconds to wait for each handshake or connection attempt before retrying.
+        """
         self.handshake_event.wait(timeout=timeout)
         if not self.handshake_event.is_set():
-            self.protocol.start_handshake()
-            self.wait_for_handshake()
+            if max_retries <= 0:
+                raise RuntimeError("timed out waiting for handshake")
+            if self.connected_event.is_set():
+                self.protocol.start_handshake()
+            else:
+                LOG.warning("Can't start handshake because websocket connection is not yet open...")
+                self.connected_event.wait(timeout=timeout)
+            self.wait_for_handshake(timeout, max_retries - 1)
 
     @staticmethod
     def build_url(key, host='127.0.0.1', port=5678,
@@ -353,12 +365,12 @@ class HiveMessageBusClient(OVOSBusClient):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
         if not self.connected_event.is_set():
-            LOG.warning("hivemind connection not ready")
+            LOG.warning("hivemind connection not ready!")
             if not self.connected_event.wait(10):
                 if not self.started_running:
                     raise ValueError('You must execute run_forever() '
                                      'before emitting messages')
-                self.connected_event.wait()
+                raise RuntimeError(f"Can not send messages before opening the websocket connection. Failed to emit : {message.serialize()}")
 
         try:
             # auto inject context for proper routing, this is confusing for
@@ -524,13 +536,17 @@ class HiveMessageBusClient(OVOSBusClient):
 
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
-                      pubkey: Union[str, bytes, RSA.RsaKey]):
+                      pubkey: Union[str, bytes, 'RSA.RsaKey']):
+        """Send an INTERCOM message using hybrid encryption.
 
-        encrypted_message = encrypt_RSA(pubkey, message.serialize())
+        Generates a random AES-256 key, encrypts the payload with AES-GCM,
+        then RSA-encrypts only the AES key with the target's public key.
+        The ciphertext is signed with this node's private key.
 
-        # sign message
+        Args:
+            message: The message to send.
+            pubkey: RSA public key of the target peer.
+        """
         private_key = load_RSA_key(self.identity.private_key)
-        signature = sign_RSA(private_key, encrypted_message)
-
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
-                                                                 "signature": pybase64.b64encode(signature)}))
+        envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
+        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload=envelope))
