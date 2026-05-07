@@ -138,8 +138,6 @@ Protocol handler used by `HiveMessageBusClient` to dispatch incoming `HiveMessag
 | `handle_cascade(message)` | `CASCADE` | Buffers responses in `CascadeAggregator`; resolves after timeout or when all known nodes have responded | `protocol.py:463` |
 | `handle_intercom(message)` | `INTERCOM` | Decrypts hybrid-encrypted payload and injects into internal bus | `protocol.py:491` |
 
-> **Note:** `handle_ping` was previously private (`_handle_ping`) and received the outer PROPAGATE wrapper. It is now public and receives the inner PING `HiveMessage` directly — `handle_propagate` calls `self.handle_ping(message.payload)`.
-
 ---
 
 ## `HiveMapper` (`hivemind_bus_client/hive_map.py:38`)

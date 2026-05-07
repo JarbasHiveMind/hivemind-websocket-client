@@ -105,7 +105,7 @@ def on_skills(msg):
 
 **Satellite behaviour** (`HiveMindSlaveProtocol.handle_ping` — `protocol.py:404`):
 
-`handle_propagate` extracts the inner PING `HiveMessage` from the PROPAGATE wrapper and calls `handle_ping(message.payload)` (`protocol.py:395`). `handle_ping` receives the inner PING directly — its `msg_type` is asserted to be `HiveMessageType.PING`. If the `flood_id` has not been seen before, the node builds and emits its own responsive PING (same `flood_id`) wrapped in a new PROPAGATE.
+`handle_propagate` passes the inner PING `HiveMessage` (`message.payload`) to `handle_ping` (`protocol.py:395`). `handle_ping` expects `msg_type == PING` and reads `message.payload` directly as the ping dict. If the `flood_id` has not been seen before, the node builds and emits its own responsive PING (same `flood_id`) wrapped in a new PROPAGATE.
 
 ## PING Flood — Network Discovery
 
