@@ -1,18 +1,17 @@
-name: Stable Release
+name: Publish Stable Release
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [master]
 
 jobs:
   publish_stable:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     uses: OpenVoiceOS/gh-automations/.github/workflows/publish-stable.yml@dev
-    secrets:    
-      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+    secrets: inherit
     with:
-      branch: 'master'
       version_file: 'hivemind_bus_client/version.py'
-      publish_release: true
       publish_pypi: true
+      notify_matrix: true
