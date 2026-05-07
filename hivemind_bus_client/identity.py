@@ -1,7 +1,7 @@
 from os.path import basename, dirname
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
-from typing import Optional
+from typing import Dict, List, Optional
 
 
 class NodeIdentity:
@@ -149,6 +149,87 @@ class NodeIdentity:
     def default_port(self, val: int):
         """Set the default port for the node."""
         self.IDENTITY_FILE["default_port"] = val
+
+    @property
+    def trusted_keys(self) -> Dict[str, str]:
+        """Get the trusted keys mapping (alias → public key).
+
+        Trusted keys are used to verify the identity of peers in
+        PROPAGATE, CASCADE, and INTERCOM message handling.  Only
+        messages from peers whose public key is in this mapping will
+        be accepted for bus injection.
+
+        Returns:
+            Dict[str, str]: Mapping of human-friendly alias to public key string.
+        """
+        return self.IDENTITY_FILE.get("trusted_keys") or {}
+
+    @trusted_keys.setter
+    def trusted_keys(self, val: Dict[str, str]) -> None:
+        """Replace the entire trusted keys mapping.
+
+        Args:
+            val: New alias → public key mapping.
+        """
+        self.IDENTITY_FILE["trusted_keys"] = dict(val)
+
+    def add_trusted_key(self, alias: str, pubkey: str) -> bool:
+        """Add a public key to the trusted keys mapping.
+
+        Args:
+            alias: Human-friendly name for the peer (e.g. "living-room-hub").
+            pubkey: The public key string to trust.
+
+        Returns:
+            True if the key was added, False if the alias already exists.
+        """
+        keys = self.trusted_keys
+        if alias in keys:
+            return False
+        keys[alias] = pubkey
+        self.IDENTITY_FILE["trusted_keys"] = keys
+        return True
+
+    def remove_trusted_key(self, alias: str) -> bool:
+        """Remove a trusted key by its alias.
+
+        Args:
+            alias: The alias to remove.
+
+        Returns:
+            True if the key was removed, False if the alias was not found.
+        """
+        keys = self.trusted_keys
+        if alias not in keys:
+            return False
+        del keys[alias]
+        self.IDENTITY_FILE["trusted_keys"] = keys
+        return True
+
+    def is_trusted_key(self, pubkey: str) -> bool:
+        """Check whether a public key is in the trusted keys mapping.
+
+        Args:
+            pubkey: The public key string to check.
+
+        Returns:
+            True if the key is trusted.
+        """
+        return pubkey in self.trusted_keys.values()
+
+    def get_trusted_alias(self, pubkey: str) -> Optional[str]:
+        """Look up the alias for a trusted public key.
+
+        Args:
+            pubkey: The public key string to look up.
+
+        Returns:
+            The alias if found, None otherwise.
+        """
+        for alias, key in self.trusted_keys.items():
+            if key == pubkey:
+                return alias
+        return None
 
     def save(self) -> None:
         """
