@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.6.1a1) (2026-05-07)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.6.0a1...0.6.1a1)
+
+**Merged pull requests:**
+
+- fix: message typing [\#107](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/107) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.6.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.6.0a1) (2026-03-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.5.0a6...0.6.0a1)
