@@ -115,68 +115,126 @@ same way on both clients.
 
 ## Benchmarks
 
-Two scripts ship under `benchmarks/`. They measure different things and
-both numbers matter.
+Four scripts ship under `benchmarks/`. They each answer a different
+question — picking only one tells a misleading story.
 
-### In-process — library overhead only
+### Honest summary first
 
-`benchmarks/bench_async_vs_sync.py` stubs out the WebSocket and measures
-serialization, emitter dispatch, and waiter coordination only. Use it to
-spot library-level regressions, not to predict real runtime.
+**The async client is _not_ faster per call on a single connection.**
+`websocket-client` is a C extension well-tuned for blocking I/O; the
+pure-Python `websockets` library plus event-loop dispatch is slightly
+slower per round-trip (~0.3 ms sync vs ~0.5 ms async, loopback).
+
+**Python threads are also surprisingly competitive for I/O-bound
+workloads.** The GIL releases on socket reads, so hundreds of threads
+genuinely block on independent sockets in parallel. The wall-time gap
+between threads-and-sync vs asyncio-and-async is small for HiveMind's
+workload shape.
+
+**Where async wins is structural, not microseconds**: setup time for
+many connections, thread-count footprint, and integration with existing
+asyncio code. Pick async when those matter; pick sync when your code is
+already threading-based or single-shot.
+
+### 1. In-process — library overhead only
+
+`benchmarks/bench_async_vs_sync.py` stubs out the WebSocket. Measures
+serialization, emitter dispatch, and waiter coordination only —
+regression-detector, not runtime predictor.
 
 Python 3.11, n=1500:
 
-| Benchmark | Sync | Async | Notes |
+| Benchmark | Sync | Async | Reading |
 |---|---|---|---|
-| `emit()` — mean | 0.42 ms | 0.58 ms | async pays coroutine dispatch cost |
-| `wait_for_message()` — mean (already-set) | 0.004 ms | 0.020 ms | sync `Event.is_set()` faster than asyncio scheduling |
-| Concurrent emit ×200 fan-out | n/a | ≈1660 msg/s | async-only path |
+| `emit()` mean | 0.42 ms | 0.58 ms | async pays coroutine-dispatch cost |
+| `wait_for_message()` mean (already-set Event) | 0.004 ms | 0.020 ms | C-level `Event.is_set` beats asyncio scheduling on a degenerate case |
+| async-only concurrent emit ×200 | — | ≈1 660 msg/s | path that sync structurally can't take on one client |
 
-### Real transport — loopback WebSocket echo server
+### 2. Real transport — single connection round-trip
 
-`benchmarks/bench_async_vs_sync_ws.py` spins up a `websockets`-based
-echo server on a free localhost port and exercises both clients
-end-to-end (no encryption, no handshake). This is "real transport, no
-network."
+`benchmarks/bench_async_vs_sync_ws.py` against a loopback `websockets`
+echo server, sequential, no server-side latency. The worst case for
+async — there's nothing to overlap.
 
 Python 3.11, n=300:
 
-| Benchmark | Sync | Async | Notes |
-|---|---|---|---|
-| Emit + round-trip — mean | 0.33 ms | 0.55 ms | sync `websocket-client` is slightly leaner on a single connection |
-| Emit + round-trip — p95 | 0.44 ms | 0.74 ms | both well under 1 ms |
-| Concurrent round-trip ×300 (fan-out) | n/a (would need 300 threads) | ≈1190 req/s | async-only path |
+| Benchmark | Sync | Async |
+|---|---|---|
+| Emit + round-trip mean | 0.33 ms | 0.55 ms |
+| Emit + round-trip p95 | 0.44 ms | 0.74 ms |
 
-### Honest reading
+Both well under 1 ms. Sync wins per call by ~220 µs of event-loop
+overhead.
 
-The async client is **not faster per-call** on a single connection. The
-sync `websocket-client` library is well-optimised for blocking I/O on
-one socket, and HiveMind's per-message serialization is the same cost
-either way.
+### 3. Fan-out with realistic server latency
 
-The case for `AsyncHiveMessageBusClient` is **integration**, not
-microseconds:
+`benchmarks/bench_fanout.py` adds a configurable server-side delay
+(25 – 50 ms — what you'd see when the server actually does work) and
+runs three scenarios:
 
-- Your application is already asyncio. Threads-to-loop bridges
-  (`asyncio.run_coroutine_threadsafe`) become direct `await` calls. The
-  bridge code is a known source of bugs — lost messages on shutdown,
-  double-delivery on reconnect.
-- One process can run many independent HiveMind connections cheaply.
-  Sync clients would need one thread per connection.
-- Free up the calling task. While `await bus.wait_for_response(...)` is
-  pending, the FastAPI request handler / Discord event loop / etc. can
-  do other work.
+- **A — sequential** (30 calls, 25 ms server delay): tied. Both pay the
+  full server delay; per-call overhead is negligible vs that.
+- **B — fan-out on one connection** (100 concurrent round-trips on the
+  same socket): tied. Threads release the GIL on I/O so they
+  interleave fine.
+- **C — many independent connections** (200 connections × 10 calls):
+  tied at the wall-clock level.
 
-If your code is single-shot scripts or CLIs, prefer the sync client.
+The honest reading: don't pick the async client expecting a wall-time
+win, because for most realistic shapes there isn't one.
+
+### 4. Resource footprint at scale
+
+`benchmarks/bench_memory.py` — open N idle connections, hold them open,
+report RSS and thread count.
+
+Python 3.11, 1 000 idle connections:
+
+| Metric | Sync | Async |
+|---|---|---|
+| RSS added | +83.7 MB (~86 KB / conn) | +79.2 MB (~81 KB / conn) |
+| Threads added | **+1 000** | **+0** |
+| Setup time | 1 515 ms | 1 467 ms |
+
+This is the most honest answer to "why use async":
+
+- **Thread count.** 1 000 connections = 1 000 threads under sync.
+  ulimit pressure, scheduler overhead, debugger noise, profiler noise.
+  Async runs the same 1 000 connections in a single OS thread. At
+  10 000+ connections, this becomes a hard wall for sync, not a
+  tradeoff.
+- **Cleaner shutdown / cancellation.** `asyncio.CancelledError`
+  propagates through awaits; cancelling a thread is messy. Matters for
+  graceful FastAPI/aiohttp shutdown and signal handlers.
+- **RSS roughly ties.** Python thread stacks are smaller than the
+  textbook suggests on Linux for this workload, so memory isn't the
+  differentiator. Thread count is.
+
+### When to pick which
+
+| Situation | Pick |
+|---|---|
+| Single-shot script, CLI, batch job | sync |
+| Existing threading-based app | sync (don't mix concurrency models) |
+| Single long-lived connection, per-call latency matters | sync (~30 % faster per round-trip) |
+| FastAPI / aiohttp / Matrix `nio` / async chat bots | **async** (no thread bridge) |
+| 100s – 1000s of HiveMind connections from one process | **async** (thread count) |
+| Need clean cancellation across many in-flight requests | **async** (`asyncio.CancelledError`) |
 
 ### Run the benchmarks yourself
 
 ```bash
-# Library overhead only (fast, no transport)
+# Library overhead only — fast, no transport
 python benchmarks/bench_async_vs_sync.py --n 1500
 
-# End-to-end via a real loopback WebSocket echo server
+# End-to-end round-trip via a real loopback WebSocket echo server
 python benchmarks/bench_async_vs_sync_ws.py --n 300
+
+# Fan-out with realistic server-side latency
+python benchmarks/bench_fanout.py --fan 100 --conns 100 --server-delay 25
+
+# Resource footprint at scale (RSS + thread count)
+python benchmarks/bench_memory.py --conns 1000
 ```
 
 ## Reusing existing components

@@ -41,6 +41,10 @@ test = [
     "pytest-cov",
     "websockets>=10.0",
 ]
+benchmark = [
+    "websockets>=10.0",
+    "psutil>=5.9",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
