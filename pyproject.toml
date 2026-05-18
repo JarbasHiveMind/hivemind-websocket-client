@@ -33,6 +33,18 @@ dependencies = [
     "z85base91>=0.0.5,<1.0.0",
 ]
 
+[project.optional-dependencies]
+async = ["websockets>=10.0"]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "websockets>=10.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [project.urls]
 Homepage = "https://github.com/JarbasHiveMind/hivemind_websocket_client"
 
