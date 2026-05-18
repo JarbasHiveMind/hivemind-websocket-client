@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.8.0a1) (2026-05-18)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.7.0a2...0.8.0a1)
+
+**Fixed bugs:**
+
+- assert message.msg\_type == HiveMessageType.PING [\#108](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/108)
+- AttributeError: 'dict' object has no attribute 'msg\_type' [\#104](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/104)
+
+**Merged pull requests:**
+
+- feat: AsyncHiveMessageBusClient \(asyncio-native client\) [\#115](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/115) ([JarbasAl](https://github.com/JarbasAl))
+
+## [0.7.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.7.0a2) (2026-05-07)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.7.0a1...0.7.0a2)
+
 ## [0.7.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.7.0a1) (2026-05-07)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.6.1a1...0.7.0a1)
