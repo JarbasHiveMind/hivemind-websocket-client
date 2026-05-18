@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a1) (2026-05-18)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.8.0a1...0.9.0a1)
+
+**Merged pull requests:**
+
+- feat: AsyncFakeHiveMessageBus alongside the async client [\#117](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/117) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.8.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.8.0a1) (2026-05-18)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.7.0a2...0.8.0a1)
