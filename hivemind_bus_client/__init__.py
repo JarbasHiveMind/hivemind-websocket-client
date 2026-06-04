@@ -9,4 +9,8 @@ def __getattr__(name):
                 "AsyncHivePayloadWaiter"):
         from . import async_client
         return getattr(async_client, name)
+    # Lazy-import MQTT client so bare installs (no `paho-mqtt`) keep working.
+    if name == "HiveMindMQTTClient":
+        from .mqtt_client import HiveMindMQTTClient
+        return HiveMindMQTTClient
     raise AttributeError(f"module 'hivemind_bus_client' has no attribute {name!r}")

@@ -35,6 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 async = ["websockets>=10.0"]
+mqtt = ["paho-mqtt>=1.6.0"]
 test = [
     "pytest",
     "pytest-asyncio",
