@@ -453,12 +453,17 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"QUERY: {message.payload}")
         assert message.msg_type == HiveMessageType.QUERY
+        meta = message.metadata or {}
+        if meta.get("is_final"):
+            # end-of-stream sentinel — the answer stream for this query_id is done
+            LOG.debug(f"QUERY stream complete: {meta.get('query_id')}")
+            return
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
-            # the QUERY wraps an inner BUS HiveMessage; emit that, not the wrapper
+            # each streamed chunk wraps an inner BUS speak; emit that, not the wrapper
             self.handle_bus(message.payload)
 
     def handle_cascade(self, message: HiveMessage):
@@ -475,6 +480,11 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"CASCADE: {message.payload}")
         assert message.msg_type == HiveMessageType.CASCADE
+        meta = message.metadata or {}
+        if meta.get("is_final"):
+            # a responder finished streaming; not an answer to aggregate
+            LOG.debug(f"CASCADE stream complete from a responder: {meta.get('query_id')}")
+            return
         assert message.payload.msg_type == HiveMessageType.BUS
 
         # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
