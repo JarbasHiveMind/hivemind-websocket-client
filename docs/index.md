@@ -40,11 +40,12 @@ client.emit(Message("recognizer_loop:utterance", {"utterances": ["hello world"]}
 
 ## Documentation Guides
 
+- [Setup walkthrough](setup.md) - Pair a satellite with a hub step by step.
 - [Installation](installation.md) - Getting started.
 - [API Reference](api.md) - `HiveMessage`, `HiveMessageType`, `HiveMessageBusClient`, `BinaryDataCallbacks`, `NodeIdentity`.
 - [Client API](client_api.md) - `HiveMessageBusClient` and `HiveMindHTTPClient` usage.
-- [Async client](async_client.md) - `AsyncHiveMessageBusClient` for asyncio-native applications (FastAPI, aiohttp, async chat bots). Optional: `pip install hivemind-bus-client[async]`.
-- [Fakes](fakebus.md) - `AsyncFakeHiveMessageBus`, the in-process stand-in for `AsyncHiveMessageBusClient` used by tests and embedded scenarios.
+- [Async Client](async_client.md) - `AsyncHiveMessageBusClient` for asyncio-native applications.
+- [Fakes](fakebus.md) - `AsyncFakeHiveMessageBus` in-process stand-in for testing.
 - [Message Types](message_types.md) - `HiveMessage`, `HiveMessageType` enum, routing, serialization.
 - [Binary Serialization](serialization.md) - Bitstring wire format, `get_bitstring`, `decode_bitstring` (reference implementation).
 - [Binary Handlers](binary_handlers.md) - `BinaryDataCallbacks` for TTS audio and file transfers.

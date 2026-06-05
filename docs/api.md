@@ -120,26 +120,6 @@ Trusted keys are stored as an alias → public key mapping in the identity file.
 
 ---
 
-## `HiveMindSlaveProtocol` (`hivemind_bus_client/protocol.py:164`)
-
-Protocol handler used by `HiveMessageBusClient` to dispatch incoming `HiveMessage` objects to the appropriate handler based on `msg_type`. Every handler asserts the message type at entry and fails loudly on misrouted messages.
-
-### Public Handler Methods
-
-| Method | Asserted `msg_type` | Notes | Source |
-|--------|---------------------|-------|--------|
-| `handle_hello(message)` | `HELLO` | Session sync at connect time | `protocol.py:220` |
-| `handle_handshake(message)` | `HANDSHAKE` | Key exchange at connect time | `protocol.py:273` |
-| `handle_bus(message)` | `BUS` | Dispatches inner `MycroftMessage` to the internal bus | `protocol.py:337` |
-| `handle_broadcast(message)` | `BROADCAST` | Inner payload must be `BUS` or `INTERCOM`; passes `message.payload` to `handle_bus` or `handle_intercom` | `protocol.py:356` |
-| `handle_propagate(message)` | `PROPAGATE` | Inner payload must be `BUS`, `INTERCOM`, or `PING`; passes `message.payload` to the appropriate handler | `protocol.py:377` |
-| `handle_ping(message)` | `PING` | Receives the **inner PING directly** (not the outer PROPAGATE wrapper); flood-loop prevention via `HiveMapper.check_flood_id` | `protocol.py:404` |
-| `handle_query(message)` | `QUERY` | Inner payload must be `BUS` or `INTERCOM` | `protocol.py:446` |
-| `handle_cascade(message)` | `CASCADE` | Buffers responses in `CascadeAggregator`; resolves after timeout or when all known nodes have responded | `protocol.py:463` |
-| `handle_intercom(message)` | `INTERCOM` | Decrypts hybrid-encrypted payload and injects into internal bus | `protocol.py:491` |
-
----
-
 ## `HiveMapper` (`hivemind_bus_client/hive_map.py:38`)
 
 Collects responsive PINGs from a flood and builds a directed hive topology graph.
