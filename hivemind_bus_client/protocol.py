@@ -20,6 +20,12 @@ from poorman_handshake import HandShake, PasswordHandShake
 from poorman_handshake.asymmetric.utils import load_RSA_key
 
 
+# QUERY/CASCADE answers stream as response chunks terminated by a response
+# wrapping this control message (protocol contract with hivemind-core; the
+# end-of-stream is content, not metadata).
+QUERY_STREAM_END = "hive.query.complete"
+
+
 class CascadeAggregator:
     """Collects CASCADE responses over a timeout window, then selects the best.
 
@@ -443,6 +449,14 @@ class HiveMindSlaveProtocol:
         LOG.debug(f"Sending responsive PING for flood_id={flood_id}")
         self.hm.emit(own_ping_outer)
 
+    @staticmethod
+    def _is_stream_end(message: HiveMessage) -> bool:
+        """True if this QUERY/CASCADE response is the end-of-stream control
+        message (a wrapped BUS payload of type ``QUERY_STREAM_END``)."""
+        inner = message.payload
+        return (inner.msg_type == HiveMessageType.BUS
+                and getattr(inner.payload, "msg_type", "") == QUERY_STREAM_END)
+
     def handle_query(self, message: HiveMessage):
         """Handle a QUERY message received from the master.
 
@@ -453,10 +467,9 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"QUERY: {message.payload}")
         assert message.msg_type == HiveMessageType.QUERY
-        meta = message.metadata or {}
-        if meta.get("is_final"):
-            # end-of-stream sentinel — the answer stream for this query_id is done
-            LOG.debug(f"QUERY stream complete: {meta.get('query_id')}")
+        if self._is_stream_end(message):
+            LOG.debug("QUERY stream complete: "
+                      f"{(message.metadata or {}).get('query_id')}")
             return
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
@@ -480,10 +493,10 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"CASCADE: {message.payload}")
         assert message.msg_type == HiveMessageType.CASCADE
-        meta = message.metadata or {}
-        if meta.get("is_final"):
+        if self._is_stream_end(message):
             # a responder finished streaming; not an answer to aggregate
-            LOG.debug(f"CASCADE stream complete from a responder: {meta.get('query_id')}")
+            LOG.debug("CASCADE stream complete from a responder: "
+                      f"{(message.metadata or {}).get('query_id')}")
             return
         assert message.payload.msg_type == HiveMessageType.BUS
 
