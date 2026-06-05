@@ -458,7 +458,8 @@ class HiveMindSlaveProtocol:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
-            self.handle_bus(message)
+            # the QUERY wraps an inner BUS HiveMessage; emit that, not the wrapper
+            self.handle_bus(message.payload)
 
     def handle_cascade(self, message: HiveMessage):
         """Handle a CASCADE response received from the master.
