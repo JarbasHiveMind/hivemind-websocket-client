@@ -12,6 +12,7 @@ jobs:
     with:
       python_version: '3.11'
       coverage_source: 'hivemind_bus_client'
+      install_extras: 'test'
       test_path: 'tests/'
-      pre_install_pip: '"hivescope @ git+https://github.com/JarbasHiveMind/hivescope@dev"'
+      pre_install_pip: '"hivescope==0.3.0a1"'
       min_coverage: 0
