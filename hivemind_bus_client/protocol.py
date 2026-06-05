@@ -484,7 +484,7 @@ class HiveMindSlaveProtocol:
             self.cascade_aggregator = CascadeAggregator(
                 timeout=self.cascade_timeout,
                 select_callback=select_cb,
-                emit_callback=self.handle_bus,
+                emit_callback=lambda m: self.handle_bus(m.payload),
                 expected_responses=expected,
             )
         self.cascade_aggregator.add_response(message)
