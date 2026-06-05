@@ -20,6 +20,12 @@ from poorman_handshake import HandShake, PasswordHandShake
 from poorman_handshake.asymmetric.utils import load_RSA_key
 
 
+# QUERY/CASCADE answers stream as response chunks terminated by a response
+# wrapping this control message (protocol contract with hivemind-core; the
+# end-of-stream is content, not metadata).
+QUERY_STREAM_END = "hive.query.complete"
+
+
 class CascadeAggregator:
     """Collects CASCADE responses over a timeout window, then selects the best.
 
@@ -443,6 +449,14 @@ class HiveMindSlaveProtocol:
         LOG.debug(f"Sending responsive PING for flood_id={flood_id}")
         self.hm.emit(own_ping_outer)
 
+    @staticmethod
+    def _is_stream_end(message: HiveMessage) -> bool:
+        """True if this QUERY/CASCADE response is the end-of-stream control
+        message (a wrapped BUS payload of type ``QUERY_STREAM_END``)."""
+        inner = message.payload
+        return (inner.msg_type == HiveMessageType.BUS
+                and getattr(inner.payload, "msg_type", "") == QUERY_STREAM_END)
+
     def handle_query(self, message: HiveMessage):
         """Handle a QUERY message received from the master.
 
@@ -453,12 +467,17 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"QUERY: {message.payload}")
         assert message.msg_type == HiveMessageType.QUERY
+        if self._is_stream_end(message):
+            LOG.debug("QUERY stream complete: "
+                      f"{(message.metadata or {}).get('query_id')}")
+            return
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
-            self.handle_bus(message)
+            # each streamed chunk wraps an inner BUS speak; emit that, not the wrapper
+            self.handle_bus(message.payload)
 
     def handle_cascade(self, message: HiveMessage):
         """Handle a CASCADE response received from the master.
@@ -474,6 +493,11 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"CASCADE: {message.payload}")
         assert message.msg_type == HiveMessageType.CASCADE
+        if self._is_stream_end(message):
+            # a responder finished streaming; not an answer to aggregate
+            LOG.debug("CASCADE stream complete from a responder: "
+                      f"{(message.metadata or {}).get('query_id')}")
+            return
         assert message.payload.msg_type == HiveMessageType.BUS
 
         # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
@@ -483,7 +507,7 @@ class HiveMindSlaveProtocol:
             self.cascade_aggregator = CascadeAggregator(
                 timeout=self.cascade_timeout,
                 select_callback=select_cb,
-                emit_callback=self.handle_bus,
+                emit_callback=lambda m: self.handle_bus(m.payload),
                 expected_responses=expected,
             )
         self.cascade_aggregator.add_response(message)
