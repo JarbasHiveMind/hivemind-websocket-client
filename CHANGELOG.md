@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.1a1) (2026-06-05)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.0a4...0.9.1a1)
+
+**Merged pull requests:**
+
+- fix: QUERY/CASCADE response companion [\#124](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/124) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.9.0a4](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a4) (2026-06-05)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.0a3...0.9.0a4)
