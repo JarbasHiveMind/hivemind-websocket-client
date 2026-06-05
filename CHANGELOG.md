@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a2) (2026-06-05)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.0a1...0.9.0a2)
+
+**Merged pull requests:**
+
+- build: bump stale OVOS dep floors to the modern major [\#120](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/120) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.9.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a1) (2026-05-18)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.8.0a1...0.9.0a1)
