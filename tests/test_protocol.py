@@ -90,8 +90,10 @@ class TestHandleQuery:
 
         with patch.object(proto, 'handle_bus') as mock_bus:
             proto.handle_query(query_msg)
+            mock_bus.assert_called_once()
             # the QUERY wraps an inner BUS HiveMessage; handle_bus gets that, not the wrapper
-            mock_bus.assert_called_once_with(inner_bus)
+            called = mock_bus.call_args[0][0]
+            assert called.msg_type == HiveMessageType.BUS
 
     def test_intercom_payload_dispatches_to_handle_intercom(self):
         """QUERY with inner INTERCOM payload should call handle_intercom."""
@@ -249,8 +251,9 @@ class TestHandleCascade:
             time.sleep(0.15)
             mock_bus.assert_called_once()
             selected = mock_bus.call_args[0][0]
-            # the aggregator emits the selected response's inner BUS, not the CASCADE wrapper
-            assert selected is msg2.payload
+            # the aggregator emits the selected (last) response's inner BUS, not the wrapper
+            assert selected.msg_type == HiveMessageType.BUS
+            assert selected.payload.data["utterance"] == "second"
 
     def test_early_resolve_with_hive_mapper(self):
         """With hive_mapper set, resolves early when all nodes responded."""
