@@ -1,5 +1,6 @@
 """Tests for hivemind_bus_client.client — BinaryDataCallbacks, Waiters, HiveMessageBusClient."""
 import json
+import ssl
 import unittest
 from threading import Event
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -87,6 +88,8 @@ def _make_client(**kwargs):
         "port": 5678,
         "host": "ws://localhost",
         "internal_bus": FakeBus(),
+        "websocket_ping_interval": None,
+        "websocket_ping_timeout": None,
     }
     defaults.update(kwargs)
 
@@ -107,6 +110,8 @@ def _make_client(**kwargs):
     client.allow_self_signed = True
     client.share_bus = False
     client.handshake_event = Event()
+    client.websocket_ping_interval = defaults["websocket_ping_interval"]
+    client.websocket_ping_timeout = defaults["websocket_ping_timeout"]
     client.compress = True
     client.binarize = True
     client.internal_bus = defaults["internal_bus"]
@@ -157,19 +162,80 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
     @patch("ovos_bus_client.client.client.MessageBusClient.on_error")
     def test_on_error_clears_handshake(self, mock_super_error):
         client = _make_client()
+        client.connected_event.set()
         client.handshake_event.set()
         client.crypto_key = "some-key"
         client.on_error(Exception("test"))
+        self.assertFalse(client.connected_event.is_set())
         self.assertFalse(client.handshake_event.is_set())
         self.assertIsNone(client.crypto_key)
 
     def test_on_close_clears_handshake(self):
         client = _make_client()
+        client.connected_event.set()
         client.handshake_event.set()
         client.crypto_key = "some-key"
         client.on_close()
+        self.assertFalse(client.connected_event.is_set())
         self.assertFalse(client.handshake_event.is_set())
         self.assertIsNone(client.crypto_key)
+
+
+class TestHiveMessageBusClientKeepalive(unittest.TestCase):
+    def test_keepalive_options_default(self):
+        client = _make_client()
+        self.assertEqual(
+            client._websocket_keepalive_options(),
+            {"ping_interval": 25.0, "ping_timeout": 10.0},
+        )
+
+    def test_keepalive_options_explicit(self):
+        client = _make_client(websocket_ping_interval=15, websocket_ping_timeout=5)
+        self.assertEqual(
+            client._websocket_keepalive_options(),
+            {"ping_interval": 15.0, "ping_timeout": 5.0},
+        )
+
+    def test_keepalive_options_from_env(self):
+        client = _make_client()
+        with patch.dict(
+            "os.environ",
+            {
+                "HIVEMIND_WEBSOCKET_CLIENT_PING_INTERVAL": "30",
+                "HIVEMIND_WEBSOCKET_CLIENT_PING_TIMEOUT": "12",
+            },
+        ):
+            self.assertEqual(
+                client._websocket_keepalive_options(),
+                {"ping_interval": 30.0, "ping_timeout": 12.0},
+            )
+
+    def test_keepalive_options_disable_interval(self):
+        client = _make_client(websocket_ping_interval=0)
+        self.assertEqual(client._websocket_keepalive_options(), {"ping_interval": 0})
+
+    def test_keepalive_options_adjusts_timeout(self):
+        client = _make_client(websocket_ping_interval=10, websocket_ping_timeout=10)
+        self.assertEqual(
+            client._websocket_keepalive_options(),
+            {"ping_interval": 10.0, "ping_timeout": 5.0},
+        )
+
+    def test_run_forever_passes_keepalive(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.run_forever()
+        client.client.run_forever.assert_called_once_with(
+            ping_interval=25.0, ping_timeout=10.0
+        )
+
+    def test_run_forever_passes_keepalive_and_ssl_options(self):
+        client = _make_client()
+        client.run_forever()
+        kwargs = client.client.run_forever.call_args.kwargs
+        self.assertEqual(kwargs["ping_interval"], 25.0)
+        self.assertEqual(kwargs["ping_timeout"], 10.0)
+        self.assertEqual(kwargs["sslopt"]["cert_reqs"], ssl.CERT_NONE)
 
 
 class TestHiveMessageBusClientOn(unittest.TestCase):

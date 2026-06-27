@@ -134,11 +134,19 @@ client = HiveMessageBusClient(
     share_bus=False,            # share the local OVOS bus with the hub (trusted satellites only)
     compress=True,              # zlib-compress binary frames
     binarize=True,              # use binary wire format instead of JSON
+    websocket_ping_interval=25,  # keep long-lived proxy connections warm
+    websocket_ping_timeout=10,   # fail fast enough for reconnect to take over
 )
 client.connect()                # blocks until the handshake completes
 ```
 
 `connect()` runs the WebSocket in a background thread and calls `wait_for_handshake()`. After it returns the connection is live.
+
+Ping settings can also be supplied with environment variables. Client-specific
+variables (`HIVEMIND_WEBSOCKET_CLIENT_PING_INTERVAL`,
+`HIVEMIND_WEBSOCKET_CLIENT_PING_TIMEOUT`) win over shared hub defaults
+(`HIVEMIND_WEBSOCKET_PING_INTERVAL`, `HIVEMIND_WEBSOCKET_PING_TIMEOUT`).
+Set the interval to `0` to disable client pings.
 
 ### Sending messages
 

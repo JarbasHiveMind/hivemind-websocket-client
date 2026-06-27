@@ -76,7 +76,7 @@ WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 - `on(event_name, func)` (`client.py:434`): Registers a handler. Automatically detects if the event name is a `HiveMessageType` or a standard OVOS message type (`client.py:435`).
 - `on_mycroft(mycroft_msg_type, func)` (`client.py:429`): Explicitly registers a handler for an OVOS internal bus message.
 - `remove(event_name, func)` (`client.py:447`): Removes a registered handler.
-- `wait_for_handshake(timeout=5, max_retries=15)` (`client.py:236`): Blocks until the cryptographic handshake with the hub is finished.
+- `wait_for_handshake(timeout=5, max_retries=None)` (`client.py:236`): Blocks until the cryptographic handshake with the hub is finished. By default it waits through reconnects forever; pass `max_retries` for a hard timeout.
 - `emit_intercom(message, pubkey)` (`client.py:538`): Sends a hybrid-encrypted (AES-GCM + RSA) message targeted at a specific node's public key.
 
 ### Waiting for Messages

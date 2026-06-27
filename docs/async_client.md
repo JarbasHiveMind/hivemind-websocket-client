@@ -85,7 +85,7 @@ asyncio.run(main())
 | `await bus.wait_for_mycroft(msg_type, timeout)` | `bus.wait_for_mycroft(...)` | Sugar for `wait_for_payload(message_type=BUS)`. |
 | `await bus.wait_for_response(msg, reply_type, timeout)` | `bus.wait_for_response(...)` | Emits then waits. |
 | `await bus.wait_for_payload_response(...)` | `bus.wait_for_payload_response(...)` | Emits then payload-filtered wait. |
-| `await bus.wait_for_handshake(timeout, max_retries)` | `bus.wait_for_handshake(...)` | Async retry loop. |
+| `await bus.wait_for_handshake(timeout, max_retries)` | `bus.wait_for_handshake(...)` | Async retry loop; `max_retries=None` keeps waiting through reconnects. |
 | `await bus.emit_intercom(msg, pubkey)` | `bus.emit_intercom(...)` | Hybrid-encrypted INTERCOM send. |
 | `bus.on(event, fn)` / `bus.once(event, fn)` / `bus.remove(event, fn)` | same | **Synchronous**, like the sync client. Keeps `HiveMindSlaveProtocol` drop-in compatible. |
 | `bus.on_mycroft(msg_type, fn)` | same | Internal-bus handler registration. |

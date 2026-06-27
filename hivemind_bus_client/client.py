@@ -14,6 +14,7 @@ from websocket import ABNF
 from websocket import WebSocketApp, WebSocketConnectionClosedException
 
 from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
@@ -103,7 +104,9 @@ class HiveMessageBusClient(OVOSBusClient):
                  binarize: bool = True,
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
-                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
+                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks(),
+                 websocket_ping_interval: Optional[float] = None,
+                 websocket_ping_timeout: Optional[float] = None):
         self.bin_callbacks = bin_callbacks
         self.json_encoding = SupportedEncodings.JSON_HEX  # server defaults before it was made configurable
         self.cipher = SupportedCiphers.AES_GCM  # server defaults before it was made configurable
@@ -120,6 +123,8 @@ class HiveMessageBusClient(OVOSBusClient):
         self.allow_self_signed = self_signed
         self.share_bus = share_bus
         self.handshake_event = Event()
+        self.websocket_ping_interval = websocket_ping_interval
+        self.websocket_ping_timeout = websocket_ping_timeout
 
         # if you want to reduce CPU usage in exchange for more bandwidth set below to False
         self.compress = compress  # None -> auto
@@ -224,32 +229,42 @@ class HiveMessageBusClient(OVOSBusClient):
         self.retry = 5
 
     def on_error(self, *args):
+        self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
         super().on_error(*args)
 
     def on_close(self, *args):
+        self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
         super().on_close(*args)
 
-    def wait_for_handshake(self, timeout=5, max_retries=15):
+    def wait_for_handshake(self, timeout=5, max_retries=None):
         """
-        Waits for the HiveMind handshake to complete; if the handshake is not set and the websocket connection is open, starts the handshake, otherwise waits for the websocket to open and retries.
+        Waits for the HiveMind handshake to complete.
+
+        By default this waits for reconnect forever. Pass ``max_retries`` to
+        bound the wait for tests or command-line tools that need a hard fail.
 
         Parameters:
             timeout (float): Number of seconds to wait for each handshake or connection attempt before retrying.
+            max_retries (int | None): Number of reconnect/handshake retries;
+                                      ``None`` means retry forever.
         """
-        self.handshake_event.wait(timeout=timeout)
-        if not self.handshake_event.is_set():
-            if max_retries <= 0:
+        attempts = 0
+        while not self.handshake_event.is_set():
+            self.handshake_event.wait(timeout=timeout)
+            if self.handshake_event.is_set():
+                return
+            if max_retries is not None and attempts >= max_retries:
                 raise RuntimeError("timed out waiting for handshake")
+            attempts += 1
             if self.connected_event.is_set():
                 self.protocol.start_handshake()
             else:
                 LOG.warning("Can't start handshake because websocket connection is not yet open...")
                 self.connected_event.wait(timeout=timeout)
-            self.wait_for_handshake(timeout, max_retries - 1)
 
     @staticmethod
     def build_url(key, host='127.0.0.1', port=5678,
@@ -269,13 +284,20 @@ class HiveMessageBusClient(OVOSBusClient):
 
     def run_forever(self):
         self.started_running = True
+        run_options = self._websocket_keepalive_options()
         if self.allow_self_signed:
-            self.client.run_forever(sslopt={
+            run_options["sslopt"] = {
                 "cert_reqs": ssl.CERT_NONE,
                 "check_hostname": False,
-                "ssl_version": ssl.PROTOCOL_TLS_CLIENT})
-        else:
-            self.client.run_forever()
+                "ssl_version": ssl.PROTOCOL_TLS_CLIENT}
+        self.client.run_forever(**run_options)
+
+    def _websocket_keepalive_options(self):
+        return websocket_keepalive_options(
+            ping_interval=self.websocket_ping_interval,
+            ping_timeout=self.websocket_ping_timeout,
+            disabled_interval_value=0,
+        )
 
     # event handlers
     def on_message(self, *args):

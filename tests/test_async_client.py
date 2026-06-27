@@ -37,6 +37,8 @@ def _bare_client(**overrides) -> AsyncHiveMessageBusClient:
     bus.crypto_key = None
     bus.compress = False
     bus.binarize = False
+    bus.websocket_ping_interval = None
+    bus.websocket_ping_timeout = None
     bus.allow_self_signed = True
     bus.share_bus = False
     # MagicMock(name=...) sets the mock's repr, NOT a .name attribute. Assign explicitly.
@@ -232,8 +234,12 @@ async def test_emit_raises_when_disconnected_and_never_started():
     bus._ws = AsyncMock()
     # connected_event is NOT set; emit should bail after the 10s wait.
     # Patch wait_for to surface the timeout immediately.
+    async def _timeout(awaitable, timeout=None):
+        awaitable.close()
+        raise asyncio.TimeoutError()
+
     with patch("hivemind_bus_client.async_client.asyncio.wait_for",
-               side_effect=asyncio.TimeoutError()):
+               side_effect=_timeout):
         with pytest.raises(RuntimeError):
             await bus.emit(HiveMessage(HiveMessageType.PING))
 
@@ -258,6 +264,27 @@ async def test_wait_for_handshake_raises_after_retries_exhausted():
     bus.handshake_event.clear()
     with pytest.raises(RuntimeError):
         await bus.wait_for_handshake(timeout=0.01, max_retries=1)
+
+
+def test_async_keepalive_options_default():
+    bus = _bare_client()
+    assert bus._websocket_keepalive_options() == {
+        "ping_interval": 25.0,
+        "ping_timeout": 10.0,
+    }
+
+
+def test_async_keepalive_options_can_disable_interval():
+    bus = _bare_client(websocket_ping_interval=0)
+    assert bus._websocket_keepalive_options() == {"ping_interval": None}
+
+
+def test_async_keepalive_options_adjusts_timeout():
+    bus = _bare_client(websocket_ping_interval=12, websocket_ping_timeout=12)
+    assert bus._websocket_keepalive_options() == {
+        "ping_interval": 12.0,
+        "ping_timeout": 6.0,
+    }
 
 
 @pytest.mark.asyncio

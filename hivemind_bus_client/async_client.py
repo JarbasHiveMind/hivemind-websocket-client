@@ -48,6 +48,7 @@ from hivemind_bus_client.encryption import (SupportedCiphers,
                                             decrypt_from_json, encrypt_as_json,
                                             encrypt_bin, hybrid_encrypt)
 from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import (HiveMindBinaryPayloadType,
                                                decode_bitstring, get_bitstring)
@@ -145,7 +146,9 @@ class AsyncHiveMessageBusClient:
                  binarize: bool = True,
                  identity: Optional[NodeIdentity] = None,
                  internal_bus=None,
-                 bin_callbacks: Optional[BinaryDataCallbacks] = None):
+                 bin_callbacks: Optional[BinaryDataCallbacks] = None,
+                 websocket_ping_interval: Optional[float] = None,
+                 websocket_ping_timeout: Optional[float] = None):
         if websockets is None:
             raise ImportError(_MISSING_WEBSOCKETS)
 
@@ -166,6 +169,8 @@ class AsyncHiveMessageBusClient:
         self.share_bus = share_bus
         self.compress = compress
         self.binarize = binarize
+        self.websocket_ping_interval = websocket_ping_interval
+        self.websocket_ping_timeout = websocket_ping_timeout
 
         # asyncio primitives
         self.connected_event = asyncio.Event()
@@ -292,7 +297,9 @@ class AsyncHiveMessageBusClient:
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
 
-        self._ws = await websockets.connect(url, ssl=ssl_ctx)
+        self._ws = await websockets.connect(
+            url, ssl=ssl_ctx, **self._websocket_keepalive_options()
+        )
         self.connected_event.set()
         self.emitter.emit("open")
         self._receive_task = asyncio.create_task(self._receive_loop())
@@ -320,30 +327,39 @@ class AsyncHiveMessageBusClient:
                 pass
         self.emitter.emit("close")
 
-    async def wait_for_handshake(self, timeout: float = 5.0, max_retries: int = 15):
+    async def wait_for_handshake(self, timeout: float = 5.0, max_retries: Optional[int] = None):
         """Wait until the HiveMind handshake state machine reports success.
 
-        Mirrors the sync client's retry loop, using asyncio sleeps.
+        Mirrors the sync client's retry loop, using asyncio sleeps. The
+        default is to keep waiting through reconnects forever.
         """
-        try:
-            await asyncio.wait_for(self.handshake_event.wait(), timeout=timeout)
-            return
-        except asyncio.TimeoutError:
-            pass
-
-        if max_retries <= 0:
-            raise RuntimeError("timed out waiting for handshake")
-
-        if self.connected_event.is_set():
-            self.protocol.start_handshake()
-        else:
-            LOG.warning("Can't start handshake — websocket not yet open")
+        attempts = 0
+        while not self.handshake_event.is_set():
             try:
-                await asyncio.wait_for(self.connected_event.wait(), timeout=timeout)
+                await asyncio.wait_for(self.handshake_event.wait(), timeout=timeout)
             except asyncio.TimeoutError:
                 pass
+            if self.handshake_event.is_set():
+                return
+            if max_retries is not None and attempts >= max_retries:
+                raise RuntimeError("timed out waiting for handshake")
+            attempts += 1
 
-        await self.wait_for_handshake(timeout, max_retries - 1)
+            if self.connected_event.is_set():
+                self.protocol.start_handshake()
+            else:
+                LOG.warning("Can't start handshake — websocket not yet open")
+                try:
+                    await asyncio.wait_for(self.connected_event.wait(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    pass
+
+    def _websocket_keepalive_options(self):
+        return websocket_keepalive_options(
+            ping_interval=self.websocket_ping_interval,
+            ping_timeout=self.websocket_ping_timeout,
+            disabled_interval_value=None,
+        )
 
     # ------------------------------------------------------------------
     # receive loop and message dispatch
