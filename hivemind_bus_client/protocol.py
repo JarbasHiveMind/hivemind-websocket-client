@@ -1,4 +1,5 @@
 import json
+import os
 import random
 
 import threading
@@ -30,6 +31,21 @@ from poorman_handshake.asymmetric.utils import load_RSA_key
 # wrapping this control message (protocol contract with hivemind-core; the
 # end-of-stream is content, not metadata).
 QUERY_STREAM_END = "hive.query.complete"
+
+
+def _pw_min_bits() -> float:
+    """Minimum password entropy (bits) enforced when building the shared-password
+    handshake.
+
+    poorman-handshake refuses guessable passwords by default; deployments that
+    knowingly use a weak shared secret (or tests) can disable the runtime check
+    with the ``HIVEMIND_DISABLE_PASSWORD_STRENGTH_CHECK`` env var (mirrors the
+    hivemind-core server-side backstop, without importing it).
+    """
+    disabled = os.environ.get(
+        "HIVEMIND_DISABLE_PASSWORD_STRENGTH_CHECK", ""
+    ).strip().lower() in ("1", "true", "yes", "on")
+    return 0.0 if disabled else 40.0
 
 
 class CascadeAggregator:
@@ -201,7 +217,8 @@ class HiveMindSlaveProtocol:
         if self.identity is None:
             self.identity = self.hm.identity or NodeIdentity()
         self.handshake = HandShake(self.identity.private_key)
-        self.pswd_handshake = PasswordHandShake(self.identity.password) if self.identity.password else None
+        self.pswd_handshake = (PasswordHandShake(self.identity.password, min_bits=_pw_min_bits())
+                               if self.identity.password else None)
 
         if bus is None:
             bus = MessageBusClient()
@@ -498,7 +515,8 @@ class HiveMindSlaveProtocol:
             # TODO - flag to give preference to / require password or use RSA handshake
             # currently if password is set then it is always used
             if message.payload.get("password") and self.identity.password:
-                self.pswd_handshake = PasswordHandShake(self.identity.password)
+                self.pswd_handshake = PasswordHandShake(self.identity.password,
+                                                        min_bits=_pw_min_bits())
                 self._legacy_start_handshake(self._server_handshake_payload)
 
     def _is_source_trusted(self, message: HiveMessage) -> bool:
