@@ -22,7 +22,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "poorman-handshake>=1.0.0,<2.0.0",
+    # TODO: switch to a PyPI prerelease floor pin (poorman-handshake>=<alpha
+    # shipping poorman_handshake.noise>,<2.0.0) once JarbasHiveMind/poorman_handshake#17
+    # is released; git ref lets CI resolve the Noise primitive until then
+    "poorman-handshake @ git+https://github.com/JarbasHiveMind/poorman_handshake@feat/noise-handshake",
     "ovos_bus_client>=1.3.1,<3.0.0",
     "ovos_utils>=0.3.0",
     "bitstring>=4.1.1",
@@ -40,6 +43,11 @@ test = [
     "pytest-asyncio",
     "pytest-cov",
     "websockets>=10.0",
+    "hivescope>=0.5.0a2",
+    # the protocol v3 e2e matrix needs a v3-capable (Noise) hivemind-core on
+    # the master side; TODO: replace with a prerelease floor pin once the
+    # hivemind-core protocol v3 PR is released
+    "hivemind-core @ git+https://github.com/JarbasHiveMind/HiveMind-core@feat/protocol-v3-noise",
 ]
 benchmark = [
     "websockets>=10.0",

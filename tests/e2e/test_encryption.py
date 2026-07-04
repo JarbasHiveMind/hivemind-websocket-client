@@ -32,7 +32,9 @@ def test_client_and_master_agree_on_encryption():
         client = _make_client(m.network_protocol.url, "test-key", "test-password")
         client.connect(site_id="loopback-site")
         client.wait_for_handshake(timeout=10)
-        assert client.crypto_key is not None
+        # the session must be encrypted: v2 AES session key or the negotiated
+        # protocol v3 Noise transport (whichever version was agreed on)
+        assert client.crypto_key is not None or client.noise_transport is not None
         client.close()
     finally:
         b.stop_all()

@@ -63,7 +63,8 @@ def test_client_can_close_and_reconnect():
         c2 = _make_client(m.network_protocol.url, "k", "p", "reconnect")
         c2.connect(site_id="s2")
         c2.wait_for_handshake(timeout=10)
-        assert c2.crypto_key
+        # encrypted session established: v2 crypto_key or v3 Noise transport
+        assert c2.crypto_key or c2.noise_transport
         c2.close()
     finally:
         b.stop_all()
