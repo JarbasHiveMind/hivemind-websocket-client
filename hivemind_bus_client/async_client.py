@@ -48,6 +48,7 @@ from hivemind_bus_client.encryption import (SupportedCiphers,
                                             decrypt_from_json, encrypt_as_json,
                                             encrypt_bin, hybrid_encrypt)
 from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import (HiveMindBinaryPayloadType,
@@ -148,11 +149,21 @@ class AsyncHiveMessageBusClient:
                  internal_bus=None,
                  bin_callbacks: Optional[BinaryDataCallbacks] = None,
                  websocket_ping_interval: Optional[float] = None,
-                 websocket_ping_timeout: Optional[float] = None):
+                 websocket_ping_timeout: Optional[float] = None,
+                 max_protocol_version: int = 3):
         if websockets is None:
             raise ImportError(_MISSING_WEBSOCKETS)
 
         self.bin_callbacks = bin_callbacks or BinaryDataCallbacks()
+        # highest HiveMind protocol version this client will negotiate
+        # (HIVEMIND-WIRE-1 §2), mirroring the sync client. 3 -> Noise
+        # handshake when the server also supports it; servers capped at 2 or
+        # lower fall back to the legacy handshake transparently. The shared
+        # HiveMindSlaveProtocol._should_use_noise reads this attribute, so it
+        # MUST exist for v3 Noise to be negotiated. Set to 2 to force legacy.
+        self.max_protocol_version = max_protocol_version
+        # established protocol v3 Noise session (None on v2 and below)
+        self.noise_transport = None
         self.json_encoding = SupportedEncodings.JSON_HEX
         self.cipher = SupportedCiphers.AES_GCM
 
@@ -313,6 +324,7 @@ class AsyncHiveMessageBusClient:
         """Cleanly close the WebSocket and stop the receive loop."""
         self.handshake_event.clear()
         self.crypto_key = None
+        self.noise_transport = None
         self.connected_event.clear()
         if self._ws is not None:
             try:
@@ -377,6 +389,7 @@ class AsyncHiveMessageBusClient:
             LOG.debug(f"WebSocket closed: {e!r}")
             self.handshake_event.clear()
             self.crypto_key = None
+            self.noise_transport = None
             self.connected_event.clear()
             self.emitter.emit("close")
         except asyncio.CancelledError:
@@ -386,11 +399,28 @@ class AsyncHiveMessageBusClient:
             self.emitter.emit("error")
             self.handshake_event.clear()
             self.crypto_key = None
+            self.noise_transport = None
             self.connected_event.clear()
 
     def on_message(self, message):
         """Decode + dispatch a single WS frame. Mirrors the sync client."""
-        if self.crypto_key:
+        if self.noise_transport is not None:
+            # protocol v3: every post-handshake message is a Noise transport
+            # message; there is no cleartext v3 session (CRYPTO-1 §3.4.5)
+            if not isinstance(message, (bytes, bytearray)):
+                LOG.error("dropping non-Noise message received on a "
+                          "protocol v3 session")
+                return
+            try:
+                message = self.noise_transport.decrypt_frame(bytes(message))
+            except NoiseTransportFailed:
+                # tampered / replayed / out-of-order — MUST reject; the
+                # receive counter is now out of sync so the session is dead
+                LOG.exception("rejecting invalid Noise transport message, "
+                              "closing connection")
+                asyncio.ensure_future(self.close())
+                return
+        elif self.crypto_key:
             if isinstance(message, (bytes, bytearray)):
                 message = decrypt_bin(self.crypto_key, message, cipher=self.cipher)
             elif "ciphertext" in message:
@@ -504,7 +534,11 @@ class AsyncHiveMessageBusClient:
                                        compressed=self.compress,
                                        binary_type=binary_type,
                                        hivemeta=message.metadata)
-                if self.crypto_key:
+                if self.noise_transport is not None:
+                    # protocol v3: Noise transport CipherState (replay
+                    # resistant sequential nonces) replaces the v2 AEAD
+                    payload_bytes = self.noise_transport.encrypt_frame(bitstr.bytes)
+                elif self.crypto_key:
                     payload_bytes = encrypt_bin(self.crypto_key, bitstr.bytes,
                                                 cipher=self.cipher)
                 else:
@@ -512,6 +546,17 @@ class AsyncHiveMessageBusClient:
                 await self._ws.send(payload_bytes)
             else:
                 ws_payload = serialize_message(message)
+                # HANDSHAKE frames carry the Noise handshake itself and are
+                # ALWAYS cleartext — they must never be transport-encrypted.
+                # The sync client relies on timing for this (noise_transport is
+                # still None when the final handshake frame is sent); on the
+                # async client emit is deferred onto the loop and runs after
+                # noise_transport is assigned, so guard on the type explicitly.
+                if (self.noise_transport is not None
+                        and message.msg_type != HiveMessageType.HANDSHAKE):
+                    # v3 sessions are always encrypted, HELLO included
+                    await self._ws.send(self.noise_transport.encrypt_frame(ws_payload))
+                    return
                 if self.crypto_key:
                     ws_payload = encrypt_as_json(
                         self.crypto_key, ws_payload,

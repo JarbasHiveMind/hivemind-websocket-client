@@ -35,6 +35,8 @@ def _bare_client(**overrides) -> AsyncHiveMessageBusClient:
     bus.json_encoding = "JSON_HEX"
     bus.cipher = "AES_GCM"
     bus.crypto_key = None
+    bus.noise_transport = None
+    bus.max_protocol_version = 3
     bus.compress = False
     bus.binarize = False
     bus.websocket_ping_interval = None

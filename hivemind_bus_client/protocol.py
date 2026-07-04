@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import random
@@ -279,6 +280,23 @@ class HiveMindSlaveProtocol:
             return f"{cfg.host}:{cfg.port}"
         return self.internal_protocol.node_id or "unknown"
 
+    def _emit(self, message: HiveMessage):
+        """Send a protocol frame through the bound client.
+
+        The handshake state machine is shared by both the threading client
+        (:class:`~hivemind_bus_client.client.HiveMessageBusClient`, whose
+        ``emit`` is synchronous) and the asyncio client
+        (:class:`~hivemind_bus_client.async_client.AsyncHiveMessageBusClient`,
+        whose ``emit`` is a coroutine). Calling ``self.hm.emit(...)`` directly
+        would leave the coroutine un-awaited on the async client, so the frame
+        would never reach the wire and the handshake would hang. Detect the
+        coroutine and schedule it on the running receive loop; on the sync
+        client ``emit`` returns ``None`` and nothing extra happens.
+        """
+        result = self.hm.emit(message)
+        if asyncio.iscoroutine(result):
+            asyncio.ensure_future(result)
+
     def _should_use_noise(self, payload: dict) -> bool:
         """True when both peers are v3-capable and can run the Noise handshake.
 
@@ -340,7 +358,7 @@ class HiveMindSlaveProtocol:
             LOG.exception("failed to start Noise handshake")
             self._abort_noise("failed to initialize Noise handshake")
             return
-        self.hm.emit(HiveMessage(HiveMessageType.HANDSHAKE, {
+        self._emit(HiveMessage(HiveMessageType.HANDSHAKE, {
             "noise": {"pattern": pattern, "suite": suite,
                       "msg": msg1.hex()}}))
 
@@ -364,7 +382,7 @@ class HiveMindSlaveProtocol:
             if not self.noise_handshake.handshake_finished:
                 # XXpsk2 message 3: our (encrypted) static key + final DH mix
                 msg3 = self.noise_handshake.write_message(b"")
-                self.hm.emit(HiveMessage(HiveMessageType.HANDSHAKE,
+                self._emit(HiveMessage(HiveMessageType.HANDSHAKE,
                                          {"noise": {"msg": msg3.hex()}}))
             transport = NoiseTransport(self.noise_handshake)
         except Exception:
@@ -400,7 +418,7 @@ class HiveMindSlaveProtocol:
 
         # first Noise transport message: session data + site id + pubkey
         sess = Session(self.hm.session_id)
-        self.hm.emit(HiveMessage(HiveMessageType.HELLO,
+        self._emit(HiveMessage(HiveMessageType.HELLO,
                                  {"pubkey": self.identity.public_key,
                                   "session": sess.serialize(),
                                   "site_id": self.site_id}))
@@ -412,7 +430,9 @@ class HiveMindSlaveProtocol:
         self.noise_handshake = None
         self.hm.noise_transport = None
         try:
-            self.hm.close()
+            result = self.hm.close()
+            if asyncio.iscoroutine(result):
+                asyncio.ensure_future(result)
         except Exception:
             pass
 
@@ -440,7 +460,7 @@ class HiveMindSlaveProtocol:
         else:
             payload["pubkey"] = self.handshake.pubkey
 
-        self.hm.emit(HiveMessage(HiveMessageType.HANDSHAKE, payload))
+        self._emit(HiveMessage(HiveMessageType.HANDSHAKE, payload))
 
     def receive_handshake(self, envelope):
         if self.pswd_handshake is not None:
@@ -464,7 +484,7 @@ class HiveMindSlaveProtocol:
         msg = HiveMessage(HiveMessageType.HELLO, {"pubkey": self.identity.public_key,
                                                   "session": sess.serialize(),
                                                   "site_id": self.site_id})
-        self.hm.emit(msg)
+        self._emit(msg)
         self.hm.handshake_event.set()
 
     def handle_handshake(self, message: HiveMessage):
@@ -654,7 +674,7 @@ class HiveMindSlaveProtocol:
         own_ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=own_ping_inner)
 
         LOG.debug(f"Sending responsive PING for flood_id={flood_id}")
-        self.hm.emit(own_ping_outer)
+        self._emit(own_ping_outer)
 
     @staticmethod
     def _is_stream_end(message: HiveMessage) -> bool:
