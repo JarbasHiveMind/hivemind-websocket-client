@@ -1,3 +1,5 @@
+import json
+import os
 import random
 
 import threading
@@ -16,6 +18,11 @@ from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers,
 from hivemind_bus_client.hive_map import HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_bus_client.noise import (NOISE_SUPPORTED, PROTOCOL_V3,
+                                       NoiseTransport, NoiseHandshakeFailed,
+                                       build_prologue, canonical_json,
+                                       noise_protocol_name, select_noise_options,
+                                       start_noise_handshake)
 from poorman_handshake import HandShake, PasswordHandShake
 from poorman_handshake.asymmetric.utils import load_RSA_key
 
@@ -24,6 +31,21 @@ from poorman_handshake.asymmetric.utils import load_RSA_key
 # wrapping this control message (protocol contract with hivemind-core; the
 # end-of-stream is content, not metadata).
 QUERY_STREAM_END = "hive.query.complete"
+
+
+def _pw_min_bits() -> float:
+    """Minimum password entropy (bits) enforced when building the shared-password
+    handshake.
+
+    poorman-handshake refuses guessable passwords by default; deployments that
+    knowingly use a weak shared secret (or tests) can disable the runtime check
+    with the ``HIVEMIND_DISABLE_PASSWORD_STRENGTH_CHECK`` env var (mirrors the
+    hivemind-core server-side backstop, without importing it).
+    """
+    disabled = os.environ.get(
+        "HIVEMIND_DISABLE_PASSWORD_STRENGTH_CHECK", ""
+    ).strip().lower() in ("1", "true", "yes", "on")
+    return 0.0 if disabled else 40.0
 
 
 class CascadeAggregator:
@@ -185,12 +207,18 @@ class HiveMindSlaveProtocol:
     cascade_select_callback: Optional[Callable[[List[HiveMessage]], Optional[HiveMessage]]] = None
     hive_mapper: Optional[HiveMapper] = None
     cascade_aggregator: Optional[CascadeAggregator] = field(default=None, repr=False)
+    # protocol v3 (Noise handshake) state — HIVEMIND-CRYPTO-1 §3.4
+    noise_handshake: Optional[object] = field(default=None, repr=False)
+    _noise_pattern: Optional[str] = field(default=None, repr=False)
+    _server_hello_payload: Optional[dict] = field(default=None, repr=False)
+    _server_handshake_payload: Optional[dict] = field(default=None, repr=False)
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
             self.identity = self.hm.identity or NodeIdentity()
         self.handshake = HandShake(self.identity.private_key)
-        self.pswd_handshake = PasswordHandShake(self.identity.password) if self.identity.password else None
+        self.pswd_handshake = (PasswordHandShake(self.identity.password, min_bits=_pw_min_bits())
+                               if self.identity.password else None)
 
         if bus is None:
             bus = MessageBusClient()
@@ -233,9 +261,172 @@ class HiveMindSlaveProtocol:
             self.mpubkey = message.payload.get("pubkey")
             node_id = message.payload.get("node_id", "")
             self.internal_protocol.node_id = node_id
+            # retained for the Noise prologue (HIVEMIND-CRYPTO-1 §3.4.3)
+            self._server_hello_payload = dict(message.payload)
             LOG.info(f"Connected to HiveMind: {node_id}")
 
+    # ------------------------------------------------------- protocol v3 (Noise)
+    @property
+    def _noise_pin_id(self) -> str:
+        """Identifier the server's Noise static key is pinned against.
+
+        Uses the connection endpoint (host:port) so that distinct servers
+        that announce the same default node_id do not collide in the pin
+        store.
+        """
+        cfg = getattr(self.hm, "config", None)
+        if cfg is not None:
+            return f"{cfg.host}:{cfg.port}"
+        return self.internal_protocol.node_id or "unknown"
+
+    def _should_use_noise(self, payload: dict) -> bool:
+        """True when both peers are v3-capable and can run the Noise handshake.
+
+        Per HIVEMIND-WIRE-1 §2 both peers operate at the highest version both
+        support: the server advertises ``max_protocol_version`` >= 3 together
+        with its Noise ``patterns``/``suites``, and this client must support
+        protocol v3 (noise primitive available + shared password set). Any
+        other combination falls back to the legacy (v2 and below) handshake.
+        """
+        if not NOISE_SUPPORTED or not self.identity or not self.identity.password:
+            return False
+        if getattr(self.hm, "max_protocol_version", 2) < PROTOCOL_V3:
+            return False
+        if payload.get("max_protocol_version", 1) < PROTOCOL_V3:
+            return False
+        noise_params = payload.get("noise")
+        if not isinstance(noise_params, dict):
+            return False
+        pinned = self.identity.get_pinned_noise_key(self._noise_pin_id)
+        return select_noise_options(noise_params.get("patterns") or [],
+                                    noise_params.get("suites") or [],
+                                    pinned) is not None
+
+    def start_noise_handshake(self, server_payload: dict):
+        """Send Noise handshake message 1 (HIVEMIND-CRYPTO-1 §3.4.3 step 3).
+
+        Selects one pattern and one suite from the server's advertised lists,
+        binds the negotiation into the prologue, and carries the Noise message
+        bytes inside the regular HANDSHAKE envelope. The Noise payload carries
+        this node's preference-ordered encodings and binarize capability.
+        """
+        node_id = self.internal_protocol.node_id
+        noise_params = server_payload.get("noise") or {}
+        pinned = self.identity.get_pinned_noise_key(self._noise_pin_id)
+        selection = select_noise_options(noise_params.get("patterns") or [],
+                                         noise_params.get("suites") or [],
+                                         pinned)
+        if selection is None:
+            LOG.warning("no mutual Noise pattern/suite, falling back to legacy handshake")
+            self._legacy_start_handshake(server_payload)
+            return
+        pattern, suite = selection
+        name = noise_protocol_name(pattern, suite)
+        prologue = build_prologue(self._server_hello_payload or {},
+                                  server_payload, name)
+        LOG.info(f"starting protocol v3 handshake: {name}")
+        try:
+            self.noise_handshake = start_noise_handshake(
+                initiator=True, pattern=pattern, suite=suite,
+                password=self.identity.password, node_id=node_id,
+                prologue=prologue, key_path=self.identity.noise_key,
+                remote_pubkey=pinned)
+            self._noise_pattern = pattern
+            noise_payload = canonical_json({
+                "binarize": self.binarize,
+                "encodings": [str(e.value) for e in SupportedEncodings]})
+            msg1 = self.noise_handshake.write_message(noise_payload)
+        except NoiseHandshakeFailed:
+            LOG.exception("failed to start Noise handshake")
+            self._abort_noise("failed to initialize Noise handshake")
+            return
+        self.hm.emit(HiveMessage(HiveMessageType.HANDSHAKE, {
+            "noise": {"pattern": pattern, "suite": suite,
+                      "msg": msg1.hex()}}))
+
+    def receive_noise_handshake(self, payload: dict):
+        """Consume the server's Noise handshake message (§3.4.3 step 4).
+
+        Any authentication failure — wrong password (PSK mismatch), tampered
+        negotiation (prologue mismatch), or a static key contradicting the
+        pinned key — is fatal: the handshake aborts and the connection is
+        rejected. On success the two transport CipherStates take over all
+        session traffic and the encrypted HELLO is sent as the first Noise
+        transport message.
+        """
+        try:
+            msg = bytes.fromhex(payload["noise"]["msg"])
+        except (KeyError, TypeError, ValueError):
+            self._abort_noise("malformed Noise handshake envelope")
+            return
+        try:
+            noise_payload = self.noise_handshake.read_message(msg)
+            if not self.noise_handshake.handshake_finished:
+                # XXpsk2 message 3: our (encrypted) static key + final DH mix
+                msg3 = self.noise_handshake.write_message(b"")
+                self.hm.emit(HiveMessage(HiveMessageType.HANDSHAKE,
+                                         {"noise": {"msg": msg3.hex()}}))
+            transport = NoiseTransport(self.noise_handshake)
+        except Exception:
+            # wrong password / tampered prologue / bad static key -> fatal,
+            # fails cryptographically at handshake time (§3.4.3)
+            LOG.exception("protocol v3 Noise handshake FAILED "
+                          "(wrong password or tampered negotiation)")
+            self._abort_noise("Noise handshake authentication failure")
+            return
+
+        # TOFU-then-pin the server's static key (§3.4.5)
+        pin_id = self._noise_pin_id
+        pinned = self.identity.get_pinned_noise_key(pin_id)
+        if pinned and transport.remote_static_key != pinned:
+            LOG.error(f"server Noise static key CHANGED for {pin_id} — "
+                      "possible man-in-the-middle, aborting")
+            self._abort_noise("pinned key mismatch")
+            return
+        if not pinned and transport.remote_static_key:
+            self.identity.pin_noise_key(pin_id, transport.remote_static_key)
+
+        try:
+            server_selection = json.loads(noise_payload.decode("utf-8")) if noise_payload else {}
+        except ValueError:
+            server_selection = {}
+        if server_selection.get("encoding"):
+            self.hm.json_encoding = server_selection["encoding"]
+
+        self.hm.noise_transport = transport  # session encryption from here on
+        self.noise_handshake = None
+        LOG.info("protocol v3 Noise session established "
+                 f"(pattern={self._noise_pattern})")
+
+        # first Noise transport message: session data + site id + pubkey
+        sess = Session(self.hm.session_id)
+        self.hm.emit(HiveMessage(HiveMessageType.HELLO,
+                                 {"pubkey": self.identity.public_key,
+                                  "session": sess.serialize(),
+                                  "site_id": self.site_id}))
+        self.hm.handshake_event.set()
+
+    def _abort_noise(self, reason: str):
+        """Fatal handshake failure — reject the connection (§3.4.3)."""
+        LOG.error(f"aborting protocol v3 connection: {reason}")
+        self.noise_handshake = None
+        self.hm.noise_transport = None
+        try:
+            self.hm.close()
+        except Exception:
+            pass
+
     def start_handshake(self):
+        # negotiated protocol v3 -> the Noise handshake replaces the legacy
+        # password/pubkey handshake
+        if self.noise_handshake is not None:
+            return  # Noise handshake already in flight, keep waiting
+        if self._server_handshake_payload and self._should_use_noise(self._server_handshake_payload):
+            self.start_noise_handshake(self._server_handshake_payload)
+            return
+        self._legacy_start_handshake(self._server_handshake_payload or {})
+
+    def _legacy_start_handshake(self, server_payload: dict):
         if self.binarize:
             LOG.info("hivemind supports binarization protocol")
         else:
@@ -279,6 +470,10 @@ class HiveMindSlaveProtocol:
     def handle_handshake(self, message: HiveMessage):
         LOG.info(f"HANDSHAKE: {message.payload}")
         assert message.msg_type == HiveMessageType.HANDSHAKE
+        # protocol v3: server's Noise handshake message
+        if "noise" in message.payload and self.noise_handshake is not None:
+            self.receive_noise_handshake(message.payload)
+            return
         # master is performing the handshake
         if "envelope" in message.payload:
             envelope = message.payload["envelope"]
@@ -306,11 +501,23 @@ class HiveMindSlaveProtocol:
                 # TODO - flag to give preference to pre-shared key over handshake
 
             self.binarize = message.payload.get("binarize", False)
+
+            # retained for the Noise prologue + handshake retries
+            self._server_handshake_payload = dict(message.payload)
+
+            # protocol v3 negotiation (HIVEMIND-WIRE-1 §2): both peers
+            # v3-capable -> Noise handshake; otherwise fall through to the
+            # legacy (v2) handshake below, unchanged
+            if self._should_use_noise(self._server_handshake_payload):
+                self.start_noise_handshake(self._server_handshake_payload)
+                return
+
             # TODO - flag to give preference to / require password or use RSA handshake
             # currently if password is set then it is always used
             if message.payload.get("password") and self.identity.password:
-                self.pswd_handshake = PasswordHandShake(self.identity.password)
-                self.start_handshake()
+                self.pswd_handshake = PasswordHandShake(self.identity.password,
+                                                        min_bits=_pw_min_bits())
+                self._legacy_start_handshake(self._server_handshake_payload)
 
     def _is_source_trusted(self, message: HiveMessage) -> bool:
         """Check if the message originates from a trusted peer.

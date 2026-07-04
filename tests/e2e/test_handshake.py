@@ -36,7 +36,8 @@ def test_client_completes_handshake_via_websocket():
         client.connect(site_id="loopback-site")
         client.wait_for_handshake(timeout=10)
         assert client.handshake_event.is_set()
-        assert client.crypto_key is not None
+        # encrypted session established: v2 crypto_key or v3 Noise transport
+        assert client.crypto_key is not None or client.noise_transport is not None
 
         time.sleep(1)  # let encrypted HELLO register the peer
         peers = m.connected_peers()
@@ -55,7 +56,8 @@ def test_client_crypto_key_set_after_handshake():
         client = _make_client(m.network_protocol.url, "test-key", "test-password")
         client.connect(site_id="loopback-site")
         client.wait_for_handshake(timeout=10)
-        assert client.crypto_key
+        # encrypted session established: v2 crypto_key or v3 Noise transport
+        assert client.crypto_key or client.noise_transport
         client.close()
     finally:
         b.stop_all()

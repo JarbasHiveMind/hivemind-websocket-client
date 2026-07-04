@@ -21,6 +21,7 @@ from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
 from hivemind_bus_client.util import serialize_message
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
                                             SupportedEncodings, SupportedCiphers, hybrid_encrypt)
+from hivemind_bus_client.noise import NoiseTransportFailed
 from poorman_handshake.asymmetric.utils import load_RSA_key, sign_RSA
 
 
@@ -106,8 +107,16 @@ class HiveMessageBusClient(OVOSBusClient):
                  internal_bus: Optional[OVOSBusClient] = None,
                  bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks(),
                  websocket_ping_interval: Optional[float] = None,
-                 websocket_ping_timeout: Optional[float] = None):
+                 websocket_ping_timeout: Optional[float] = None,
+                 max_protocol_version: int = 3):
         self.bin_callbacks = bin_callbacks
+        # highest HiveMind protocol version this client will negotiate
+        # (HIVEMIND-WIRE-1 §2). 3 -> Noise handshake when the server also
+        # supports it; servers capped at 2 or lower fall back to the legacy
+        # handshake transparently. Set to 2 to force the legacy handshake.
+        self.max_protocol_version = max_protocol_version
+        # established protocol v3 Noise session (None on v2 and below)
+        self.noise_transport = None
         self.json_encoding = SupportedEncodings.JSON_HEX  # server defaults before it was made configurable
         self.cipher = SupportedCiphers.AES_GCM  # server defaults before it was made configurable
 
@@ -195,7 +204,8 @@ class HiveMessageBusClient(OVOSBusClient):
     def key(self, val):
         self.identity.access_key = val
 
-    def connect(self, bus=FakeBus(), protocol=None, site_id=None):
+    def connect(self, bus=FakeBus(), protocol=None, site_id=None,
+                handshake_max_retries=None):
         from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 
         self.identity.site_id = site_id or self.identity.site_id
@@ -213,9 +223,15 @@ class HiveMessageBusClient(OVOSBusClient):
                 self.protocol.site_id = self.identity.site_id
 
         LOG.info("Connecting to Hivemind")
-        self.run_in_thread()
+        # bind BEFORE opening the websocket so the server's initial cleartext
+        # HELLO + HANDSHAKE parameter payloads are never missed — protocol v3
+        # needs them for Noise prologue binding (HIVEMIND-CRYPTO-1 §3.4.3)
         self.protocol.bind(bus)
-        self.wait_for_handshake()
+        self.run_in_thread()
+        # None retries forever (legacy behaviour); pass a bound so a failed
+        # handshake (e.g. wrong password on protocol v3) fails fast instead
+        # of blocking connect() indefinitely
+        self.wait_for_handshake(max_retries=handshake_max_retries)
 
     def on_open(self, *args):
         """
@@ -232,12 +248,14 @@ class HiveMessageBusClient(OVOSBusClient):
         self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
+        self.noise_transport = None
         super().on_error(*args)
 
     def on_close(self, *args):
         self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
+        self.noise_transport = None
         super().on_close(*args)
 
     def wait_for_handshake(self, timeout=5, max_retries=None):
@@ -305,7 +323,23 @@ class HiveMessageBusClient(OVOSBusClient):
             message = args[0]
         else:
             message = args[1]
-        if self.crypto_key:
+        if self.noise_transport is not None:
+            # protocol v3: every post-handshake message is a Noise transport
+            # message; there is no cleartext v3 session (CRYPTO-1 §3.4.5)
+            if not isinstance(message, bytes):
+                LOG.error("dropping non-Noise message received on a "
+                          "protocol v3 session")
+                return
+            try:
+                message = self.noise_transport.decrypt_frame(message)
+            except NoiseTransportFailed:
+                # tampered / replayed / out-of-order — MUST reject; the
+                # receive counter is now out of sync so the session is dead
+                LOG.exception("rejecting invalid Noise transport message, "
+                              "closing connection")
+                self.close()
+                return
+        elif self.crypto_key:
             # handle binary encryption
             if isinstance(message, bytes):
                 message = decrypt_bin(self.crypto_key, message, cipher=self.cipher)
@@ -428,13 +462,22 @@ class HiveMessageBusClient(OVOSBusClient):
                                        compressed=self.compress,
                                        binary_type=binary_type,
                                        hivemeta=message.metadata)
-                if self.crypto_key:
+                if self.noise_transport is not None:
+                    # protocol v3: Noise transport CipherState (replay
+                    # resistant sequential nonces) replaces the v2 AEAD
+                    ws_payload = self.noise_transport.encrypt_frame(bitstr.bytes)
+                elif self.crypto_key:
                     ws_payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.cipher)
                 else:
                     ws_payload = bitstr.bytes
                 self.client.send(ws_payload, ABNF.OPCODE_BINARY)
             else:
                 ws_payload = serialize_message(message)
+                if self.noise_transport is not None:
+                    # v3 sessions are always encrypted, HELLO included
+                    ws_payload = self.noise_transport.encrypt_frame(ws_payload)
+                    self.client.send(ws_payload, ABNF.OPCODE_BINARY)
+                    return
                 if self.crypto_key:
                     ws_payload = encrypt_as_json(self.crypto_key, ws_payload,
                                                  cipher=self.cipher, encoding=self.json_encoding)

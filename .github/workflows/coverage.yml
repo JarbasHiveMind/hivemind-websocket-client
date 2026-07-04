@@ -12,6 +12,9 @@ jobs:
     with:
       python_version: '3.11'
       coverage_source: 'hivemind_bus_client'
-      test_path: 'tests/'
-      pre_install_pip: '"hivescope==0.3.0a1" pytest-asyncio'
+      # e2e is exercised (with hivescope) by build-tests.yml; coverage only
+      # needs the unit suite. Test deps come from the test extra in
+      # pyproject.toml — the single source of truth, nothing pinned here.
+      pre_install_pip: 'pytest-asyncio'
+      test_path: 'tests/ --ignore=tests/e2e'
       min_coverage: 0
