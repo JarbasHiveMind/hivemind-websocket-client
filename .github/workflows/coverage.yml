@@ -16,6 +16,5 @@ jobs:
       # needs the unit suite. Test deps come from the test extra in
       # pyproject.toml — the single source of truth, nothing pinned here.
       install_extras: 'test'
-      pre_install_pip: 'pytest-asyncio "poorman-handshake>=2.0.0a1"'
       test_path: 'tests/ --ignore=tests/e2e'
       min_coverage: 0

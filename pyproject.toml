@@ -40,6 +40,8 @@ test = [
     "pytest-asyncio",
     "pytest-cov",
     "websockets>=10.0",
+]
+e2e = [
     "hivescope>=0.5.0a2",
     # the protocol v3 e2e matrix needs a v3-capable (Noise) hivemind-core on
     # the master side; TODO: replace with a prerelease floor pin once the

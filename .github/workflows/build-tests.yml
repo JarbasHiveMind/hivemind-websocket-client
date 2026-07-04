@@ -13,5 +13,5 @@ jobs:
       python_versions: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
       # test deps (hivescope, the v3-capable hivemind-core, ...) come from
       # the test extra in pyproject.toml — the single source of truth
-      install_extras: 'test'
+      install_extras: 'test,e2e'
       test_path: 'tests/'
