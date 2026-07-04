@@ -22,10 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    # TODO: switch to a PyPI prerelease floor pin (poorman-handshake>=<alpha
-    # shipping poorman_handshake.noise>,<2.0.0) once JarbasHiveMind/poorman_handshake#17
-    # is released; git ref lets CI resolve the Noise primitive until then
-    "poorman-handshake @ git+https://github.com/JarbasHiveMind/poorman_handshake@feat/noise-handshake",
+    "poorman-handshake>=2.0.0a1,<3.0.0",
     "ovos_bus_client>=1.3.1,<3.0.0",
     "ovos_utils>=0.3.0",
     "bitstring>=4.1.1",
