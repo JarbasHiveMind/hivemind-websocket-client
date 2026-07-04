@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.1a1) (2026-07-04)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.0a1...0.10.1a1)
+
+**Merged pull requests:**
+
+- fix: keep hivemind-core git ref out of package metadata \(unblock PyPI publish\) [\#134](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/134) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.0a1) (2026-07-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.2a1...0.10.0a1)
