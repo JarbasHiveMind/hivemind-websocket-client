@@ -14,4 +14,7 @@ jobs:
       # test deps (hivescope, the v3-capable hivemind-core, ...) come from
       # the test extra in pyproject.toml — the single source of truth
       install_extras: 'test,e2e'
+      # the v3 e2e matrix needs a Noise-capable hivemind-core; installed here
+      # as a git ref (kept out of pyproject so the wheel stays PyPI-publishable)
+      pre_install_pip: 'hivemind-core @ git+https://github.com/JarbasHiveMind/HiveMind-core@feat/protocol-v3-noise'
       test_path: 'tests/'
