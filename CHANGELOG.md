@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a1) (2026-07-04)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.1a1...0.10.2a1)
+
+**Merged pull requests:**
+
+- fix: async client negotiates v3 Noise + awaits handshake emit [\#136](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/136) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.1a1) (2026-07-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.0a1...0.10.1a1)
