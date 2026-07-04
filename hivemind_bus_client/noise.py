@@ -45,7 +45,8 @@ NOISE_PATTERNS: List[str] = [NOISE_PATTERN_KK, NOISE_PATTERN_XX]
 
 # registered cipher suites, preference ordered (HIVEMIND-CRYPTO-1 §3.4.1)
 NOISE_SUITE_CHACHA = "25519_ChaChaPoly_SHA256"  # MUST support
-NOISE_SUITES: List[str] = [NOISE_SUITE_CHACHA]
+NOISE_SUITE_AESGCM = "25519_AESGCM_SHA256"  # MAY support (Web Crypto peers)
+NOISE_SUITES: List[str] = [NOISE_SUITE_CHACHA, NOISE_SUITE_AESGCM]
 
 # transport frame markers: the first plaintext byte tags the inner framing so
 # the receiver knows how to parse the decrypted bytes
@@ -90,7 +91,9 @@ def select_noise_options(server_patterns: List[str],
     (pinned) and the server offers it; otherwise ``XXpsk2``. Returns
     ``(pattern, suite)`` or None when there is no mutual option.
     """
-    suite = next((s for s in server_suites if s in NOISE_SUITES), None)
+    # walk our own preference-ordered list so 25519_ChaChaPoly_SHA256 wins
+    # whenever both peers support it, regardless of the server's list order
+    suite = next((s for s in NOISE_SUITES if s in server_suites), None)
     if suite is None:
         return None
     if pinned_remote_key and NOISE_PATTERN_KK in server_patterns:

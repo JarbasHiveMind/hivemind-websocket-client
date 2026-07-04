@@ -5,7 +5,9 @@ import unittest
 from hivemind_bus_client.noise import (
     NOISE_PATTERN_KK,
     NOISE_PATTERN_XX,
+    NOISE_SUITE_AESGCM,
     NOISE_SUITE_CHACHA,
+    NOISE_SUITES,
     NOISE_SUPPORTED,
     NoiseHandshakeFailed,
     NoiseTransport,
@@ -43,6 +45,26 @@ class TestNegotiationHelpers(unittest.TestCase):
         self.assertIsNone(select_noise_options([NOISE_PATTERN_XX], []))
         self.assertIsNone(select_noise_options(["bogus"], ["bogus"]))
 
+    def test_suite_registry_offers_both_chacha_first(self):
+        # CRYPTO-1 §3.4.1: ChaChaPoly MUST (preferred), AES-GCM MAY (second)
+        self.assertEqual(NOISE_SUITES,
+                         [NOISE_SUITE_CHACHA, NOISE_SUITE_AESGCM])
+
+    def test_select_prefers_chacha_regardless_of_server_order(self):
+        patterns = [NOISE_PATTERN_XX]
+        self.assertEqual(
+            select_noise_options(patterns,
+                                 [NOISE_SUITE_AESGCM, NOISE_SUITE_CHACHA]),
+            (NOISE_PATTERN_XX, NOISE_SUITE_CHACHA))
+        # an AES-GCM-only peer (e.g. Web Crypto) still negotiates
+        self.assertEqual(
+            select_noise_options(patterns, [NOISE_SUITE_AESGCM]),
+            (NOISE_PATTERN_XX, NOISE_SUITE_AESGCM))
+
+    def test_select_suite_mismatch(self):
+        self.assertIsNone(select_noise_options([NOISE_PATTERN_XX],
+                                               ["25519_Bogus_SHA512"]))
+
     def test_prologue_binds_negotiation(self):
         hello = {"node_id": "server", "pubkey": "abc"}
         handshake = {"max_protocol_version": 3, "noise": {"patterns": ["XXpsk2"]}}
@@ -65,13 +87,17 @@ class TestHandshakeAndTransport(unittest.TestCase):
                               {"max_protocol_version": 3},
                               "Noise_XXpsk2_25519_ChaChaPoly_SHA256")
 
-    def _handshake_pair(self, password_b="s3cr3t", prologue_b=None):
-        common = dict(pattern=NOISE_PATTERN_XX, suite=NOISE_SUITE_CHACHA,
+    def _handshake_pair(self, password_b="s3cr3t", prologue_b=None,
+                        suite=NOISE_SUITE_CHACHA):
+        prologue = build_prologue(
+            {"node_id": "server"}, {"max_protocol_version": 3},
+            noise_protocol_name(NOISE_PATTERN_XX, suite))
+        common = dict(pattern=NOISE_PATTERN_XX, suite=suite,
                       node_id="server")
         alice = start_noise_handshake(initiator=True, password="s3cr3t",
-                                      prologue=self.PROLOGUE, **common)
+                                      prologue=prologue, **common)
         bob = start_noise_handshake(initiator=False, password=password_b,
-                                    prologue=prologue_b or self.PROLOGUE,
+                                    prologue=prologue_b or prologue,
                                     **common)
         return alice, bob
 
@@ -95,6 +121,29 @@ class TestHandshakeAndTransport(unittest.TestCase):
         self.assertEqual(tb.decrypt_frame(ct), '{"msg_type": "bus"}')
         ct = tb.encrypt_frame(b"\x00\x01binary")
         self.assertEqual(ta.decrypt_frame(ct), b"\x00\x01binary")
+
+    def test_xxpsk2_aesgcm_round_trip(self):
+        # the AES-GCM suite (Web Crypto / HiveMind-js peers) completes the
+        # handshake and encrypts/decrypts transport frames both ways
+        alice, bob = self._handshake_pair(suite=NOISE_SUITE_AESGCM)
+        ta, tb = self._complete(alice, bob)
+        self.assertTrue(ta.remote_static_key)
+        self.assertTrue(tb.remote_static_key)
+        ct = ta.encrypt_frame('{"msg_type": "bus"}')
+        self.assertEqual(tb.decrypt_frame(ct), '{"msg_type": "bus"}')
+        ct = tb.encrypt_frame(b"\x00\x01binary")
+        self.assertEqual(ta.decrypt_frame(ct), b"\x00\x01binary")
+
+    def test_suite_mismatch_between_peers_aborts(self):
+        # peers that fixed different cipher suites cannot complete a handshake
+        common = dict(pattern=NOISE_PATTERN_XX, node_id="server",
+                      password="s3cr3t", prologue=self.PROLOGUE)
+        alice = start_noise_handshake(initiator=True,
+                                      suite=NOISE_SUITE_AESGCM, **common)
+        bob = start_noise_handshake(initiator=False,
+                                    suite=NOISE_SUITE_CHACHA, **common)
+        with self.assertRaises(Exception):
+            self._complete(alice, bob)
 
     def test_wrong_password_aborts(self):
         alice, bob = self._handshake_pair(password_b="wrong")
