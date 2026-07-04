@@ -43,10 +43,12 @@ test = [
 ]
 e2e = [
     "hivescope>=0.5.0a2",
-    # the protocol v3 e2e matrix needs a v3-capable (Noise) hivemind-core on
-    # the master side; TODO: replace with a prerelease floor pin once the
-    # hivemind-core protocol v3 PR is released
-    "hivemind-core @ git+https://github.com/JarbasHiveMind/HiveMind-core@feat/protocol-v3-noise",
+    # the protocol v3 e2e matrix additionally needs a v3-capable (Noise)
+    # hivemind-core on the master side. It is installed by the build-tests
+    # workflow via pre_install_pip (a git ref), NOT declared here — PyPI
+    # rejects packages whose metadata carries a direct URL dependency.
+    # TODO: replace with a prerelease floor pin once hivemind-core protocol
+    # v3 is released, then add it back here.
 ]
 benchmark = [
     "websockets>=10.0",
