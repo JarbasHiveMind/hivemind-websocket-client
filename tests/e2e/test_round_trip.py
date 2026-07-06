@@ -9,6 +9,8 @@ from ovos_bus_client.message import Message
 
 from hivescope import TopologyBuilder
 
+ROUND_TRIP_PASSWORD = "round-trip-horse-battery-staple-92"
+
 
 def _wait_for(condition, timeout: float = 5.0, interval: float = 0.05) -> bool:
     deadline = time.monotonic() + timeout
@@ -41,11 +43,11 @@ def test_client_emit_reaches_master_agent_bus():
     """A client.emit(BUS) is delivered to the master's agent bus."""
     b = TopologyBuilder()
     m = b.add_master("M0", use_loopback=True)
-    m.register_satellite("rt-key", password="rt-pwd",
+    m.register_satellite("rt-key", password=ROUND_TRIP_PASSWORD,
                          allowed_types=["recognizer_loop:utterance"])
     try:
         b.start_all()
-        client = _make_client(m.network_protocol.url, "rt-key", "rt-pwd")
+        client = _make_client(m.network_protocol.url, "rt-key", ROUND_TRIP_PASSWORD)
         client.connect(site_id="loopback-site")
         client.wait_for_handshake(timeout=10)
 
@@ -70,10 +72,10 @@ def test_master_to_client_bus_message():
     """A master-side send_to_satellite reaches the client's hive bus."""
     b = TopologyBuilder()
     m = b.add_master("M0", use_loopback=True)
-    m.register_satellite("rt-key", password="rt-pwd")
+    m.register_satellite("rt-key", password=ROUND_TRIP_PASSWORD)
     try:
         b.start_all()
-        client = _make_client(m.network_protocol.url, "rt-key", "rt-pwd",
+        client = _make_client(m.network_protocol.url, "rt-key", ROUND_TRIP_PASSWORD,
                               name="downstream")
         client.connect(site_id="loopback-site")
         client.wait_for_handshake(timeout=10)
