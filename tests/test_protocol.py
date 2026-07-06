@@ -15,7 +15,7 @@ def _make_protocol() -> HiveMindSlaveProtocol:
     hm.session_id = "test-session"
     identity = MagicMock(spec=NodeIdentity)
     identity.name = "test-node"
-    identity.password = "test"
+    identity.password = "test-node-horse-battery-staple-92"
     proto = HiveMindSlaveProtocol(hm=hm, identity=identity, site_id="living-room")
     return proto
 
