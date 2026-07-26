@@ -132,6 +132,11 @@ class HiveMessageBusClient(OVOSBusClient):
         self.allow_self_signed = self_signed
         self.share_bus = share_bus
         self.handshake_event = Event()
+        # Own the reconnect lifecycle here instead of relying on
+        # ovos-bus-client's recursive on_error -> run_forever callback.  The
+        # latter does not handle a clean websocket close and can leave the
+        # worker thread dead while wait_for_handshake() waits forever.
+        self._stop_event = Event()
         self.websocket_ping_interval = websocket_ping_interval
         self.websocket_ping_timeout = websocket_ping_timeout
 
@@ -245,18 +250,47 @@ class HiveMessageBusClient(OVOSBusClient):
         self.retry = 5
 
     def on_error(self, *args):
-        self.connected_event.clear()
-        self.handshake_event.clear()
-        self.crypto_key = None
-        self.noise_transport = None
-        super().on_error(*args)
+        error = args[0] if len(args) == 1 else args[1]
+        # websocket-client can invoke this callback with a control frame
+        # instead of an exception. It is not a connection failure.
+        if not isinstance(error, BaseException):
+            LOG.debug("ignoring non-exception websocket error callback: %r",
+                      error)
+            return
+
+        self._clear_connection_state()
+        if isinstance(error, WebSocketConnectionClosedException):
+            LOG.warning("HiveMind websocket connection closed unexpectedly")
+        elif isinstance(error, ConnectionRefusedError):
+            LOG.warning("HiveMind websocket connection refused")
+        elif isinstance(error, ConnectionResetError):
+            LOG.warning("HiveMind websocket connection reset")
+        else:
+            LOG.warning("HiveMind websocket error: %r", error)
+            try:
+                self.emitter.emit("error", error)
+            except Exception as emitter_error:
+                LOG.exception("Failed to emit websocket error event: %s",
+                              emitter_error)
 
     def on_close(self, *args):
+        self._clear_connection_state()
+        self.emitter.emit("close")
+
+    def _clear_connection_state(self):
         self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
         self.noise_transport = None
-        super().on_close(*args)
+
+    def close(self):
+        """Permanently stop reconnecting and close the websocket."""
+        self._stop_event.set()
+        self.started_running = False
+        try:
+            self.client.close()
+        finally:
+            self._clear_connection_state()
 
     def wait_for_handshake(self, timeout=5, max_retries=None):
         """
@@ -302,13 +336,32 @@ class HiveMessageBusClient(OVOSBusClient):
 
     def run_forever(self):
         self.started_running = True
+        self._stop_event.clear()
         run_options = self._websocket_keepalive_options()
         if self.allow_self_signed:
             run_options["sslopt"] = {
                 "cert_reqs": ssl.CERT_NONE,
                 "check_hostname": False,
                 "ssl_version": ssl.PROTOCOL_TLS_CLIENT}
-        self.client.run_forever(**run_options)
+        try:
+            while not self._stop_event.is_set():
+                self.client.run_forever(**run_options)
+                self._clear_connection_state()
+                if self._stop_event.is_set():
+                    break
+
+                delay = self.retry
+                LOG.warning("HiveMind websocket disconnected; reconnecting "
+                            "in %.1f seconds", delay)
+                if self._stop_event.wait(delay):
+                    break
+
+                self.retry = min(self.retry * 2, 60)
+                self.emitter.emit("reconnecting")
+                self.client = self.create_client()
+        finally:
+            self.started_running = False
+            self._clear_connection_state()
 
     def _websocket_keepalive_options(self):
         return websocket_keepalive_options(
@@ -337,7 +390,10 @@ class HiveMessageBusClient(OVOSBusClient):
                 # receive counter is now out of sync so the session is dead
                 LOG.exception("rejecting invalid Noise transport message, "
                               "closing connection")
-                self.close()
+                # Close this connection so run_forever() establishes a fresh
+                # Noise session. Public close() is reserved for an intentional
+                # permanent shutdown.
+                self.client.close()
                 return
         elif self.crypto_key:
             # handle binary encryption

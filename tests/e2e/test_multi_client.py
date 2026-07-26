@@ -12,6 +12,15 @@ PASSWORD_B = "client-b-horse-battery-staple-92"
 RECONNECT_PASSWORD = "reconnect-horse-battery-staple-92"
 
 
+def _wait_for(predicate, timeout=15, interval=0.05):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return False
+
+
 def _make_client(url, key, password, name):
     host, port = url.replace("ws://", "").rstrip("/").split(":")
     port = int(port)
@@ -71,4 +80,38 @@ def test_client_can_close_and_reconnect():
         assert c2.crypto_key or c2.noise_transport
         c2.close()
     finally:
+        b.stop_all()
+
+
+def test_same_client_reconnects_after_clean_server_close():
+    """A normal server close must not leave the websocket worker stopped."""
+    b = TopologyBuilder()
+    m = b.add_master("M0", use_loopback=True)
+    m.register_satellite("k", password=RECONNECT_PASSWORD)
+    client = None
+    try:
+        b.start_all()
+        client = _make_client(
+            m.network_protocol.url, "k", RECONNECT_PASSWORD, "reconnect"
+        )
+        client.connect(site_id="s1")
+        client.wait_for_handshake(timeout=10)
+        old_transport = client.noise_transport
+        assert old_transport is not None
+
+        # on_open resets the production delay to five seconds; shorten only
+        # this test's next reconnect.
+        client.retry = 0.01
+        m.network_protocol._clients[0].disconnect()
+
+        assert _wait_for(
+            lambda: (
+                client.handshake_event.is_set()
+                and client.noise_transport is not None
+                and client.noise_transport is not old_transport
+            )
+        ), "same client did not establish a fresh session after server close"
+    finally:
+        if client is not None:
+            client.close()
         b.stop_all()

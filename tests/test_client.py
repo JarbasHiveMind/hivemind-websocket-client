@@ -107,9 +107,11 @@ def _make_client(**kwargs):
     client._host = defaults["host"]
     client.init_identity()
     client.crypto_key = defaults.get("crypto_key")
+    client.noise_transport = None
     client.allow_self_signed = True
     client.share_bus = False
     client.handshake_event = Event()
+    client._stop_event = Event()
     client.websocket_ping_interval = defaults["websocket_ping_interval"]
     client.websocket_ping_timeout = defaults["websocket_ping_timeout"]
     client.compress = True
@@ -165,20 +167,49 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         client.connected_event.set()
         client.handshake_event.set()
         client.crypto_key = "some-key"
-        client.on_error(Exception("test"))
+        client.noise_transport = MagicMock()
+        error = Exception("test")
+        client.on_error(error)
         self.assertFalse(client.connected_event.is_set())
         self.assertFalse(client.handshake_event.is_set())
         self.assertIsNone(client.crypto_key)
+        self.assertIsNone(client.noise_transport)
+        mock_super_error.assert_not_called()
+        client.emitter.emit.assert_called_once_with("error", error)
+
+    def test_on_error_ignores_non_exception_callback(self):
+        client = _make_client()
+        client.connected_event.set()
+        client.handshake_event.set()
+        client.crypto_key = "some-key"
+        client.on_error(MagicMock())
+        self.assertTrue(client.connected_event.is_set())
+        self.assertTrue(client.handshake_event.is_set())
+        self.assertEqual(client.crypto_key, "some-key")
 
     def test_on_close_clears_handshake(self):
         client = _make_client()
         client.connected_event.set()
         client.handshake_event.set()
         client.crypto_key = "some-key"
+        client.noise_transport = MagicMock()
         client.on_close()
         self.assertFalse(client.connected_event.is_set())
         self.assertFalse(client.handshake_event.is_set())
         self.assertIsNone(client.crypto_key)
+        self.assertIsNone(client.noise_transport)
+        client.emitter.emit.assert_called_once_with("close")
+
+    def test_close_stops_reconnect_and_closes_socket(self):
+        client = _make_client()
+        client.connected_event.set()
+        client.handshake_event.set()
+        client.close()
+        self.assertTrue(client._stop_event.is_set())
+        self.assertFalse(client.started_running)
+        self.assertFalse(client.connected_event.is_set())
+        self.assertFalse(client.handshake_event.is_set())
+        client.client.close.assert_called_once_with()
 
 
 class TestHiveMessageBusClientKeepalive(unittest.TestCase):
@@ -224,6 +255,9 @@ class TestHiveMessageBusClientKeepalive(unittest.TestCase):
     def test_run_forever_passes_keepalive(self):
         client = _make_client()
         client.allow_self_signed = False
+        client.client.run_forever.side_effect = (
+            lambda **kwargs: client._stop_event.set()
+        )
         client.run_forever()
         client.client.run_forever.assert_called_once_with(
             ping_interval=25.0, ping_timeout=10.0
@@ -231,11 +265,48 @@ class TestHiveMessageBusClientKeepalive(unittest.TestCase):
 
     def test_run_forever_passes_keepalive_and_ssl_options(self):
         client = _make_client()
+        client.client.run_forever.side_effect = (
+            lambda **kwargs: client._stop_event.set()
+        )
         client.run_forever()
         kwargs = client.client.run_forever.call_args.kwargs
         self.assertEqual(kwargs["ping_interval"], 25.0)
         self.assertEqual(kwargs["ping_timeout"], 10.0)
         self.assertEqual(kwargs["sslopt"]["cert_reqs"], ssl.CERT_NONE)
+
+    def test_run_forever_reconnects_after_websocket_returns(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 0
+        first_socket = client.client
+        second_socket = MagicMock()
+        second_socket.run_forever.side_effect = (
+            lambda **kwargs: client._stop_event.set()
+        )
+        client.create_client = MagicMock(return_value=second_socket)
+
+        client.run_forever()
+
+        first_socket.run_forever.assert_called_once_with(
+            ping_interval=25.0, ping_timeout=10.0
+        )
+        client.create_client.assert_called_once_with()
+        second_socket.run_forever.assert_called_once_with(
+            ping_interval=25.0, ping_timeout=10.0
+        )
+        client.emitter.emit.assert_called_once_with("reconnecting")
+
+    def test_run_forever_does_not_reconnect_after_close(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.client.run_forever.side_effect = (
+            lambda **kwargs: client.close()
+        )
+        client.create_client = MagicMock()
+
+        client.run_forever()
+
+        client.create_client.assert_not_called()
 
 
 class TestHiveMessageBusClientOn(unittest.TestCase):
