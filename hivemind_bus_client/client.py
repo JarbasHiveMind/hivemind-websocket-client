@@ -1,28 +1,39 @@
 import json
 import ssl
-from threading import Event
-from typing import Union, Optional, Callable
+from collections.abc import Callable
+from threading import Event, Thread
+from typing import Optional, Union
 
 import pybase64
 from Cryptodome.PublicKey import RSA
-from ovos_bus_client import Message as MycroftMessage, MessageBusClient as OVOSBusClient
+from ovos_bus_client import Message as MycroftMessage
+from ovos_bus_client import MessageBusClient as OVOSBusClient
 from ovos_bus_client.session import Session
 from ovos_utils.fakebus import FakeBus
 from ovos_utils.log import LOG
+from poorman_handshake.asymmetric.utils import load_RSA_key
 from pyee import EventEmitter
-from websocket import ABNF
-from websocket import WebSocketApp, WebSocketConnectionClosedException
+from websocket import ABNF, WebSocketApp, WebSocketConnectionClosedException
 
+from hivemind_bus_client.encryption import (
+    SupportedCiphers,
+    SupportedEncodings,
+    decrypt_bin,
+    decrypt_from_json,
+    encrypt_as_json,
+    encrypt_bin,
+    hybrid_encrypt,
+)
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
-from hivemind_bus_client.serialization import HiveMindBinaryPayloadType
-from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
-from hivemind_bus_client.util import serialize_message
-from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers, hybrid_encrypt)
 from hivemind_bus_client.noise import NoiseTransportFailed
-from poorman_handshake.asymmetric.utils import load_RSA_key, sign_RSA
+from hivemind_bus_client.serialization import (
+    HiveMindBinaryPayloadType,
+    decode_bitstring,
+    get_bitstring,
+)
+from hivemind_bus_client.util import serialize_message
 
 
 class BinaryDataCallbacks:
@@ -267,11 +278,23 @@ class HiveMessageBusClient(OVOSBusClient):
             LOG.warning("HiveMind websocket connection reset")
         else:
             LOG.warning("HiveMind websocket error: %r", error)
+            # Event handlers are application callbacks; one faulty listener
+            # must not terminate the reconnect worker.
             try:
                 self.emitter.emit("error", error)
-            except Exception as emitter_error:
+            except Exception as emitter_error:  # noqa: BLE001
                 LOG.exception("Failed to emit websocket error event: %s",
                               emitter_error)
+
+        # A callback exception does not make WebSocketApp.run_forever()
+        # return by itself. Closing only the current socket guarantees that
+        # every real error reaches the outer reconnect loop.
+        try:
+            if self.client.keep_running:
+                self.client.close()
+        except Exception as close_error:  # noqa: BLE001
+            LOG.exception("Failed to close errored websocket: %s",
+                          close_error)
 
     def on_close(self, *args):
         self._clear_connection_state()
@@ -286,7 +309,6 @@ class HiveMessageBusClient(OVOSBusClient):
     def close(self):
         """Permanently stop reconnecting and close the websocket."""
         self._stop_event.set()
-        self.started_running = False
         try:
             self.client.close()
         finally:
@@ -334,9 +356,22 @@ class HiveMessageBusClient(OVOSBusClient):
         return WebSocketApp(url, on_open=self.on_open, on_close=self.on_close,
                             on_error=self.on_error, on_message=self.on_message)
 
-    def run_forever(self):
-        self.started_running = True
+    def run_in_thread(self):
+        """Launch the reconnect lifecycle in a daemon thread."""
+        # Clear before spawning so close() cannot be overwritten by a worker
+        # that has been scheduled but has not started yet.
         self._stop_event.clear()
+        thread = Thread(target=self._run_forever, daemon=True)
+        thread.start()
+        return thread
+
+    def run_forever(self):
+        """Run the reconnect lifecycle on the calling thread."""
+        self._stop_event.clear()
+        self._run_forever()
+
+    def _run_forever(self):
+        self.started_running = True
         run_options = self._websocket_keepalive_options()
         if self.allow_self_signed:
             run_options["sslopt"] = {
