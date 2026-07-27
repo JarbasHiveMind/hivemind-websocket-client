@@ -2,10 +2,10 @@
 
 import time
 
+from hivescope import TopologyBuilder
+
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
-
-from hivescope import TopologyBuilder
 
 PASSWORD_A = "client-a-horse-battery-staple-92"
 PASSWORD_B = "client-b-horse-battery-staple-92"

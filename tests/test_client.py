@@ -1,19 +1,22 @@
 """Tests for hivemind_bus_client.client — BinaryDataCallbacks, Waiters, HiveMessageBusClient."""
-import json
 import ssl
 import unittest
 from threading import Event
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 from ovos_bus_client.message import Message
 
 from hivemind_bus_client.client import (
     BinaryDataCallbacks,
+    HiveMessageBusClient,
     HiveMessageWaiter,
     HivePayloadWaiter,
-    HiveMessageBusClient,
 )
-from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
+from hivemind_bus_client.message import (
+    HiveMessage,
+    HiveMessageType,
+    HiveMindBinaryPayloadType,
+)
 
 
 class TestBinaryDataCallbacks(unittest.TestCase):
@@ -79,8 +82,8 @@ class TestHivePayloadWaiter(unittest.TestCase):
 
 def _make_client(**kwargs):
     """Create HiveMessageBusClient without actually connecting or starting threads."""
-    from pyee import EventEmitter
     from ovos_utils.fakebus import FakeBus
+    from pyee import EventEmitter
 
     defaults = {
         "key": "test-key",
@@ -96,7 +99,7 @@ def _make_client(**kwargs):
     # Bypass OVOSBusClient.__init__ which starts websocket threads
     client = object.__new__(HiveMessageBusClient)
     client.bin_callbacks = defaults.pop("bin_callbacks", BinaryDataCallbacks())
-    from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers
+    from hivemind_bus_client.encryption import SupportedCiphers, SupportedEncodings
     client.json_encoding = SupportedEncodings.JSON_HEX
     client.cipher = SupportedCiphers.AES_GCM
     client.identity = None
@@ -176,6 +179,15 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         self.assertIsNone(client.noise_transport)
         mock_super_error.assert_not_called()
         client.emitter.emit.assert_called_once_with("error", error)
+        client.client.close.assert_called_once_with()
+
+    def test_on_error_isolates_listener_failure_and_closes_socket(self):
+        client = _make_client()
+        client.emitter.emit.side_effect = RuntimeError("listener failed")
+
+        client.on_error(Exception("websocket failed"))
+
+        client.client.close.assert_called_once_with()
 
     def test_on_error_ignores_non_exception_callback(self):
         client = _make_client()
@@ -186,6 +198,7 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         self.assertTrue(client.connected_event.is_set())
         self.assertTrue(client.handshake_event.is_set())
         self.assertEqual(client.crypto_key, "some-key")
+        client.client.close.assert_not_called()
 
     def test_on_close_clears_handshake(self):
         client = _make_client()
@@ -202,14 +215,34 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
 
     def test_close_stops_reconnect_and_closes_socket(self):
         client = _make_client()
+        client.started_running = True
         client.connected_event.set()
         client.handshake_event.set()
         client.close()
         self.assertTrue(client._stop_event.is_set())
-        self.assertFalse(client.started_running)
+        # The worker owns this flag and clears it from _run_forever's finally
+        # block after it has actually stopped.
+        self.assertTrue(client.started_running)
         self.assertFalse(client.connected_event.is_set())
         self.assertFalse(client.handshake_event.is_set())
         client.client.close.assert_called_once_with()
+
+    @patch("hivemind_bus_client.client.Thread")
+    def test_run_in_thread_honors_close_before_worker_starts(self, mock_thread):
+        client = _make_client()
+
+        thread = client.run_in_thread()
+        worker = mock_thread.call_args.kwargs["target"]
+        client.close()
+        worker()
+
+        self.assertIs(thread, mock_thread.return_value)
+        mock_thread.assert_called_once_with(
+            target=client._run_forever, daemon=True
+        )
+        thread.start.assert_called_once_with()
+        client.client.run_forever.assert_not_called()
+        self.assertFalse(client.started_running)
 
 
 class TestHiveMessageBusClientKeepalive(unittest.TestCase):
