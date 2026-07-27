@@ -17,6 +17,7 @@ from hivemind_bus_client.message import (
     HiveMessageType,
     HiveMindBinaryPayloadType,
 )
+from hivemind_bus_client.noise import NoiseTransportFailed
 
 
 class TestBinaryDataCallbacks(unittest.TestCase):
@@ -243,6 +244,21 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         thread.start.assert_called_once_with()
         client.client.run_forever.assert_not_called()
         self.assertFalse(client.started_running)
+
+
+class TestHiveMessageBusClientOnMessage(unittest.TestCase):
+    def test_invalid_noise_frame_reconnects_instead_of_stopping(self):
+        client = _make_client()
+        client.noise_transport = MagicMock()
+        client.noise_transport.decrypt_frame.side_effect = NoiseTransportFailed(
+            "invalid frame"
+        )
+
+        client.on_message(b"invalid")
+
+        client.noise_transport.decrypt_frame.assert_called_once_with(b"invalid")
+        client.client.close.assert_called_once_with()
+        self.assertFalse(client._stop_event.is_set())
 
 
 class TestHiveMessageBusClientKeepalive(unittest.TestCase):

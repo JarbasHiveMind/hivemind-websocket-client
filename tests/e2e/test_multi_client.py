@@ -102,7 +102,9 @@ def test_same_client_reconnects_after_clean_server_close():
         # on_open resets the production delay to five seconds; shorten only
         # this test's next reconnect.
         client.retry = 0.01
-        m.network_protocol._clients[0].disconnect()
+        assert _wait_for(lambda: len(m.network_protocol.clients) == 1)
+        server_connection = next(iter(m.network_protocol.clients.values()))
+        server_connection.disconnect()
 
         assert _wait_for(
             lambda: (
