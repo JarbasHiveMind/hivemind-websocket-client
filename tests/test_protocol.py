@@ -23,7 +23,7 @@ def _make_protocol() -> HiveMindSlaveProtocol:
 
 class TestHandshakeInitialization:
     def test_bind_defers_legacy_password_validation(self):
-        """A weak legacy password must not prevent protocol-v3 negotiation."""
+        """Binding must not construct a handshake that may never be used."""
         proto = _make_protocol()
         proto.identity.password = "sat123"
         bus = MagicMock()
@@ -34,7 +34,7 @@ class TestHandshakeInitialization:
         assert proto.pswd_handshake is None
 
     def test_legacy_password_handshake_still_rejects_weak_password(self):
-        """Deferring construction must not weaken the protocol-v2 fallback."""
+        """The negotiated legacy path must retain its strength policy."""
         proto = _make_protocol()
         proto.identity.password = "sat123"
         message = HiveMessage(HiveMessageType.HANDSHAKE,
