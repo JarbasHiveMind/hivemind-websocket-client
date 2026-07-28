@@ -57,6 +57,7 @@ def isolated_identity_storage(monkeypatch):
     identity_config_root = Path(os.environ["XDG_CONFIG_HOME"])
 
     def isolated_identity_config(name, *args, **kwargs):
+        """Construct an identity config below this test's XDG root."""
         kwargs["xdg_folder"] = identity_config_root
         return JsonConfigXDG(name, *args, **kwargs)
 
