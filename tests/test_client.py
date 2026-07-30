@@ -115,6 +115,7 @@ def _make_client(**kwargs):
     client.allow_self_signed = True
     client.share_bus = False
     client.handshake_event = Event()
+    client.protocol = None
     client._stop_event = Event()
     client.websocket_ping_interval = defaults["websocket_ping_interval"]
     client.websocket_ping_timeout = defaults["websocket_ping_timeout"]
@@ -203,6 +204,7 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
 
     def test_on_close_clears_handshake(self):
         client = _make_client()
+        client.protocol = MagicMock()
         client.connected_event.set()
         client.handshake_event.set()
         client.crypto_key = "some-key"
@@ -212,6 +214,7 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         self.assertFalse(client.handshake_event.is_set())
         self.assertIsNone(client.crypto_key)
         self.assertIsNone(client.noise_transport)
+        client.protocol.reset_connection_state.assert_called_once_with()
         client.emitter.emit.assert_called_once_with("close")
 
     def test_close_stops_reconnect_and_closes_socket(self):
