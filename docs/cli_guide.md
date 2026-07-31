@@ -40,7 +40,7 @@ hivemind-client escalate --msg "recognizer_loop:utterance" --payload '{"utteranc
 ```
 - **Source**: `hivemind_bus_client.scripts.escalate` and `hivemind_bus_client.scripts.propagate`.
 
-## Network Discovery — `ping`
+## Network Discovery: `ping`
 
 The `ping` command sends a `PING` flood through the hive and collects responsive PINGs (same `flood_id`). After the
 collection window closes it renders the reachable topology as an ASCII tree (or raw JSON).
@@ -93,9 +93,12 @@ Options:
 }
 ```
 
-> ⚠️ Any node — including masters — MAY choose not to respond to a PING. The map reflects only
+> **Warning**: Any node, including masters, MAY choose not to respond to a PING. The map reflects only
 > the nodes that replied within the timeout window. Nodes further up the chain may be configured
 > to act as a discovery boundary and will simply not appear in the output.
 
 - **Source**: `hivemind_bus_client.scripts.ping`
 - **Backend**: `hivemind_core.hive_map.HiveMapper`
+
+---
+[← CLI Reference](cli.md) · [Home](index.md) · [Examples →](examples.md)

@@ -103,7 +103,7 @@ else:
 
 ---
 
-## QUERY — first-match request-response
+## QUERY: first-match request-response
 
 QUERY propagates upstream and returns the first answer.
 
@@ -125,7 +125,7 @@ def on_answer(msg):
 
 ---
 
-## CASCADE — collect responses from all nodes
+## CASCADE: collect responses from all nodes
 
 CASCADE floods the network and collects all answers. The `CascadeAggregator` buffers them and calls `cascade_select_callback` to pick the best.
 
@@ -226,3 +226,6 @@ announcement = HiveMessage(
 )
 client.emit(announcement)
 ```
+
+---
+[← CLI Guide](cli_guide.md) · [Home](index.md)

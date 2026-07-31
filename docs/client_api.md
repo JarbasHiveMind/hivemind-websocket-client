@@ -54,3 +54,6 @@ client.connect() # Performs the encrypted handshake via HTTP POST
 ## 3. Decorators
 The library includes useful decorators in `hivemind_bus_client.decorators` for wrapping functions as HiveMind services.
 - **`@with_hivemind`**: Automatically manages client connection and cleanup.
+
+---
+[← API Reference](api.md) · [Home](index.md) · [Async Client →](async_client.md)

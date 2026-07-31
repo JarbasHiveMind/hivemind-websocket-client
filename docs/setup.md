@@ -30,7 +30,7 @@ Added satellite: living-room-satellite
   password   : 5ae486f7f1c26bd4645bd052e4af3ea3
 ```
 
-Keep the access key and password — you need them on the satellite.
+Keep the access key and password. You need them on the satellite.
 
 To give the satellite admin rights (able to send BROADCAST messages):
 
@@ -64,7 +64,7 @@ hivemind-client ping --host ws://192.168.1.10 --port 5678
 A successful response looks like:
 
 ```
-Pong from hub (192.168.1.10:5678) — RTT 12 ms
+Pong from hub (192.168.1.10:5678), RTT 12 ms
 ```
 
 ## 5. Open an interactive terminal
@@ -147,8 +147,8 @@ RuntimeError: timed out waiting for handshake
 
 The TCP connection opened but the hub rejected or did not complete the handshake. Common causes:
 
-- Wrong access key or password — re-run `hivemind-core add-client` and update `set-identity`
-- The satellite's IP is blocked — check `hivemind-core blacklist-client`
+- Wrong access key or password: re-run `hivemind-core add-client` and update `set-identity`
+- The satellite's IP is blocked: check `hivemind-core blacklist-client`
 - Firewall is stateful and drops the upgrade: ensure WebSocket upgrades are not filtered
 
 ### Decryption error
@@ -157,7 +157,7 @@ The TCP connection opened but the hub rejected or did not complete the handshake
 got encrypted message, but could not decrypt!
 ```
 
-The `password` does not match what the hub stored for this access key. The password is used to derive the AES session key during the handshake — a mismatch means every message is unreadable.
+The `password` does not match what the hub stored for this access key. The handshake uses the password to derive the AES session key. A mismatch means every message is unreadable.
 
 ### Multiple satellites on the same machine
 
@@ -178,3 +178,6 @@ identity.save()
 client = HiveMessageBusClient(identity=identity)
 client.connect()
 ```
+
+---
+[Home](index.md) · [Installation →](installation.md)

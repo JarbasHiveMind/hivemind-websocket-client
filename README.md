@@ -2,9 +2,9 @@
 
 # HiveMind Bus Client
 
-`hivemind-websocket-client` (package `hivemind_bus_client`) is the **foundation library** for every HiveMind satellite. It provides an authenticated, encrypted WebSocket client that extends the standard OVOS bus client, enabling secure and routed communication between a satellite and a [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core) hub.
+`hivemind-websocket-client` (package `hivemind_bus_client`) is the foundation library for every HiveMind satellite. It provides an authenticated, encrypted WebSocket client that extends the standard OVOS bus client. This lets a satellite and a [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core) hub communicate securely, with messages routed between them.
 
-All satellite packages — `hivemind-mic-satellite`, `HiveMind-voice-relay`, `HiveMind-voice-sat`, and `HiveMind-cli` — build on this library. If you are building a custom satellite or integration, this is your starting point.
+All satellite packages build on this library: `hivemind-mic-satellite`, `HiveMind-voice-relay`, `HiveMind-voice-sat`, and `HiveMind-cli`. If you build a custom satellite or integration, start here.
 
 ## Where it fits in the satellite spectrum
 
@@ -16,16 +16,16 @@ HiveMind satellites are differentiated by how much audio and language processing
 | `hivemind-mic-satellite` | mic + VAD | STT, TTS, intent, skills |
 | `HiveMind-voice-relay` | mic + VAD + wakeword | STT, TTS |
 | `HiveMind-voice-sat` | mic + VAD + wakeword + STT + TTS | skills only |
-| **This library** | WebSocket transport + encryption | — |
+| **This library** | WebSocket transport + encryption | none |
 
-Every satellite in that table uses `HiveMessageBusClient` from this library to open the connection, complete the handshake, and exchange `HiveMessage` packets with the hub. Server-side STT and TTS are provided by the hub's `hivemind-audio-binary-protocol` plugin; the satellite cannot choose the engine — the hub operator configures it.
+Every satellite in that table uses `HiveMessageBusClient` from this library to open the connection, complete the handshake, and exchange `HiveMessage` packets with the hub. The hub's `hivemind-audio-binary-protocol` plugin provides server-side STT and TTS. The satellite cannot choose the engine. The hub operator configures it.
 
 See the [whitepaper](https://github.com/JarbasHiveMind/HiveMind-core/blob/dev/docs/whitepaper.md) for protocol details.
 
 ## Hardware and OS requirements
 
 - Python 3.9 or later
-- No special hardware required — runs on any machine with network access to the hub
+- No special hardware. It runs on any machine with network access to the hub.
 - The async client (`hivemind-bus-client[async]`) requires Python 3.10+
 
 ## Install
@@ -56,7 +56,7 @@ On the machine running `hivemind-core`:
 hivemind-core add-client --name "my-satellite" --access-key KEY --password PASS
 ```
 
-`add-client` prints an **access key** and a **password**. Keep both — you need them on every satellite you pair.
+`add-client` prints an access key and a password. Keep both. You need them on every satellite you pair.
 
 ### 2. Configure the satellite
 
@@ -150,7 +150,7 @@ Set the interval to `0` to disable client pings.
 
 ### Sending messages
 
-Any OVOS `Message` can be sent directly — the client wraps it in a `HiveMessage(BUS, ...)` automatically:
+You can send any OVOS `Message` directly. The client wraps it in a `HiveMessage(BUS, ...)` automatically:
 
 ```python
 from ovos_bus_client.message import Message
@@ -286,9 +286,9 @@ client.connect()
 ## Security
 
 - **Per-link encryption**: AES-GCM or ChaCha20-Poly1305, negotiated at handshake via `poorman_handshake`
-- **Hybrid INTERCOM encryption**: Random AES-256 key per message, RSA-encrypted key exchange — no payload size limit
-- **Self-signed TLS**: `self_signed=True` (default) accepts self-signed certificates; set `False` in production
-- **Trusted peers**: Only peers with a public key in `NodeIdentity.trusted_keys` can inject BUS messages via PROPAGATE and INTERCOM; untrusted messages are silently dropped
+- **Hybrid INTERCOM encryption**: Random AES-256 key per message, RSA-encrypted key exchange, no payload size limit
+- **Self-signed TLS**: `self_signed=True` (default) accepts self-signed certificates. Set it to `False` in production.
+- **Trusted peers**: Only peers with a public key in `NodeIdentity.trusted_keys` can inject BUS messages via PROPAGATE and INTERCOM. The client silently drops untrusted messages.
 
 ## Identity and credentials
 
@@ -329,25 +329,25 @@ hivemind-client propagate --msg "recognizer_loop:utterance" --payload '{"utteran
 
 ## Troubleshooting
 
-**`RuntimeError: NodeIdentity not set`** — Run `hivemind-client set-identity` or pass `key`, `password`, and `host` to the constructor.
+**`RuntimeError: NodeIdentity not set`**: Run `hivemind-client set-identity` or pass `key`, `password`, and `host` to the constructor.
 
-**`RuntimeError: timed out waiting for handshake`** — The hub is unreachable or the port is wrong. Verify the hub is running (`hivemind-core listen`) and the firewall allows port 5678. Try `hivemind-client ping` first.
+**`RuntimeError: timed out waiting for handshake`**: The hub is unreachable or the port is wrong. Verify the hub is running (`hivemind-core listen`) and the firewall allows port 5678. Try `hivemind-client ping` first.
 
-**`got encrypted message, but could not decrypt!`** — The access key or password does not match what was registered on the hub. Re-run `hivemind-core add-client` and update the satellite identity.
+**`got encrypted message, but could not decrypt!`**: The access key or password does not match what was registered on the hub. Re-run `hivemind-core add-client` and update the satellite identity.
 
-**Connection drops immediately** — The hub may have rejected the access key (wrong key, key revoked, or blacklisted). Check hub logs: `journalctl -u hivemind-core -f`.
+**Connection drops immediately**: The hub may have rejected the access key (wrong key, revoked key, or blacklisted key). Check hub logs: `journalctl -u hivemind-core -f`.
 
 ## Documentation
 
 Full reference in [`/docs`](docs/index.md):
 
-- [Installation](docs/installation.md) — PyPI, optional extras, dependencies
-- [API Reference](docs/api.md) — `HiveMessage`, `HiveMessageBusClient`, `NodeIdentity`, `HiveMapper`
-- [Client API](docs/client_api.md) — WebSocket and HTTP client usage
-- [Async Client](docs/async_client.md) — asyncio-native `AsyncHiveMessageBusClient`
-- [Message Types](docs/message_types.md) — Routing modes, QUERY, CASCADE, PING
-- [Identity & Credentials](docs/identity.md) — Credentials, RSA keys, trusted peers
-- [Binary Handlers](docs/binary_handlers.md) — TTS audio and file transfer callbacks
-- [Serialization](docs/serialization.md) — Binary wire format
-- [CLI Reference](docs/cli.md) — All `hivemind-client` commands
-- [Examples](docs/examples.md) — Chat, TTS, INTERCOM, QUERY, CASCADE, trust management
+- [Installation](docs/installation.md): PyPI, optional extras, dependencies
+- [API Reference](docs/api.md): `HiveMessage`, `HiveMessageBusClient`, `NodeIdentity`, `HiveMapper`
+- [Client API](docs/client_api.md): WebSocket and HTTP client usage
+- [Async Client](docs/async_client.md): asyncio-native `AsyncHiveMessageBusClient`
+- [Message Types](docs/message_types.md): Routing modes, QUERY, CASCADE, PING
+- [Identity & Credentials](docs/identity.md): Credentials, RSA keys, trusted peers
+- [Binary Handlers](docs/binary_handlers.md): TTS audio and file transfer callbacks
+- [Serialization](docs/serialization.md): Binary wire format
+- [CLI Reference](docs/cli.md): All `hivemind-client` commands
+- [Examples](docs/examples.md): Chat, TTS, INTERCOM, QUERY, CASCADE, trust management

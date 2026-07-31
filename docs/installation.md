@@ -16,10 +16,13 @@ hivemind-client --help
 
 The library requires:
 
-- `websocket-client` — WebSocket transport
-- `ovos-bus-client` — `Message` type compatibility with OVOS
-- `poorman-handshake` — RSA-based handshake and AES session key derivation
-- `pycryptodome` — AES-GCM encryption
-- `pybase64` — base64 encoding helpers
+- `websocket-client`, the WebSocket transport
+- `ovos-bus-client`, for `Message` type compatibility with OVOS
+- `poorman-handshake`, the RSA-based handshake and AES session key derivation
+- `pycryptodome`, for AES-GCM encryption
+- `pybase64`, base64 encoding helpers
 
-All are installed automatically as package dependencies.
+Package installation installs all of these automatically.
+
+---
+[← Setup](setup.md) · [Home](index.md) · [API Reference →](api.md)

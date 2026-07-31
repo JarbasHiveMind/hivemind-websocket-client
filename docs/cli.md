@@ -35,7 +35,7 @@ hivemind-client set-identity \
 
 ## `terminal`
 
-Interactive text terminal — type utterances, see spoken responses.
+Interactive text terminal. Type utterances and see spoken responses.
 
 ```bash
 hivemind-client terminal [OPTIONS]
@@ -85,35 +85,22 @@ hivemind-client send-mycroft \
 
 ## `escalate`
 
-Send a single OVOS message wrapped in a `HiveMessageType.ESCALATE` envelope. The message is forwarded upstream through the hub hierarchy.
+Send a single OVOS message wrapped in a `HiveMessageType.ESCALATE` envelope. The message is forwarded upstream through the hub hierarchy. It takes the same `--key`, `--host`, `--port`, `--msg`, and `--payload` options as `send-mycroft`.
 
 ```bash
 hivemind-client escalate [OPTIONS]
 ```
 
-| Option | Description |
-|---|---|
-| `--key TEXT` | HiveMind access key |
-| `--host TEXT` | HiveMind host |
-| `--port INTEGER` | HiveMind port |
-| `--msg TEXT` | OVOS message type |
-| `--payload TEXT` | OVOS message data as JSON |
-
 ---
 
 ## `propagate`
 
-Send a single OVOS message wrapped in a `HiveMessageType.PROPAGATE` envelope. The message is forwarded to all peers and upstream hubs.
+Send a single OVOS message wrapped in a `HiveMessageType.PROPAGATE` envelope. The message is forwarded to all peers and upstream hubs. It takes the same `--key`, `--host`, `--port`, `--msg`, and `--payload` options as `send-mycroft`.
 
 ```bash
 hivemind-client propagate [OPTIONS]
 ```
 
-| Option | Description |
-|---|---|
-| `--key TEXT` | HiveMind access key |
-| `--host TEXT` | HiveMind host |
-| `--port INTEGER` | HiveMind port |
-| `--msg TEXT` | OVOS message type |
-| `--payload TEXT` | OVOS message data as JSON |
+---
+[← Identity & Credentials](identity.md) · [Home](index.md) · [CLI Guide →](cli_guide.md)
 

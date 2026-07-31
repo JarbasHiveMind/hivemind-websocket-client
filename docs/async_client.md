@@ -2,7 +2,7 @@
 
 An asyncio-native sibling of [`HiveMessageBusClient`](client_api.md), built
 on `websockets` instead of `websocket-client`. Same protocol on the wire,
-same `HiveMessage` envelopes, same handshake state machine — just
+same `HiveMessage` envelopes, same handshake state machine. Just add
 `await` everywhere.
 
 ## When to use it
@@ -22,7 +22,7 @@ Keep the sync [`HiveMessageBusClient`](client_api.md) for:
 
 Both clients can talk to the same HiveMind server, send the same
 `HiveMessage` types, and use the same `NodeIdentity`. Pick one per
-process; do not mix them on the same connection.
+process. Do not mix them on the same connection.
 
 ## Install
 
@@ -85,14 +85,14 @@ asyncio.run(main())
 | `await bus.wait_for_mycroft(msg_type, timeout)` | `bus.wait_for_mycroft(...)` | Sugar for `wait_for_payload(message_type=BUS)`. |
 | `await bus.wait_for_response(msg, reply_type, timeout)` | `bus.wait_for_response(...)` | Emits then waits. |
 | `await bus.wait_for_payload_response(...)` | `bus.wait_for_payload_response(...)` | Emits then payload-filtered wait. |
-| `await bus.wait_for_handshake(timeout, max_retries)` | `bus.wait_for_handshake(...)` | Async retry loop; `max_retries=None` keeps waiting through reconnects. |
+| `await bus.wait_for_handshake(timeout, max_retries)` | `bus.wait_for_handshake(...)` | Async retry loop. `max_retries=None` keeps waiting through reconnects. |
 | `await bus.emit_intercom(msg, pubkey)` | `bus.emit_intercom(...)` | Hybrid-encrypted INTERCOM send. |
 | `bus.on(event, fn)` / `bus.once(event, fn)` / `bus.remove(event, fn)` | same | **Synchronous**, like the sync client. Keeps `HiveMindSlaveProtocol` drop-in compatible. |
 | `bus.on_mycroft(msg_type, fn)` | same | Internal-bus handler registration. |
 
 `AsyncHiveMessageWaiter` and `AsyncHivePayloadWaiter` are the
 asyncio.Event-based equivalents of `HiveMessageWaiter` and
-`HivePayloadWaiter`; use them when you want to set up the waiter before
+`HivePayloadWaiter`. Use them when you want to set up the waiter before
 emitting and then `await waiter.wait(timeout)`.
 
 ## Handshake
@@ -108,7 +108,7 @@ forced disconnect re-runs the handshake automatically on the next
 
 All transport-side decoding/encoding (AES-GCM, ChaCha20, bitstring framing,
 zlib compression) is reused from the shared
-`hivemind_bus_client.encryption` and `serialization` modules — the async
+`hivemind_bus_client.encryption` and `serialization` modules. The async
 client is just a different transport, not a different protocol. The
 `compress`, `binarize`, `cipher`, and `json_encoding` knobs work the
 same way on both clients.
@@ -116,12 +116,12 @@ same way on both clients.
 ## Benchmarks
 
 Four scripts ship under `benchmarks/`. They each answer a different
-question — picking only one tells a misleading story.
+question. Picking only one tells a misleading story.
 
 ### Honest summary first
 
 **The async client is _not_ faster per call on a single connection.**
-`websocket-client` is a C extension well-tuned for blocking I/O; the
+`websocket-client` is a C extension well-tuned for blocking I/O. The
 pure-Python `websockets` library plus event-loop dispatch is slightly
 slower per round-trip (~0.3 ms sync vs ~0.5 ms async, loopback).
 
@@ -133,14 +133,14 @@ workload shape.
 
 **Where async wins is structural, not microseconds**: setup time for
 many connections, thread-count footprint, and integration with existing
-asyncio code. Pick async when those matter; pick sync when your code is
+asyncio code. Pick async when those matter. Pick sync when your code is
 already threading-based or single-shot.
 
-### 1. In-process — library overhead only
+### 1. In-process: library overhead only
 
 `benchmarks/bench_async_vs_sync.py` stubs out the WebSocket. Measures
-serialization, emitter dispatch, and waiter coordination only —
-regression-detector, not runtime predictor.
+serialization, emitter dispatch, and waiter coordination only. It is a
+regression detector, not a runtime predictor.
 
 Python 3.11, n=1500:
 
@@ -148,13 +148,13 @@ Python 3.11, n=1500:
 |---|---|---|---|
 | `emit()` mean | 0.42 ms | 0.58 ms | async pays coroutine-dispatch cost |
 | `wait_for_message()` mean (already-set Event) | 0.004 ms | 0.020 ms | C-level `Event.is_set` beats asyncio scheduling on a degenerate case |
-| async-only concurrent emit ×200 | — | ≈1 660 msg/s | path that sync structurally can't take on one client |
+| async-only concurrent emit ×200 | n/a | ≈1 660 msg/s | path that sync structurally can't take on one client |
 
-### 2. Real transport — single connection round-trip
+### 2. Real transport: single connection round-trip
 
 `benchmarks/bench_async_vs_sync_ws.py` against a loopback `websockets`
 echo server, sequential, no server-side latency. The worst case for
-async — there's nothing to overlap.
+async. There is nothing to overlap.
 
 Python 3.11, n=300:
 
@@ -169,15 +169,15 @@ overhead.
 ### 3. Fan-out with realistic server latency
 
 `benchmarks/bench_fanout.py` adds a configurable server-side delay
-(25 – 50 ms — what you'd see when the server actually does work) and
+(25 to 50 ms, what you would see when the server actually does work) and
 runs three scenarios:
 
-- **A — sequential** (30 calls, 25 ms server delay): tied. Both pay the
-  full server delay; per-call overhead is negligible vs that.
-- **B — fan-out on one connection** (100 concurrent round-trips on the
+- **A, sequential** (30 calls, 25 ms server delay): tied. Both pay the
+  full server delay. Per-call overhead is negligible against that delay.
+- **B, fan-out on one connection** (100 concurrent round-trips on the
   same socket): tied. Threads release the GIL on I/O so they
   interleave fine.
-- **C — many independent connections** (200 connections × 10 calls):
+- **C, many independent connections** (200 connections x 10 calls):
   tied at the wall-clock level.
 
 The honest reading: don't pick the async client expecting a wall-time
@@ -185,8 +185,8 @@ win, because for most realistic shapes there isn't one.
 
 ### 4. Resource footprint at scale
 
-`benchmarks/bench_memory.py` — open N idle connections, hold them open,
-report RSS and thread count.
+`benchmarks/bench_memory.py` opens N idle connections, holds them open,
+and reports RSS and thread count.
 
 Python 3.11, 1 000 idle connections:
 
@@ -204,7 +204,7 @@ This is the most honest answer to "why use async":
   10 000+ connections, this becomes a hard wall for sync, not a
   tradeoff.
 - **Cleaner shutdown / cancellation.** `asyncio.CancelledError`
-  propagates through awaits; cancelling a thread is messy. Matters for
+  propagates through awaits. Cancelling a thread is messy. This matters for
   graceful FastAPI/aiohttp shutdown and signal handlers.
 - **RSS roughly ties.** Python thread stacks are smaller than the
   textbook suggests on Linux for this workload, so memory isn't the
@@ -224,7 +224,7 @@ This is the most honest answer to "why use async":
 ### Run the benchmarks yourself
 
 ```bash
-# Library overhead only — fast, no transport
+# Library overhead only, fast, no transport
 python benchmarks/bench_async_vs_sync.py --n 1500
 
 # End-to-end round-trip via a real loopback WebSocket echo server
@@ -246,18 +246,21 @@ the package:
 - `NodeIdentity` ([`hivemind_bus_client/identity.py`](../hivemind_bus_client/identity.py))
 - All of [`encryption.py`](../hivemind_bus_client/encryption.py) (AES-GCM / ChaCha20 / hybrid)
 - All of [`serialization.py`](../hivemind_bus_client/serialization.py) (binary framing, zlib)
-- `HiveMindSlaveProtocol` ([`hivemind_bus_client/protocol.py`](../hivemind_bus_client/protocol.py)) — works with both sync and async emitters via `pyee`
+- `HiveMindSlaveProtocol` ([`hivemind_bus_client/protocol.py`](../hivemind_bus_client/protocol.py)), works with both sync and async emitters via `pyee`
 
 That keeps async-vs-sync a transport question, not a protocol fork.
 
 ## Caveats
 
 - **Reconnect**: the async client does not auto-reconnect today. The
-  receive task exits on close; supervise it from your application
+  receive task exits on close. Supervise it from your application
   (the same shape as the sync client's responsibility-of-the-caller
   pattern).
 - **Mixed clients in one process**: don't share the same emitter or
   internal bus between sync and async clients. Each owns its own.
 - **`websockets` version**: the package floor is `websockets>=10`.
-  Newer versions are fine; the public API used here (`websockets.connect`,
+  Newer versions are fine. The public API used here (`websockets.connect`,
   `WebSocketClientProtocol.send/recv`, `ConnectionClosed*`) is stable.
+
+---
+[← Client API](client_api.md) · [Home](index.md) · [Fakes →](fakebus.md)
