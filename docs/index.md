@@ -1,12 +1,12 @@
 # HiveMind WebSocket Client
 
-`hivemind-websocket-client` (package: `hivemind_bus_client`) is the primary library for building and running HiveMind satellites. It provides a robust WebSocket client that extends the standard OpenVoiceOS (OVOS) bus client, enabling secure, encrypted, and routed communication across the HiveMind network.
+`hivemind-websocket-client` (package: `hivemind_bus_client`) is the primary library for building and running HiveMind satellites. It provides a WebSocket client that extends the standard OpenVoiceOS (OVOS) bus client. The client encrypts and routes communication across the HiveMind network.
 
 ## Key Features
 
 - **Transparent Routing**: Automatically handles message routing between satellites and hubs.
 - **Per-link Encryption**: AES-GCM or ChaCha20-Poly1305, negotiated at handshake.
-- **Hybrid INTERCOM Encryption**: AES-256-GCM payload + RSA-encrypted ephemeral key per message — no size limits.
+- **Hybrid INTERCOM Encryption**: AES-256-GCM payload + RSA-encrypted ephemeral key per message, with no size limit.
 - **Trusted Peers**: `NodeIdentity.trusted_keys` gates BUS injection for PROPAGATE and INTERCOM from untrusted sources.
 - **CASCADE Aggregation**: Collects responses from all nodes with timeout and early resolution via `HiveMapper`.
 - **PING Discovery**: Flood-based topology mapping with public key and locale announcement.

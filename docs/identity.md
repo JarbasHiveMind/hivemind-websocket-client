@@ -1,6 +1,6 @@
 # Identity & Credentials
 
-Every HiveMind client node has a **NodeIdentity** — a persisted set of credentials and connection settings stored in:
+Every HiveMind client node has a **NodeIdentity**, a persisted set of credentials and connection settings stored in:
 
 ```
 ~/.config/hivemind/_identity.json
@@ -41,7 +41,7 @@ identity.remove_trusted_key("living-room-hub")
 identity.save()
 ```
 
-Source: `NodeIdentity.trusted_keys` — `identity.py:153`
+Source: `NodeIdentity.trusted_keys`, `identity.py:153`
 
 ## Setting identity from the CLI
 
@@ -104,3 +104,6 @@ client.connect()
 ```
 
 Both `key` and `password` are required. If either is missing and not present in the identity file, a `RuntimeError` is raised.
+
+---
+[← Binary Handlers](binary_handlers.md) · [Home](index.md) · [CLI Reference →](cli.md)

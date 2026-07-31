@@ -24,13 +24,13 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`PING`** | Network discovery flood | Each node responds with its own PING (same `flood_id`). Carried inside PROPAGATE. Route metadata = hive path. |
 | **`HELLO`** | Node announcement | Session sync at connection time. |
 | **`HANDSHAKE`** | Crypto negotiation | Key exchange at connection time. |
-| **`THIRDPRTY`** | User-land custom | Application-defined payload; HiveMind relays without interpretation. |
+| **`THIRDPRTY`** | User-land custom | Application-defined payload. HiveMind relays it without interpretation. |
 
-## QUERY — First-Match Request-Response
+## QUERY: First-Match Request-Response
 
 QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond.
 
-**Satellite behaviour** (`HiveMindSlaveProtocol.handle_query` — `protocol.py:311`):
+**Satellite behavior** (`HiveMindSlaveProtocol.handle_query`, `protocol.py:311`):
 - Inner payload must be `BUS` or `INTERCOM`.
 - `BUS` payloads are dispatched to `handle_bus`.
 - `INTERCOM` payloads are dispatched to `handle_intercom`.
@@ -57,11 +57,11 @@ def on_speak(msg):
     print(msg.data["utterance"])
 ```
 
-## CASCADE — Collect-All Request-Response
+## CASCADE: Collect-All Request-Response
 
-CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional — nodes that cannot answer simply stay silent.
+CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional. Nodes that cannot answer simply stay silent.
 
-**Satellite behaviour** (`HiveMindSlaveProtocol.handle_cascade` — `protocol.py:436`):
+**Satellite behavior** (`HiveMindSlaveProtocol.handle_cascade`, `protocol.py:436`):
 
 Responses are buffered in a `CascadeAggregator` (`protocol.py:21`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
 
@@ -86,7 +86,7 @@ from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivemind_bus_client.hive_map import HiveMapper
 
 def pick_best(responses):
-    # custom logic — e.g. highest confidence, specific node, etc.
+    # custom logic, for example highest confidence or a specific node
     return responses[0]
 
 proto.cascade_select_callback = pick_best
@@ -103,7 +103,7 @@ def on_skills(msg):
     print(msg.data["skills"])
 ```
 
-## PING Flood — Network Discovery
+## PING Flood: Network Discovery
 
 PING messages are **always the inner payload of a PROPAGATE message**. They are never sent bare. Each node that receives a PING responds with its own PING carrying the same `flood_id`. The `flood_id` prevents infinite loops (tracked via `HiveMapper.check_flood_id`). PONG is no longer used.
 
@@ -115,8 +115,8 @@ PING messages are **always the inner payload of a PROPAGATE message**. They are 
 | `peer` | `str` | `{name}::{session_id}` identifier |
 | `site_id` | `str` | Location identifier |
 | `timestamp` | `float` | Sender's clock for RTT estimation |
-| `public_key` | `str?` | RSA public key — enables trust verification via `HiveMapper.mark_trusted_nodes` |
-| `lang` | `str?` | Node's locale (e.g. `"en-us"`) — enables localized INTERCOM communication |
+| `public_key` | `str?` | RSA public key, enables trust verification via `HiveMapper.mark_trusted_nodes` |
+| `lang` | `str?` | Node's locale (e.g. `"en-us"`), enables localized INTERCOM communication |
 
 ### Sending a PING
 
@@ -145,7 +145,7 @@ client.emit(ping_outer)
 ```python
 def on_ping(message: HiveMessage) -> None:
     payload = message.payload          # inner PING dict
-    route   = message.route            # List[{source, targets}] — the hive path
+    route   = message.route            # List[{source, targets}], the hive path
     print(f"PING from {payload['peer']} via {len(route)} hops")
 
 client.on(HiveMessageType.PING, on_ping)
@@ -157,7 +157,7 @@ For automated topology collection use `HiveMapper` from `hivemind_core.hive_map`
 
 ## Route Metadata
 
-Every `HiveMessage` has a `route` field: `List[Dict[str, Any]]` — an ordered list of hops tracking the network path.
+Every `HiveMessage` has a `route` field: `List[Dict[str, Any]]`, an ordered list of hops tracking the network path.
 
 ### Hop Structure
 
@@ -220,3 +220,6 @@ hive_msg = HiveMessage(HiveMessageType.BUS,
 audio_bytes = b"..." # Raw PCM audio
 hive_msg = HiveMessage(HiveMessageType.BIN, audio_bytes)
 ```
+
+---
+[← Fakes](fakebus.md) · [Home](index.md) · [Binary Serialization →](serialization.md)

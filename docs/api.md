@@ -9,7 +9,7 @@ The fundamental message type exchanged across the HiveMind network.
 | Property | Type | Description | Source |
 |---|---|---|---|
 | `msg_type` | `str` | One of the `HiveMessageType` values | `message.py:105` |
-| `payload` | `Message \| HiveMessage \| dict \| bytes` | Message content; automatically cast to the appropriate type | `message.py:128` |
+| `payload` | `Message \| HiveMessage \| dict \| bytes` | Message content, automatically cast to the appropriate type | `message.py:128` |
 | `bin_type` | `HiveMindBinaryPayloadType` | Binary payload subtype (only for `BINARY` messages) | `message.py:164` |
 | `metadata` | `dict` | Auxiliary metadata (e.g. `sample_rate`, `lang`, `file_name`) | `message.py:94` |
 | `node_id` | `str` | Node semi-unique identifier | `message.py:109` |
@@ -40,8 +40,8 @@ Enumeration of HiveMind message types.
 | `PROPAGATE` | `"propagate"` | Forward message to all slaves and masters |
 | `ESCALATE` | `"escalate"` | Forward message up the authority chain |
 | `HELLO` | `"hello"` | Node announcement and session setup |
-| `QUERY` | `"query"` | Request-response upstream; first answering node wins |
-| `CASCADE` | `"cascade"` | Request-response flood; collects responses from all nodes |
+| `QUERY` | `"query"` | Request-response upstream, first answering node wins |
+| `CASCADE` | `"cascade"` | Request-response flood, collects responses from all nodes |
 | `PING` | `"ping"` | Network topology discovery (flood-based) |
 | `RENDEZVOUS` | `"rendezvous"` | Reserved for rendezvous nodes |
 | `BINARY` | `"bin"` | Raw binary data container |
@@ -59,8 +59,8 @@ Describes the content of a `BINARY` message.
 | `RAW_AUDIO` | `1` | Raw PCM audio |
 | `NUMPY_IMAGE` | `2` | NumPy image array |
 | `FILE` | `3` | Generic file transfer |
-| `STT_AUDIO_TRANSCRIBE` | `4` | Audio for STT — return transcripts |
-| `STT_AUDIO_HANDLE` | `5` | Audio for STT — transcribe and handle immediately |
+| `STT_AUDIO_TRANSCRIBE` | `4` | Audio for STT, return transcripts |
+| `STT_AUDIO_HANDLE` | `5` | Audio for STT, transcribe and handle immediately |
 | `TTS_AUDIO` | `6` | Synthesized TTS audio to be played back |
 
 ---
@@ -72,11 +72,11 @@ WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 ### Core Methods
 
 - `connect(bus=FakeBus(), protocol=None, site_id=None)` (`client.py:193`): Connects to the HiveMind hub, starts the background thread, and waits for the handshake to complete.
-- `emit(message, binary_type=UNDEFINED)` (`client.py:348`): Sends a `HiveMessage` or `MycroftMessage`. Automatically injects routing context for `BUS` messages (`client.py:379`).
-- `on(event_name, func)` (`client.py:434`): Registers a handler. Automatically detects if the event name is a `HiveMessageType` or a standard OVOS message type (`client.py:435`).
+- `emit(message, binary_type=UNDEFINED)` (`client.py:348`): Sends a `HiveMessage` or `MycroftMessage`. It automatically injects routing context for `BUS` messages (`client.py:379`).
+- `on(event_name, func)` (`client.py:434`): Registers a handler. It automatically detects if the event name is a `HiveMessageType` or a standard OVOS message type (`client.py:435`).
 - `on_mycroft(mycroft_msg_type, func)` (`client.py:429`): Explicitly registers a handler for an OVOS internal bus message.
 - `remove(event_name, func)` (`client.py:447`): Removes a registered handler.
-- `wait_for_handshake(timeout=5, max_retries=None)` (`client.py:236`): Blocks until the cryptographic handshake with the hub is finished. By default it waits through reconnects forever; pass `max_retries` for a hard timeout.
+- `wait_for_handshake(timeout=5, max_retries=None)` (`client.py:236`): Blocks until the cryptographic handshake with the hub is finished. By default it waits through reconnects forever. Pass `max_retries` for a hard timeout.
 - `emit_intercom(message, pubkey)` (`client.py:538`): Sends a hybrid-encrypted (AES-GCM + RSA) message targeted at a specific node's public key.
 
 ### Waiting for Messages
@@ -112,7 +112,7 @@ Manages the node's identity, including credentials and RSA keys.
 
 Trusted keys are stored as an alias → public key mapping in the identity file. Used by protocol handlers to gate BUS injection from PROPAGATE and INTERCOM messages.
 
-- `trusted_keys` (`identity.py:153`): `Dict[str, str]` — alias → public key mapping.
+- `trusted_keys` (`identity.py:153`): `Dict[str, str]`, an alias-to-public-key mapping.
 - `add_trusted_key(alias, pubkey)` (`identity.py:176`): Add a peer. Returns `False` if alias already exists.
 - `remove_trusted_key(alias)` (`identity.py:195`): Remove by alias. Returns `False` if not found.
 - `is_trusted_key(pubkey)` (`identity.py:210`): Check if a public key is trusted.
@@ -174,11 +174,14 @@ Convenience decorators for registering handlers on specific message types.
 
 ### Symmetric Encryption (per-link)
 
-- `encrypt_AES(key, text)` / `decrypt_AES_128(key, ciphertext, tag, nonce)` — AES-GCM
-- `encrypt_ChaCha20_Poly1305(key, text)` / `decrypt_ChaCha20_Poly1305(key, ciphertext, tag, nonce)` — ChaCha20-Poly1305
+- `encrypt_AES(key, text)` / `decrypt_AES_128(key, ciphertext, tag, nonce)`: AES-GCM
+- `encrypt_ChaCha20_Poly1305(key, text)` / `decrypt_ChaCha20_Poly1305(key, ciphertext, tag, nonce)`: ChaCha20-Poly1305
 
 ---
 
 ## `HiveMessageWaiter` / `HivePayloadWaiter` (`hivemind_bus_client/client.py:38`, `78`)
 
 Utility classes used for one-shot message waiting. These are used internally by the `wait_for_*` methods of `HiveMessageBusClient`.
+
+---
+[← Installation](installation.md) · [Home](index.md) · [Client API →](client_api.md)
