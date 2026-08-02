@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a2) (2026-08-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.5a1...0.10.5a2)
+
+**Merged pull requests:**
+
+- test: cover the XX-path pinned-key mismatch abort \(CRYPTO-1 §3.4.5\) [\#149](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/149) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.4a1...0.10.5a1)
@@ -664,7 +672,6 @@
 **Merged pull requests:**
 
 - ovos rebase + handshake + session support [\#15](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/15) ([JarbasAl](https://github.com/JarbasAl))
-- Feat/mycroft drop in support [\#5](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/5) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.0.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.0.1) (2021-04-22)
 
