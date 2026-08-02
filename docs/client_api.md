@@ -7,13 +7,13 @@ Use this for real-time, bidirectional communication over WebSockets.
 - **Source**: `hivemind_bus_client.client.HiveMessageBusClient`
 
 ### Basic Connection
-The client handles the encrypted handshake (via `poorman_handshake`) and transport layer security (AES-256-GCM via `hivemind_bus_client.encryption`).
+The client handles the encrypted handshake (via `poorman_handshake`) and the session cipher (AES-GCM or ChaCha20-Poly1305, via `hivemind_bus_client.encryption`).
 
 ```python
 from hivemind_bus_client.client import HiveMessageBusClient
 
-# Uses identity from ~/.config/hivemind-core/identity.json by default
-client = HiveMessageBusClient(host="192.168.1.10", port=5678)
+# Uses identity from ~/.config/hivemind/_identity.json by default
+client = HiveMessageBusClient(host="ws://192.168.1.10", port=5678)
 client.connect() # Executes poorman_handshake.PasswordHandShake
 ```
 
@@ -52,8 +52,18 @@ client.connect() # Performs the encrypted handshake via HTTP POST
 ```
 
 ## 3. Decorators
-The library includes useful decorators in `hivemind_bus_client.decorators` for wrapping functions as HiveMind services.
-- **`@with_hivemind`**: Automatically manages client connection and cleanup.
+`hivemind_bus_client.decorators` registers a function as a handler for one message type.
+Each decorator takes the payload type and the bus.
+
+```python
+from hivemind_bus_client.decorators import on_mycroft_message
+
+@on_mycroft_message("speak", bus=client)
+def on_speak(msg):
+    print(msg.data["utterance"])
+```
+
+See the [API Reference](api.md) for the full decorator list.
 
 ---
 [← API Reference](api.md) · [Home](index.md) · [Async Client →](async_client.md)

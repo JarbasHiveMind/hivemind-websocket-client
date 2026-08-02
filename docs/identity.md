@@ -41,7 +41,7 @@ identity.remove_trusted_key("living-room-hub")
 identity.save()
 ```
 
-Source: `NodeIdentity.trusted_keys`, `identity.py:153`
+Source: `NodeIdentity.trusted_keys`, `identity.py`
 
 ## Setting identity from the CLI
 

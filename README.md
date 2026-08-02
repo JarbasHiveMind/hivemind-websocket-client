@@ -20,13 +20,12 @@ HiveMind satellites are differentiated by how much audio and language processing
 
 Every satellite in that table uses `HiveMessageBusClient` from this library to open the connection, complete the handshake, and exchange `HiveMessage` packets with the hub. The hub's `hivemind-audio-binary-protocol` plugin provides server-side STT and TTS. The satellite cannot choose the engine. The hub operator configures it.
 
-See the [whitepaper](https://github.com/JarbasHiveMind/HiveMind-core/blob/dev/docs/whitepaper.md) for protocol details.
+See the [hivemind-core protocol docs](https://github.com/JarbasHiveMind/HiveMind-core/blob/dev/docs/protocol.md) for protocol details.
 
 ## Hardware and OS requirements
 
-- Python 3.9 or later
+- Python 3.10 or later
 - No special hardware. It runs on any machine with network access to the hub.
-- The async client (`hivemind-bus-client[async]`) requires Python 3.10+
 
 ## Install
 
@@ -57,6 +56,17 @@ hivemind-core add-client --name "my-satellite" --access-key KEY --password PASS
 ```
 
 `add-client` prints an access key and a password. Keep both. You need them on every satellite you pair.
+
+A new client starts with an **empty** message-type whitelist, so the hub denies everything
+it sends. Grant the types the satellite needs, using the node id that `add-client` printed:
+
+```bash
+hivemind-core allow-msg "recognizer_loop:utterance" 1
+hivemind-core allow-msg "speak" 1
+```
+
+Skip this and the satellite connects, but every utterance comes back as
+`hive.policy.denied`.
 
 ### 2. Configure the satellite
 
@@ -142,6 +152,11 @@ client.connect()                # blocks until the handshake completes
 
 `connect()` runs the WebSocket in a background thread and calls `wait_for_handshake()`. After it returns the connection is live.
 
+The client owns its own reconnect loop. If the socket closes, a single worker thread
+reopens it and repeats the handshake. `wait_for_handshake()` waits through reconnects
+forever by default. Pass `handshake_max_retries` to `connect()` to make a bad password
+fail fast instead of blocking.
+
 Ping settings can also be supplied with environment variables. Client-specific
 variables (`HIVEMIND_WEBSOCKET_CLIENT_PING_INTERVAL`,
 `HIVEMIND_WEBSOCKET_CLIENT_PING_TIMEOUT`) win over shared hub defaults
@@ -226,7 +241,7 @@ client.emit(HiveMessage(
 
 ### Peer-to-peer encrypted messages (INTERCOM)
 
-INTERCOM uses hybrid encryption (random AES-256-GCM key per message, RSA-encrypted key exchange):
+INTERCOM uses hybrid encryption (random AES-256-GCM key per message, RSA-encrypted key exchange). It has no binary wire code, so the client always sends it as a text frame:
 
 ```python
 target_pubkey = "-----BEGIN PUBLIC KEY-----\n..."
@@ -282,6 +297,10 @@ client.connect()
 | `INTERCOM` | any → any | End-to-end hybrid-encrypted (AES-GCM + RSA) |
 | `PING` | inside PROPAGATE | Flood-based network topology discovery |
 | `BINARY` | hub → satellite | Raw binary payload (TTS audio, file transfer) |
+| `THIRDPRTY` | any → any | User-land payload. HiveMind relays it and does nothing else |
+
+`emit()` raises `ValueError` for a message type that has no binary wire code. It never
+relabels the type to get the frame out.
 
 ## Security
 
@@ -325,6 +344,12 @@ hivemind-client send-mycroft \
 # Send as ESCALATE or PROPAGATE
 hivemind-client escalate --msg "recognizer_loop:utterance" --payload '{"utterances": ["hello"]}'
 hivemind-client propagate --msg "recognizer_loop:utterance" --payload '{"utterances": ["hello"]}'
+
+# Check that the saved identity can reach the hub
+hivemind-client test-identity
+
+# Generate a new RSA key pair for peer-to-peer messages
+hivemind-client reset-pgp
 ```
 
 ## Troubleshooting
@@ -335,7 +360,9 @@ hivemind-client propagate --msg "recognizer_loop:utterance" --payload '{"utteran
 
 **`got encrypted message, but could not decrypt!`**: The access key or password does not match what was registered on the hub. Re-run `hivemind-core add-client` and update the satellite identity.
 
-**Connection drops immediately**: The hub may have rejected the access key (wrong key, revoked key, or blacklisted key). Check hub logs: `journalctl -u hivemind-core -f`.
+**Connection drops immediately**: The hub rejected the access key, or the protocol version the client offered is below the hub's `min_protocol_version`. Check hub logs: `journalctl -u hivemind-core -f`.
+
+**Every message comes back as `hive.policy.denied`**: The message type is not in this client's whitelist on the hub. Run `hivemind-core allow-msg <msg_type> <node_id>`. An empty whitelist also denies binary payloads.
 
 ## Documentation
 

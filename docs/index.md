@@ -15,9 +15,9 @@
 
 ## Primary Components
 
-- **`HiveMessageBusClient`**: The main WebSocket client class (`hivemind_bus_client/client.py:93`).
-- **`HiveMessage`**: The fundamental message unit of the HiveMind protocol (`hivemind_bus_client/message.py:45`).
-- **`NodeIdentity`**: Manages device credentials, keys, and identity settings (`hivemind_bus_client/identity.py:7`).
+- **`HiveMessageBusClient`**: The main WebSocket client class (`hivemind_bus_client/client.py`).
+- **`HiveMessage`**: The fundamental message unit of the HiveMind protocol (`hivemind_bus_client/message.py`).
+- **`NodeIdentity`**: Manages device credentials, keys, and identity settings (`hivemind_bus_client/identity.py`).
 
 ## Quick Start
 
@@ -27,6 +27,9 @@ from ovos_bus_client.message import Message
 
 # Initialize the client
 client = HiveMessageBusClient(key="my_access_key", password="my_password", host="ws://127.0.0.1")
+
+# The hub must first grant this client the message types it sends:
+#   hivemind-core allow-msg "recognizer_loop:utterance" <node_id>
 
 # Connect and block until handshake is complete
 client.connect()

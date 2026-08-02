@@ -20,6 +20,8 @@ hivemind-client set-identity [OPTIONS]
 |---|---|
 | `--key TEXT` | HiveMind access key |
 | `--password TEXT` | HiveMind password |
+| `--host TEXT` | Default hub URL, `ws://` or `wss://` |
+| `--port INTEGER` | Default hub port |
 | `--siteid TEXT` | Location identifier injected into `message.context` |
 
 **Example:**
@@ -44,8 +46,10 @@ hivemind-client terminal [OPTIONS]
 | Option | Description |
 |---|---|
 | `--key TEXT` | HiveMind access key (overrides identity file) |
+| `--password TEXT` | HiveMind password (overrides identity file) |
 | `--host TEXT` | HiveMind host URL |
-| `--port INTEGER` | HiveMind port |
+| `--port INTEGER` | HiveMind port (default 5678) |
+| `--siteid TEXT` | Location identifier (overrides identity file) |
 
 **Example:**
 
@@ -68,10 +72,15 @@ hivemind-client send-mycroft [OPTIONS]
 | Option | Description |
 |---|---|
 | `--key TEXT` | HiveMind access key |
+| `--password TEXT` | HiveMind password |
 | `--host TEXT` | HiveMind host |
-| `--port INTEGER` | HiveMind port |
+| `--port INTEGER` | HiveMind port (default 5678) |
+| `--siteid TEXT` | Location identifier |
 | `--msg TEXT` | OVOS message type to inject |
 | `--payload TEXT` | OVOS message data as a JSON string |
+
+The hub must have the message type in this client's whitelist. If it does not, the hub
+answers `hive.policy.denied`. Grant it with `hivemind-core allow-msg <msg_type> <node_id>`.
 
 **Example:**
 
@@ -85,7 +94,7 @@ hivemind-client send-mycroft \
 
 ## `escalate`
 
-Send a single OVOS message wrapped in a `HiveMessageType.ESCALATE` envelope. The message is forwarded upstream through the hub hierarchy. It takes the same `--key`, `--host`, `--port`, `--msg`, and `--payload` options as `send-mycroft`.
+Send a single OVOS message wrapped in a `HiveMessageType.ESCALATE` envelope. The message is forwarded upstream through the hub hierarchy. It takes the same options as `send-mycroft`.
 
 ```bash
 hivemind-client escalate [OPTIONS]
@@ -95,10 +104,53 @@ hivemind-client escalate [OPTIONS]
 
 ## `propagate`
 
-Send a single OVOS message wrapped in a `HiveMessageType.PROPAGATE` envelope. The message is forwarded to all peers and upstream hubs. It takes the same `--key`, `--host`, `--port`, `--msg`, and `--payload` options as `send-mycroft`.
+Send a single OVOS message wrapped in a `HiveMessageType.PROPAGATE` envelope. The message is forwarded to all peers and upstream hubs. It takes the same options as `send-mycroft`.
 
 ```bash
 hivemind-client propagate [OPTIONS]
+```
+
+---
+
+## `ping`
+
+Send a PING flood and print the reachable hive topology as an ASCII tree.
+
+```bash
+hivemind-client ping [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--key TEXT` | HiveMind access key |
+| `--password TEXT` | HiveMind password |
+| `--host TEXT` | HiveMind host |
+| `--port INTEGER` | HiveMind port (default 5678) |
+| `--siteid TEXT` | Location identifier |
+| `--timeout FLOAT` | Seconds to collect answering PINGs (default 5.0) |
+| `--json` | Print the raw JSON topology instead of the tree |
+
+See the [CLI Guide](cli_guide.md) for sample output.
+
+---
+
+## `test-identity`
+
+Open a connection with the saved identity and report whether the handshake completes.
+
+```bash
+hivemind-client test-identity
+```
+
+---
+
+## `reset-pgp`
+
+Generate a new RSA key pair for this node. Peers that trust the old public key must be
+updated.
+
+```bash
+hivemind-client reset-pgp
 ```
 
 ---

@@ -37,8 +37,8 @@ client.connect()
 
 ## Available Callback Methods
 
-- **`handle_receive_tts`**: Called when the AI generates audio from text (`client.py:27`).
-- **`handle_receive_file`**: Called for generic file transfers (`client.py:33`).
+- **`handle_receive_tts`**: Called when the AI generates audio from text (`client.py`).
+- **`handle_receive_file`**: Called for generic file transfers (`client.py`).
 
 ---
 [← Binary Serialization](serialization.md) · [Home](index.md) · [Identity & Credentials →](identity.md)
