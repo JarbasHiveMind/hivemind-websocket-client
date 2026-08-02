@@ -41,6 +41,19 @@ class HiveMindBinaryPayloadType(IntEnum):
     TTS_AUDIO = 6  # synthesized TTS audio to be played
 
 
+class _Unset:
+    """Sentinel telling forward() apart from an explicit None.
+
+    ``forward(target_site_id=None)`` must be able to DROP the site id, so
+    ``None`` cannot double as "not given"."""
+
+    def __repr__(self):
+        return "<unset>"
+
+
+_UNSET = _Unset()
+
+
 class HiveMessage:
     def __init__(self, msg_type: Union[HiveMessageType, str],
                  payload: Optional[Union[Message, 'HiveMessage', str, dict, bytes]] =None,
@@ -55,7 +68,9 @@ class HiveMessage:
         #  except for the hivemind node classes receiving the message and
         #  creating the object nothing should be able to change these values
         #  node classes might change them a runtime by the private attribute
-        #  but end-users should consider them read_only
+        #  but end-users should consider them read_only.
+        #  To send this message on to the next hop, use forward() - it derives
+        #  a new envelope and keeps the fields you did not name.
         if msg_type not in [m.value for m in HiveMessageType]:
             raise ValueError("Unknown HiveMessage.msg_type")
         if msg_type != HiveMessageType.BINARY and bin_type != HiveMindBinaryPayloadType.UNDEFINED:
@@ -81,6 +96,10 @@ class HiveMessage:
         elif isinstance(payload, str):
             payload = json.loads(payload)
         self._payload = payload or {}
+        # BUS/wrapper payloads are rebuilt into Message/HiveMessage objects on
+        # access; without this cache every read returned a different object and
+        # mutating one of them was silently lost. See the payload property.
+        self._payload_view = None
 
         self._site_id = target_site_id
         self._target_pubkey = target_pubkey
@@ -129,21 +148,31 @@ class HiveMessage:
         Return the public payload converted to the most appropriate message representation for this HiveMessage.
         
         Depending on this message's msg_type, the payload is returned as a reconstructed `Message`, a reconstructed `HiveMessage`, or the raw stored payload.
-        
+
+        The reconstructed object is built once and reused, so reading the
+        payload twice gives you the SAME object and a mutation made through it
+        is still there on the next read. It is invalidated when the payload is
+        replaced or an item is assigned.
+
         Returns:
             Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, ESCALATE, or QUERY; otherwise the raw payload (typically a `dict` or `bytes`).
         """
+        if self._payload_view is not None:
+            return self._payload_view
+
         if self.msg_type in [HiveMessageType.BUS, HiveMessageType.SHARED_BUS]:
-            return Message(self._payload["type"],
-                           data=self._payload.get("data"),
-                           context=self._payload.get("context"))
-        if self.msg_type in [HiveMessageType.BROADCAST,
-                             HiveMessageType.PROPAGATE,
-                             HiveMessageType.CASCADE,
-                             HiveMessageType.ESCALATE,
-                             HiveMessageType.QUERY]:
-            return HiveMessage(**self._payload)
-        return self._payload
+            self._payload_view = Message(self._payload["type"],
+                                         data=self._payload.get("data"),
+                                         context=self._payload.get("context"))
+        elif self.msg_type in [HiveMessageType.BROADCAST,
+                               HiveMessageType.PROPAGATE,
+                               HiveMessageType.CASCADE,
+                               HiveMessageType.ESCALATE,
+                               HiveMessageType.QUERY]:
+            self._payload_view = HiveMessage(**self._payload)
+        else:
+            return self._payload
+        return self._payload_view
 
     @payload.setter
     def payload(self, payload: Union['HiveMessage', Message, dict, bytes]):
@@ -159,6 +188,7 @@ class HiveMessage:
             self._payload = payload.as_dict
         else:
             self._payload = payload
+        self._payload_view = None
 
     @property
     def bin_type(self) -> HiveMindBinaryPayloadType:
@@ -191,7 +221,54 @@ class HiveMessage:
                 "node": self.node_id,
                 "target_site_id": self.target_site_id,
                 "target_pubkey": self.target_public_key,
+                # NOTE: target_peers is deliberately NOT here, and no new key
+                # may be added without measuring. hivemind-core encrypts an
+                # INTERCOM inner body with raw RSA (PKCS1-OAEP), so a
+                # serialized envelope must fit one RSA block - about 214 bytes
+                # with 2048-bit keys. The smallest possible BUS envelope is
+                # already 207 bytes, so the whole format has ~7 bytes of
+                # headroom. Adding "target_peers": [] costs 20 and breaks real
+                # INTERCOM traffic. Next-hop targets travel via forward(),
+                # which is in-process and free.
+                # See tests/test_message.py::TestWireSizeCeiling.
                 "source_peer": self.source_peer}
+
+    def forward(self,
+                payload=_UNSET,
+                msg_type=_UNSET,
+                metadata=_UNSET,
+                route=_UNSET,
+                source_peer=_UNSET,
+                target_peers=_UNSET,
+                target_site_id=_UNSET,
+                target_pubkey=_UNSET,
+                node=_UNSET,
+                bin_type=_UNSET) -> 'HiveMessage':
+        """Derive the envelope to send on to the next hop.
+
+        Every field of this message is carried over unless you name it here,
+        including the ones that only the constructor can set (metadata,
+        target_site_id, target_pubkey, node, bin_type). Relays that rebuild
+        envelopes by hand keep forgetting one of those, and the message then
+        arrives stripped with nothing to show what was lost: a flood that dies
+        after one hop, a site-targeted message that no longer knows its site.
+        Preserving is the default; dropping a field is an explicit
+        ``forward(target_site_id=None)``.
+        """
+        def kept(given, current):
+            return current if given is _UNSET else given
+
+        return HiveMessage(
+            msg_type=kept(msg_type, self._msg_type),
+            payload=kept(payload, self._payload),
+            node=kept(node, self._node),
+            source_peer=kept(source_peer, self._source_peer),
+            route=kept(route, list(self._route)),
+            target_peers=kept(target_peers, list(self._targets)),
+            target_site_id=kept(target_site_id, self._site_id),
+            target_pubkey=kept(target_pubkey, self._target_pubkey),
+            bin_type=kept(bin_type, self._bin_type),
+            metadata=kept(metadata, dict(self._meta)))
 
     @property
     def as_json(self) -> str:
@@ -210,6 +287,11 @@ class HiveMessage:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
                                    route=payload.get("route"),
+                                   # NOTE: node, source_peer and target_peers
+                                   # are not restored here - they are per-hop.
+                                   # The receiving node sets node/source_peer
+                                   # from the connection, and it decides its
+                                   # own next-hop targets.
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:
@@ -239,6 +321,7 @@ class HiveMessage:
     def __setitem__(self, key, value):
         if isinstance(self._payload, dict):
             self._payload[key] = value
+            self._payload_view = None
         else:
             raise TypeError(f"Item assignment not supported for payload type {type(self._payload)}")
 
