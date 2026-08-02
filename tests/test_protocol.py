@@ -85,6 +85,87 @@ class TestConnectionState:
         assert proto.internal_protocol.node_id == ""
 
 
+class TestNoiseHandshakePinning:
+    """CRYPTO-1 §3.4.5 — a completed XX-path handshake against a static key
+    that contradicts a pinned key must abort; a matching or TOFU-absent pin
+    must not.
+    """
+
+    def _make_protocol_at_noise_msg2(self, remote_static_key: bytes,
+                                      handshake_finished: bool = True):
+        proto = _make_protocol()
+        proto.noise_handshake = MagicMock()
+        proto.noise_handshake.read_message.return_value = b""
+        proto.noise_handshake.handshake_finished = handshake_finished
+        proto._noise_pattern = "XXpsk2"
+        proto.hm.config.host = "hive.example"
+        proto.hm.config.port = 5678
+        message = HiveMessage(HiveMessageType.HANDSHAKE,
+                              {"noise": {"msg": (b"x" * 16).hex()}})
+        return proto, message
+
+    def test_pinned_key_contradicted_aborts_session(self):
+        """The XX-path guard: a static key that differs from the pin is a
+        possible MITM and must be rejected, not silently accepted.
+        """
+        remote_key = b"r" * 32
+        proto, message = self._make_protocol_at_noise_msg2(remote_key)
+        proto.identity.get_pinned_noise_key.return_value = b"p" * 32
+
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = remote_key
+            with patch("hivemind_bus_client.protocol.LOG.error") as error:
+                proto.receive_noise_handshake(message)
+
+        assert proto.hm.noise_transport is None
+        proto.hm.handshake_event.set.assert_not_called()
+        proto.hm.close.assert_called_once()
+        proto.identity.pin_noise_key.assert_not_called()
+        assert any("pin" in call.args[0].lower() and "mismatch" in call.args[0].lower()
+                   for call in error.call_args_list)
+
+    def test_pinned_key_matches_completes_handshake(self):
+        """A pin that matches the negotiated static key is the expected,
+        non-fatal case: the session must be established normally.
+        """
+        remote_key = b"p" * 32
+        proto, message = self._make_protocol_at_noise_msg2(remote_key)
+        proto.identity.get_pinned_noise_key.return_value = remote_key
+        proto.identity.public_key = "pub"
+        proto.hm.session_id = "test-session"
+        proto.site_id = "living-room"
+
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = remote_key
+            proto.receive_noise_handshake(message)
+
+        assert proto.hm.noise_transport is transport_cls.return_value
+        proto.hm.handshake_event.set.assert_called_once()
+        proto.hm.close.assert_not_called()
+        proto.identity.pin_noise_key.assert_not_called()
+
+    def test_no_pin_tofu_pins_new_key(self):
+        """First-connection TOFU: no prior pin means the negotiated static
+        key is trusted and stored for future comparisons.
+        """
+        remote_key = b"n" * 32
+        proto, message = self._make_protocol_at_noise_msg2(remote_key)
+        proto.identity.get_pinned_noise_key.return_value = None
+        proto.identity.public_key = "pub"
+        proto.hm.session_id = "test-session"
+        proto.site_id = "living-room"
+
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = remote_key
+            proto.receive_noise_handshake(message)
+
+        assert proto.hm.noise_transport is transport_cls.return_value
+        proto.hm.handshake_event.set.assert_called_once()
+        proto.hm.close.assert_not_called()
+        proto.identity.pin_noise_key.assert_called_once_with(
+            proto._noise_pin_id, remote_key)
+
+
 class TestHandlePing:
     def test_sends_responsive_ping(self):
         proto = _make_protocol()
