@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.4a1) (2026-08-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.3a1...0.10.4a1)
+
+**Merged pull requests:**
+
+- refactor: construct legacy password handshake only when selected [\#142](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/142) ([goldyfruit](https://github.com/goldyfruit))
+
 ## [0.10.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.3a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.2a3...0.10.3a1)
