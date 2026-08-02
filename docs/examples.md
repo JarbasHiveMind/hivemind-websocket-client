@@ -2,6 +2,15 @@
 
 All examples assume credentials have been set up via `hivemind-client set-identity` or are passed directly to the constructor.
 
+They also assume the hub already granted this client the message types they send. A new
+client has an empty whitelist and the hub denies everything it sends, binary payloads
+included. Grant each type on the hub:
+
+```bash
+hivemind-core allow-msg "recognizer_loop:utterance" <node_id>
+hivemind-core allow-msg "speak" <node_id>
+```
+
 ---
 
 ## Simple chat (WebSocket)

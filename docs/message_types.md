@@ -4,8 +4,10 @@ HiveMind communication is based on the `HiveMessage` class (defined in `hivemind
 ## `HiveMessage` Fields
 
 - **`msg_type`**: A value from the `HiveMessageType` enum.
-- **`payload`**: The actual message (an OVOS `Message` for BUS types, `bytes` for BIN types).
-- **`context`**: Metadata used for routing and tracking (optional).
+- **`payload`**: The actual message (an OVOS `Message` for BUS types, `bytes` for BINARY types).
+- **`metadata`**: Auxiliary dict carried with the message (for example `sample_rate`, `lang`).
+- **`route`**: Ordered hop history. See Route Metadata below.
+- **`target_peers`**, **`target_site_id`**, **`target_public_key`**: Routing hints.
 
 ## `HiveMessageType` (The Routing Modes)
 
@@ -14,11 +16,11 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | Type | Purpose | Use Case |
 |---|---|---|
 | **`BUS`** | Standard message for the AI | Utterances, intent triggers, speak events. |
-| **`BIN`** | Raw binary data | Audio streams for STT/TTS, file transfers. |
+| **`BINARY`** | Raw binary data | Audio streams for STT/TTS, file transfers. |
 | **`ESCALATE`** | Upstream request | Used by a Slave Mind to ask a Master Mind for help. |
 | **`BROADCAST`** | Downstream flood (admin only) | Master pushes a message to all connected satellites. |
 | **`PROPAGATE`** | Bidirectional flood | Forwards to all peers in both directions. |
-| **`INTERCOM`** | End-to-end hybrid-encrypted | AES-GCM payload + RSA-encrypted ephemeral key. Only trusted peers or explicit targets are injected. |
+| **`INTERCOM`** | End-to-end hybrid-encrypted | AES-GCM payload + RSA-encrypted ephemeral key. Only trusted peers or explicit targets are injected. Has no binary wire code, so it always travels as a text frame. |
 | **`QUERY`** | Request-response upstream | Like ESCALATE, but first answering node sends a response back. Stops propagation on answer. |
 | **`CASCADE`** | Request-response flood | Like PROPAGATE, but expects responses from ALL nodes. Supports disambiguation. |
 | **`PING`** | Network discovery flood | Each node responds with its own PING (same `flood_id`). Carried inside PROPAGATE. Route metadata = hive path. |
@@ -30,7 +32,7 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 
 QUERY propagates upstream like ESCALATE, but stops as soon as one node can respond.
 
-**Satellite behavior** (`HiveMindSlaveProtocol.handle_query`, `protocol.py:311`):
+**Satellite behavior** (`HiveMindSlaveProtocol.handle_query`, `protocol.py`):
 - Inner payload must be `BUS` or `INTERCOM`.
 - `BUS` payloads are dispatched to `handle_bus`.
 - `INTERCOM` payloads are dispatched to `handle_intercom`.
@@ -61,9 +63,9 @@ def on_speak(msg):
 
 CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses from all reachable nodes. Responses are optional. Nodes that cannot answer simply stay silent.
 
-**Satellite behavior** (`HiveMindSlaveProtocol.handle_cascade`, `protocol.py:436`):
+**Satellite behavior** (`HiveMindSlaveProtocol.handle_cascade`, `protocol.py`):
 
-Responses are buffered in a `CascadeAggregator` (`protocol.py:21`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
+Responses are buffered in a `CascadeAggregator` (`protocol.py`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
 
 - Inner payload must be `BUS` or `INTERCOM`.
 - Default select callback returns the first response.
@@ -151,7 +153,7 @@ def on_ping(message: HiveMessage) -> None:
 client.on(HiveMessageType.PING, on_ping)
 ```
 
-For automated topology collection use `HiveMapper` from `hivemind_core.hive_map`.
+For automated topology collection use `HiveMapper` from `hivemind_bus_client.hive_map`.
 
 ---
 
@@ -193,7 +195,7 @@ for hop in message.route:
 
 ### Serialization
 
-Route survives `as_dict()` → `deserialize()` roundtrips. The `route` field is included in JSON serialization and restored on deserialization (`message.py:208-231`).
+Route survives `as_dict()` → `deserialize()` roundtrips. The `route` field is included in JSON serialization and restored on deserialization (`message.py`).
 
 ---
 
@@ -202,7 +204,7 @@ Route survives `as_dict()` → `deserialize()` roundtrips. The `route` field is 
 Before being sent over the network, `HiveMessage` objects are:
 1. **Serialized**: Using functions in `hivemind_bus_client.serialization` (`get_bitstring`, `decode_bitstring`).
 2. **Encrypted**: Using AES-256-GCM via functions in `hivemind_bus_client.encryption`.
-3. **Encoded**: Frequently using Z85+Base91 for safe text transport via `hivemind_bus_client.encodings`.
+3. **Encoded**: Frequently using Z85 or Base91 for safe text transport. The encoders come from the `z85base91` package.
 
 ### Examples
 
@@ -217,9 +219,15 @@ hive_msg = HiveMessage(HiveMessageType.BUS,
 
 #### Sending Binary Audio Data
 ```python
+from hivemind_bus_client.message import HiveMindBinaryPayloadType
+
 audio_bytes = b"..." # Raw PCM audio
-hive_msg = HiveMessage(HiveMessageType.BIN, audio_bytes)
+hive_msg = HiveMessage(HiveMessageType.BINARY, audio_bytes,
+                       bin_type=HiveMindBinaryPayloadType.RAW_AUDIO)
 ```
+
+The enum member is `BINARY`. `HiveMessageType.BIN` does not exist. The string on the wire
+is `"bin"`.
 
 ---
 [← Fakes](fakebus.md) · [Home](index.md) · [Binary Serialization →](serialization.md)

@@ -4,7 +4,7 @@ The HiveMind binary serialization protocol (`hivemind_bus_client/serialization.p
 
 ## Protocol Version
 
-Current version: **1** (`PROTOCOL_VERSION`, `serialization.py:12`).
+Current version: **1** (`PROTOCOL_VERSION`, `serialization.py`).
 
 Decoding a bitstring with an unsupported version raises `UnsupportedProtocolVersion` (`exceptions.py`).
 
@@ -29,18 +29,18 @@ All fields are packed MSB-first. The bitstring is left-padded with `0` bits to r
 
 | Field | Bits | Description | Source |
 |-------|------|-------------|--------|
-| Padding | 0+ | Leading `0` bits for byte alignment | `_get_bitstring_v1`, `serialization.py:78-80` |
-| Start marker | 1 | Always `1`. Decoder skips `0`s until it finds this | `serialization.py:54` |
-| Versioned flag | 1 | `1` = next 8 bits are a protocol version, `0` = assume current version | `serialization.py:55` |
-| Protocol version | 8 (optional) | Only present when versioned=1. Integer protocol version | `serialization.py:57` |
-| Message type | 5 | Index into `_INT2TYPE` mapping (13 types, 0-12) | `serialization.py:58`, `_INT2TYPE`, `serialization.py:16-28` |
-| Compressed | 1 | `1` = payload is zlib-compressed | `serialization.py:59` |
-| Metadata length | 8 | Number of **bytes** of metadata that follow | `serialization.py:63` |
-| Metadata | N×8 | JSON-encoded dict, optionally zlib-compressed | `serialization.py:64` |
-| Binary subtype | 4 (conditional) | Only for `BINARY` type. Maps to `HiveMindBinaryPayloadType` | `serialization.py:68-69` |
-| Payload | remaining | JSON string (text types) or raw bytes (BINARY type) | `serialization.py:71-76` |
+| Padding | 0+ | Leading `0` bits for byte alignment | `_get_bitstring_v1`, `serialization.py` |
+| Start marker | 1 | Always `1`. Decoder skips `0`s until it finds this | `serialization.py` |
+| Versioned flag | 1 | `1` = next 8 bits are a protocol version, `0` = assume current version | `serialization.py` |
+| Protocol version | 8 (optional) | Only present when versioned=1. Integer protocol version | `serialization.py` |
+| Message type | 5 | Index into `_INT2TYPE` mapping (13 types, 0-12) | `serialization.py`, `_INT2TYPE`, `serialization.py` |
+| Compressed | 1 | `1` = payload is zlib-compressed | `serialization.py` |
+| Metadata length | 8 | Number of **bytes** of metadata that follow | `serialization.py` |
+| Metadata | N×8 | JSON-encoded dict, optionally zlib-compressed | `serialization.py` |
+| Binary subtype | 4 (conditional) | Only for `BINARY` type. Maps to `HiveMindBinaryPayloadType` | `serialization.py` |
+| Payload | remaining | JSON string (text types) or raw bytes (BINARY type) | `serialization.py` |
 
-### Type Map (`_INT2TYPE`, `serialization.py:16-28`)
+### Type Map (`_INT2TYPE`, `serialization.py`)
 
 | Integer | HiveMessageType |
 |---------|-----------------|
@@ -73,7 +73,7 @@ that error, log it, and drop the frame rather than crashing.
 > the two is a wire-breaking change reserved for a coordinated spec
 > revision; only the unassigned-code rejection (13-31) is enforced here.
 
-### Binary Payload Subtypes (`HiveMindBinaryPayloadType`, `message.py:32-41`)
+### Binary Payload Subtypes (`HiveMindBinaryPayloadType`, `message.py`)
 
 | Integer | Subtype | Description |
 |---------|---------|-------------|
@@ -87,7 +87,7 @@ that error, log it, and drop the frame rather than crashing.
 
 ## Public API
 
-### `get_bitstring()`, `serialization.py:31`
+### `get_bitstring()`, `serialization.py`
 
 Encode a `HiveMessage` to a `BitArray`.
 
@@ -107,9 +107,9 @@ bitstr = get_bitstring(
 # Returns: BitArray, call .bytes for raw bytes
 ```
 
-When `compressed=None`, both compressed and uncompressed encodings are generated and the smaller one is returned (`serialization.py:36-41`).
+When `compressed=None`, both compressed and uncompressed encodings are generated and the smaller one is returned (`serialization.py`).
 
-### `decode_bitstring()`, `serialization.py:85`
+### `decode_bitstring()`, `serialization.py`
 
 Decode raw bytes back to a `HiveMessage`.
 
@@ -119,7 +119,14 @@ from hivemind_bus_client.serialization import decode_bitstring
 hive_msg = decode_bitstring(raw_bytes)  # returns HiveMessage
 ```
 
-### `mycroft2bitstring()`, `serialization.py:129`
+### `BINARY_ENCODABLE_TYPES`, `serialization.py`
+
+The frozen set of message types that have a 5-bit wire code. `INTERCOM` is not in it: it
+has never had a code, so it can only travel as a text frame. `_get_bitstring_v1` raises
+`ValueError` for a type outside this set instead of relabelling the frame as `THIRDPRTY`,
+which is what it used to do. Senders check the set before they pick a framing.
+
+### `mycroft2bitstring()`, `serialization.py`
 
 Convenience wrapper: encode an OVOS `Message` as a `BUS`-type bitstring, using `msg.context` as metadata.
 
@@ -142,7 +149,9 @@ To implement a compatible encoder/decoder:
 3. JSON-encode metadata and non-binary payloads as UTF-8 before compression
 4. Left-pad with `0` bits to byte-align, then prepend a `1` start marker
 5. For `BINARY` messages, the 4-bit subtype appears before the raw payload bytes
-6. Test against the Python reference implementation using cross-platform test vectors (`test/unittests/vectors.json`)
+6. Test against the Python reference implementation using the cross-platform vectors that
+   `HiveMind-js/test/generate_vectors.py` produces. `tests/test_serialization.py` loads
+   them and skips when the file is absent
 
 ---
 [← Message Types](message_types.md) · [Home](index.md) · [Binary Handlers →](binary_handlers.md)

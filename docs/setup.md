@@ -5,7 +5,7 @@ This guide walks through installing the library, registering a satellite on a hu
 ## Prerequisites
 
 - A running [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core) hub (the machine that hosts the OVOS skill engine)
-- Python 3.9+ on the satellite machine
+- Python 3.10+ on the satellite machine
 - Network access from the satellite to the hub on port 5678 (WebSocket) or 5679 (HTTP)
 
 ## 1. Install the library
@@ -25,17 +25,30 @@ hivemind-core add-client --name "living-room-satellite"
 Output:
 
 ```
-Added satellite: living-room-satellite
-  access-key : 42caf3d2405075fb9e7a4e1ff44e4c4f
-  password   : 5ae486f7f1c26bd4645bd052e4af3ea3
+Credentials added to database!
+
+Node ID: 1
+Friendly Name: living-room-satellite
+Access Key: 42caf3d2405075fb9e7a4e1ff44e4c4f
+Password: 5ae486f7f1c26bd4645bd052e4af3ea3
 ```
 
 Keep the access key and password. You need them on the satellite.
 
-To give the satellite admin rights (able to send BROADCAST messages):
+To give the satellite admin rights (able to send BROADCAST messages), pass the node id:
 
 ```bash
-hivemind-core make-admin --name "living-room-satellite"
+hivemind-core make-admin 1
+```
+
+## 2b. Grant the message types the satellite sends
+
+A new client has an empty whitelist and the hub denies everything it sends, binary
+payloads included. Admin clients are no exception. Grant the types now:
+
+```bash
+hivemind-core allow-msg "recognizer_loop:utterance" 1
+hivemind-core allow-msg "speak" 1
 ```
 
 ## 3. Save credentials on the satellite
@@ -61,11 +74,18 @@ For an encrypted (TLS) connection use `wss://` instead of `ws://`. The library a
 hivemind-client ping --host ws://192.168.1.10 --port 5678
 ```
 
-A successful response looks like:
+`ping` floods the hive and prints the nodes that answered, as an ASCII tree:
 
 ```
-Pong from hub (192.168.1.10:5678), RTT 12 ms
+== connected to HiveMind, sending PING (timeout=5.0s)
+  PING from living-room-hub::def456  site=living-room
+
+== Hive Map ==
+[self] living-room-satellite::abc123
+└── living-room-hub::def456  site=living-room  latency=12ms
 ```
+
+Add `--json` for the raw topology instead.
 
 ## 5. Open an interactive terminal
 
@@ -148,7 +168,9 @@ RuntimeError: timed out waiting for handshake
 The TCP connection opened but the hub rejected or did not complete the handshake. Common causes:
 
 - Wrong access key or password: re-run `hivemind-core add-client` and update `set-identity`
-- The satellite's IP is blocked: check `hivemind-core blacklist-client`
+- The access key was deleted on the hub: check `hivemind-core list-clients`
+- The hub requires a higher protocol version than this client offers: check
+  `min_protocol_version` in the hub's `server.json`
 - Firewall is stateful and drops the upgrade: ensure WebSocket upgrades are not filtered
 
 ### Decryption error
@@ -161,13 +183,15 @@ The `password` does not match what the hub stored for this access key. The hands
 
 ### Multiple satellites on the same machine
 
-Each satellite needs its own `NodeIdentity`. Pass a custom identity file path:
+Each satellite needs its own `NodeIdentity`. Pass a custom identity store:
 
 ```python
+from json_database import JsonConfigXDG
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client import HiveMessageBusClient
 
-identity = NodeIdentity(identity_file="/etc/hivemind/kitchen-satellite.json")
+identity = NodeIdentity(
+    identity_file=JsonConfigXDG("kitchen-satellite", subfolder="hivemind"))
 identity.access_key     = "..."
 identity.password       = "..."
 identity.default_master = "ws://192.168.1.10"
