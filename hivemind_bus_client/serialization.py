@@ -13,18 +13,12 @@ PROTOCOL_VERSION = 1  # integer, a version increase signals new functionality ad
                       # version 0 is the original hivemind protocol, 1 supports handshake + binary
 
 
-# WIRE-1 §4.2 registry-history note (spec-vs-impl divergence):
-# The 5-bit codes below are the codes that deployed HiveMind encoders
-# (this library and the HiveMind-js peer, see tests/../HiveMind-js
-# vectors.json) actually emit on the wire. They are retained EXACTLY as
-# assigned for wire compatibility with those decoders. This numbering
-# does NOT match the aspirational table in HIVEMIND-WIRE-1 §4.2 (which
-# lists 6=INTERCOM, 7=PING, 8=reserved, 9=HELLO, 10=THIRDPRTY,
-# 11=reserved, and makes QUERY/CASCADE/RENDEZVOUS text-only wrapper
-# types). Reconciling the two — renumbering the wire and moving the
-# wrapper types to text-only — is a wire-breaking change that belongs to
-# a coordinated spec revision, NOT to this bugfix. Changing any code
-# here would break interop with every deployed peer.
+# WIRE-1 §4.2 message-type registry.
+# These are the codes deployed HiveMind encoders emit (this library and
+# the HiveMind-js peer, see the cross-platform vectors). The assignment
+# is frozen: changing any code here breaks interop with every deployed
+# decoder, so a new type takes the next free code from 13 upward.
+# INTERCOM has no code and travels as a text frame (§4.3).
 #
 # What this fix DOES enforce from §4.2: a receiver MUST reject a frame
 # carrying an unassigned/reserved 5-bit code as malformed. Every code in
