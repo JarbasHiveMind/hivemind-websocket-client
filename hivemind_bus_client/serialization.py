@@ -45,6 +45,13 @@ _INT2TYPE = {0: HiveMessageType.HANDSHAKE,
              11: HiveMessageType.THIRDPRTY,
              12: HiveMessageType.BINARY}
 
+_TYPE2INT = {v: k for k, v in _INT2TYPE.items()}
+
+# Types with no assigned 5-bit code. INTERCOM is the only one today: it has
+# never had a code, so it can only travel as a text-encoded frame. Senders
+# check this before choosing a framing.
+BINARY_ENCODABLE_TYPES = frozenset(_TYPE2INT)
+
 
 def get_bitstring(hive_type=HiveMessageType.BUS, payload=None,
                   compressed=None, hivemeta=None,
@@ -64,8 +71,15 @@ def get_bitstring(hive_type=HiveMessageType.BUS, payload=None,
 def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
                       compressed=True, hivemeta=None,
                       binary_type=HiveMindBinaryPayloadType.UNDEFINED, versioned=False):
-    # there are 12 hivemind message main types
-    typemap = {v: k for k, v in _INT2TYPE.items()}
+    if hive_type not in _TYPE2INT:
+        # WIRE-1 §4.3: a type with no assigned 5-bit code cannot be binarized
+        # and must travel as a text-encoded frame. Encoding it anyway used to
+        # fall back to code 11 and put it on the wire labelled THIRDPRTY.
+        raise ValueError(
+            f"{hive_type} has no assigned WIRE-1 message-type code and "
+            f"cannot be sent as a binary frame; send it as text instead"
+        )
+
     binmap = {e: e.value for e in HiveMindBinaryPayloadType}
 
     s = BitArray()
@@ -73,7 +87,7 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
     s.append(f'uint:1={int(versioned)}')  # 1 bit unsigned integer - requires protocol version
     if versioned:
         s.append(f'uint:8={PROTOCOL_VERSION}')
-    s.append(f'uint:5={typemap.get(hive_type, 11)}')  # 5 bit unsigned integer - the hive msg type
+    s.append(f'uint:5={_TYPE2INT[hive_type]}')  # 5 bit unsigned integer - the hive msg type
     s.append(f'uint:1={int(bool(compressed))}')  # 1 bit unsigned integer - payload is zlib compressed
 
     # NOTE: hivemind meta is reserved TBD arbitrary data

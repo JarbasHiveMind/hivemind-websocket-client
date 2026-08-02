@@ -29,6 +29,7 @@ from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.serialization import (
+    BINARY_ENCODABLE_TYPES,
     HiveMindBinaryPayloadType,
     decode_bitstring,
     get_bitstring,
@@ -610,7 +611,8 @@ class HiveMessageBusClient(OVOSBusClient):
             binarize = False
             if message.msg_type == HiveMessageType.BINARY:
                 binarize = True
-            elif message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]:
+            elif (message.msg_type in BINARY_ENCODABLE_TYPES
+                  and message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]):
                 binarize = self.protocol.binarize and self.binarize
 
             if binarize:
