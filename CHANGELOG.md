@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a2) (2026-08-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.6a1...0.10.6a2)
+
+**Merged pull requests:**
+
+- docs: correct stale API, CLI, and identity claims [\#153](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/153) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.5a2...0.10.6a1)
@@ -596,10 +604,6 @@
 ## [V0.0.4a18](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a18) (2024-01-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a17...V0.0.4a18)
-
-**Closed issues:**
-
--  SSLError\(1, '\[SSL: TLSV1\_ALERT\_PROTOCOL\_VERSION\] tlsv1 alert protocol version \(\_ssl.c:1002\)'\)  [\#16](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/16)
 
 ## [V0.0.4a17](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a17) (2023-11-21)
 
