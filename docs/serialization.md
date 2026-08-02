@@ -58,6 +58,21 @@ All fields are packed MSB-first. The bitstring is left-padded with `0` bits to r
 | 11 | THIRDPRTY |
 | 12 | BINARY |
 
+Codes 13-31 are **unassigned**. Per HIVEMIND-WIRE-1 §4.2 a receiver
+**MUST** reject a frame carrying an unassigned message-type code as
+malformed: `decode_bitstring()` raises `ValueError` for any code not in
+this map instead of silently coercing it to a type. The three client
+receive loops (`client.py`, `async_client.py`, `http_client.py`) catch
+that error, log it, and drop the frame rather than crashing.
+
+> **Spec-vs-impl note.** This numbering is the wire reality retained for
+> compatibility with deployed encoders and the HiveMind-js peer; it does
+> **not** match the aspirational table in HIVEMIND-WIRE-1 §4.2 (which
+> lists 6=INTERCOM, 7=PING, 8/11=reserved, 9=HELLO, 10=THIRDPRTY and
+> makes QUERY/CASCADE/RENDEZVOUS text-only wrapper types). Reconciling
+> the two is a wire-breaking change reserved for a coordinated spec
+> revision; only the unassigned-code rejection (13-31) is enforced here.
+
 ### Binary Payload Subtypes (`HiveMindBinaryPayloadType`, `message.py:32-41`)
 
 | Integer | Subtype | Description |
