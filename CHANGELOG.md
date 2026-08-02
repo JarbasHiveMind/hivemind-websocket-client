@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.0a1) (2026-08-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.6a2...0.11.0a1)
+
+**Merged pull requests:**
+
+- feat: HiveMessage.forward\(\) derives envelopes without losing fields [\#154](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/154) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a2) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.6a1...0.10.6a2)
@@ -660,10 +668,6 @@
 ## [V0.0.4a8](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a8) (2023-09-12)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a7...V0.0.4a8)
-
-**Implemented enhancements:**
-
-- add site\_id [\#17](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/17) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a7](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a7) (2023-09-06)
 
