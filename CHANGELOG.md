@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.3a1) (2026-08-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.2a3...0.10.3a1)
+
+**Merged pull requests:**
+
+- fix: reject unassigned/reserved binary type codes per WIRE-1 §4.2 [\#145](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/145) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.2a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a3) (2026-07-31)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.2a2...0.10.2a3)
