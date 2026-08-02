@@ -548,6 +548,35 @@ class TestHandleBinary(unittest.TestCase):
         cb.handle_receive_file.assert_not_called()
 
 
+class TestEmitFraming(unittest.TestCase):
+    """INTERCOM has no WIRE-1 binary code, so it must go out as text."""
+
+    def _client_with_binarize(self):
+        client = _make_client()
+        client.crypto_key = None
+        client.protocol = MagicMock(binarize=True)
+        client.binarize = True
+        client.connected_event.set()
+        client.handshake_event.set()
+        client.client = MagicMock()
+        return client
+
+    def test_intercom_sent_as_text_frame(self):
+        client = self._client_with_binarize()
+        client.emit(HiveMessage(HiveMessageType.INTERCOM,
+                                payload={"ciphertext": "deadbeef"}))
+        sent = client.client.send.call_args
+        self.assertIsInstance(sent.args[0], str)
+        self.assertIn("intercom", sent.args[0])
+
+    def test_shared_bus_still_sent_as_binary_frame(self):
+        client = self._client_with_binarize()
+        client.emit(HiveMessage(HiveMessageType.SHARED_BUS,
+                                payload=Message("speak", {"utterance": "hi"})))
+        sent = client.client.send.call_args
+        self.assertIsInstance(sent.args[0], bytes)
+
+
 class TestBuildUrl(unittest.TestCase):
     def test_ssl_url(self):
         url = HiveMessageBusClient.build_url("mykey", host="example.com", port=5678, ssl=True)

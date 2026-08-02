@@ -51,7 +51,8 @@ from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
-from hivemind_bus_client.serialization import (HiveMindBinaryPayloadType,
+from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
+                                               HiveMindBinaryPayloadType,
                                                decode_bitstring, get_bitstring)
 from hivemind_bus_client.util import serialize_message
 
@@ -530,8 +531,9 @@ class AsyncHiveMessageBusClient:
             binarize = False
             if message.msg_type == HiveMessageType.BINARY:
                 binarize = True
-            elif message.msg_type not in (HiveMessageType.HELLO,
-                                          HiveMessageType.HANDSHAKE):
+            elif (message.msg_type in BINARY_ENCODABLE_TYPES
+                  and message.msg_type not in (HiveMessageType.HELLO,
+                                               HiveMessageType.HANDSHAKE)):
                 binarize = (getattr(self.protocol, "binarize", False)
                             and self.binarize)
 

@@ -18,7 +18,8 @@ from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, 
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
-from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
+from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
+                                               get_bitstring, decode_bitstring)
 from hivemind_bus_client.util import serialize_message
 from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
 
@@ -309,7 +310,8 @@ class HiveMindHTTPClient(threading.Thread):
         binarize = False
         if message.msg_type == HiveMessageType.BINARY:
             binarize = True
-        elif message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]:
+        elif (message.msg_type in BINARY_ENCODABLE_TYPES
+              and message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]):
             binarize = self.protocol.binarize and self.binarize
 
         if binarize:
