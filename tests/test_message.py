@@ -135,14 +135,21 @@ class TestHiveMessageSerialization:
 
 
 class TestHiveMessageRouting:
-    def test_route_filters_incomplete_hops(self):
+    def test_route_keeps_every_hop_that_names_a_source(self):
         hm = HiveMessage(HiveMessageType.PING, {},
                           route=[{"source": "a", "targets": ["b"]},
                                  {"source": "", "targets": []},
-                                 {"source": "c", "targets": []}])
-        # only hops with both source and targets are kept
-        assert len(hm.route) == 1
-        assert hm.route[0]["source"] == "a"
+                                 {"source": "c", "targets": []},
+                                 {"source": "d"}])
+        # MSG-1 §5: a hop records AT LEAST a source. `targets` is optional
+        # provenance, so a hop is kept with an empty targets list and with no
+        # targets key at all. Only a hop naming no source is dropped.
+        assert [h["source"] for h in hm.route] == ["a", "c", "d"]
+
+    def test_route_drops_a_hop_with_no_source(self):
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          route=[{"targets": ["b"]}, "not-a-dict"])
+        assert hm.route == []
 
     def test_target_peers_defaults_to_source(self):
         hm = HiveMessage(HiveMessageType.PING, {},
