@@ -243,6 +243,56 @@ class TestDecodeBitstringRegressions(unittest.TestCase):
         self.assertEqual(decoded.payload.msg_type, "speak")
 
 
+class TestUnassignedTypeCodeRejection(unittest.TestCase):
+    """WIRE-1 §4.2: a receiver MUST reject a frame carrying an unassigned
+    or reserved 5-bit message-type code as malformed, instead of silently
+    coercing it (the old behaviour defaulted every unknown code to 11 /
+    THIRDPRTY)."""
+
+    def _frame_with_type_code(self, type_code):
+        """Craft a minimal unversioned frame carrying an arbitrary 5-bit
+        message-type code and an empty (uncompressed) metadata block."""
+        s = BitArray()
+        s.append('uint:1=1')                 # start marker
+        s.append('uint:1=0')                 # versioned=False
+        s.append(f'uint:5={type_code}')      # message type
+        s.append('uint:1=0')                 # compression flag=0
+        s.append('uint:8=0')                 # metadata length = 0 bytes
+        # empty JSON object as the (uncompressed) metadata payload region
+        # is not needed: metalen=0, so the rest is payload; leave empty.
+        while len(s) % 8 != 0:
+            s.insert('uint:1=0', 0)
+        return s.bytes
+
+    def test_unassigned_codes_are_rejected(self):
+        # 13-31 are unassigned in the wire registry; the type-code gate
+        # runs before any metadata/payload parsing, so this raises the
+        # unassigned-code ValueError specifically.
+        for code in (13, 20, 31):
+            with self.subTest(code=code):
+                raw = self._frame_with_type_code(code)
+                with self.assertRaises(ValueError) as ctx:
+                    decode_bitstring(raw)
+                self.assertIn("unassigned", str(ctx.exception))
+
+    def test_all_assigned_types_roundtrip(self):
+        """Every payload-bearing assigned type still round-trips (guards
+        against accidentally rejecting a legitimately-emitted code)."""
+        payload = {"type": "test", "data": {}, "context": {}}
+        assigned_non_binary = [
+            HiveMessageType.HANDSHAKE, HiveMessageType.BUS,
+            HiveMessageType.SHARED_BUS, HiveMessageType.BROADCAST,
+            HiveMessageType.PROPAGATE, HiveMessageType.ESCALATE,
+            HiveMessageType.HELLO, HiveMessageType.QUERY,
+            HiveMessageType.CASCADE, HiveMessageType.PING,
+            HiveMessageType.RENDEZVOUS, HiveMessageType.THIRDPRTY,
+        ]
+        for mt in assigned_non_binary:
+            with self.subTest(msg_type=mt):
+                bs = get_bitstring(mt, payload=payload)
+                self.assertEqual(decode_bitstring(bs).msg_type, mt)
+
+
 class TestMycroft2Bitstring(unittest.TestCase):
     """Test mycroft2bitstring helper."""
 

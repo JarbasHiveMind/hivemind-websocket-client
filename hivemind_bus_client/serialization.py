@@ -13,6 +13,24 @@ PROTOCOL_VERSION = 1  # integer, a version increase signals new functionality ad
                       # version 0 is the original hivemind protocol, 1 supports handshake + binary
 
 
+# WIRE-1 §4.2 registry-history note (spec-vs-impl divergence):
+# The 5-bit codes below are the codes that deployed HiveMind encoders
+# (this library and the HiveMind-js peer, see tests/../HiveMind-js
+# vectors.json) actually emit on the wire. They are retained EXACTLY as
+# assigned for wire compatibility with those decoders. This numbering
+# does NOT match the aspirational table in HIVEMIND-WIRE-1 §4.2 (which
+# lists 6=INTERCOM, 7=PING, 8=reserved, 9=HELLO, 10=THIRDPRTY,
+# 11=reserved, and makes QUERY/CASCADE/RENDEZVOUS text-only wrapper
+# types). Reconciling the two — renumbering the wire and moving the
+# wrapper types to text-only — is a wire-breaking change that belongs to
+# a coordinated spec revision, NOT to this bugfix. Changing any code
+# here would break interop with every deployed peer.
+#
+# What this fix DOES enforce from §4.2: a receiver MUST reject a frame
+# carrying an unassigned/reserved 5-bit code as malformed. Every code in
+# this map is currently assigned and round-trips; codes not in this map
+# (13-31) are unassigned and are rejected by _decode_bitstring_v1
+# instead of being silently coerced to THIRDPRTY (the fixed bug).
 _INT2TYPE = {0: HiveMessageType.HANDSHAKE,
              1: HiveMessageType.BUS,
              2: HiveMessageType.SHARED_BUS,
@@ -100,7 +118,18 @@ def decode_bitstring(bitstr):
 def _decode_bitstring_v1(s):
     binmap = {e: e.value for e in HiveMindBinaryPayloadType}
 
-    hive_type = _INT2TYPE.get(s.read(5).uint, 11)
+    type_code = s.read(5).uint
+    if type_code not in _INT2TYPE:
+        # WIRE-1 §4.2: "A receiver MUST reject a frame carrying an
+        # unassigned or reserved value as malformed." Previously any
+        # unknown code was silently coerced to 11 (THIRDPRTY), which
+        # masked corrupt/forged frames. Codes 13-31 are unassigned.
+        raise ValueError(
+            f"malformed binary frame: unassigned WIRE-1 message-type "
+            f"code {type_code} (assigned codes: "
+            f"{sorted(_INT2TYPE)})"
+        )
+    hive_type = _INT2TYPE[type_code]
     compressed = s.read(1).bool  # note: bool(BitStream) checks length (always True), .bool reads the actual bit
 
     metalen = s.read(8).uint * 8

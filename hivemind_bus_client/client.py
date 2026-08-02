@@ -352,7 +352,14 @@ class HiveMessageBusClient(OVOSBusClient):
                 LOG.debug("Message was unencrypted")
 
         if isinstance(message, bytes):
-            message = decode_bitstring(message)
+            try:
+                message = decode_bitstring(message)
+            except Exception:
+                # WIRE-1 §4.2: a malformed binary frame (e.g. an
+                # unassigned/reserved message-type code) MUST be rejected.
+                # Drop it instead of crashing the receive loop.
+                LOG.exception("dropping malformed binary frame")
+                return
         elif isinstance(message, str):
             message = json.loads(message)
         if isinstance(message, dict) and "ciphertext" in message:
