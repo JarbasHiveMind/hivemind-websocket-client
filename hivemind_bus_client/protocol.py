@@ -218,8 +218,9 @@ class HiveMindSlaveProtocol:
         if self.identity is None:
             self.identity = self.hm.identity or NodeIdentity()
         self.handshake = HandShake(self.identity.private_key)
-        self.pswd_handshake = (PasswordHandShake(self.identity.password, min_bits=_pw_min_bits())
-                               if self.identity.password else None)
+        # PasswordHandShake is a legacy (v2) mechanism. Build it only after
+        # the server explicitly selects that fallback in handle_handshake();
+        # validating it here would apply v2 policy before v3 Noise negotiation.
 
         if bus is None:
             bus = MessageBusClient()
@@ -502,7 +503,8 @@ class HiveMindSlaveProtocol:
             self.receive_handshake(envelope)
             LOG.debug(f"Encoding: {self.hm.json_encoding}")
             LOG.debug(f"Cipher: {self.hm.cipher}")
-            LOG.debug(f"Key size: {len(self.pswd_handshake.secret) * 8}bit")
+            active_handshake = self.pswd_handshake or self.handshake
+            LOG.debug(f"Key size: {len(active_handshake.secret) * 8}bit")
 
         # master is requesting handshake start
         else:
@@ -768,7 +770,7 @@ class HiveMindSlaveProtocol:
                 private_key = load_RSA_key(self.identity.private_key)
                 decrypted = hybrid_decrypt(private_key, pload).decode("utf-8")
                 message._payload = HiveMessage.deserialize(decrypted)
-            except Exception as e:
+            except Exception:
                 if k:
                     LOG.error("failed to decrypt INTERCOM message!")
                 else:
