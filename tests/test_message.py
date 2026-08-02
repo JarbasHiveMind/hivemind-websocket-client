@@ -380,36 +380,24 @@ class TestForward:
 class TestAsDictRoundTrip:
     """HiveMessage(**msg.as_dict) must be faithful."""
 
-    def test_as_dict_emits_target_peers(self):
-        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}),
-                          target_peers=["peer-B"])
-        assert msg.as_dict["target_peers"] == ["peer-B"]
-
-    def test_as_dict_target_peers_does_not_invent_source_peer(self):
-        """The target_peers property falls back to source_peer; the wire must
-        not claim a target the sender never set."""
-        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}),
-                          source_peer="peer-A")
-        assert msg.as_dict["target_peers"] == []
-
     def test_constructor_round_trip_is_faithful(self):
         msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {"a": 1}, {}),
                           node="node-1", source_peer="peer-A",
                           route=[{"source": "peer-A", "targets": ["peer-B"]}],
-                          target_peers=["peer-B"], target_site_id="site-1",
-                          target_pubkey="pubkey-1", metadata={"k": "v"})
+                          target_site_id="site-1", target_pubkey="pubkey-1",
+                          metadata={"k": "v"})
         clone = HiveMessage(**msg.as_dict)
         assert clone.as_dict == msg.as_dict
 
-    def test_json_round_trip_restores_target_peers(self):
-        msg = HiveMessage(HiveMessageType.PROPAGATE,
-                          payload={"msg_type": "bus", "payload": {"type": "t"}},
-                          target_peers=["peer-B", "peer-C"])
-        restored = HiveMessage.deserialize(msg.serialize())
-        assert restored._targets == ["peer-B", "peer-C"]
+    def test_target_peers_stays_off_the_wire(self):
+        """target_peers is a next-hop decision carried by forward(), not a wire
+        field. See TestWireSizeCeiling for why it cannot become one."""
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}),
+                          target_peers=["peer-B"])
+        assert "target_peers" not in msg.as_dict
+        assert msg.forward()._targets == ["peer-B"]
 
-    def test_frame_from_old_peer_without_target_peers_still_deserializes(self):
-        """Wire compat: a peer older than this change omits the key."""
+    def test_frame_from_an_older_peer_still_deserializes(self):
         old_frame = json.dumps({"msg_type": "bus",
                                 "payload": {"type": "t", "data": {}, "context": {}},
                                 "metadata": {}, "route": [], "node": None,
@@ -420,9 +408,44 @@ class TestAsDictRoundTrip:
         assert restored._targets == []
 
     def test_unknown_future_keys_are_ignored(self):
+        """A peer that sends keys we do not know must not break us."""
         frame = json.dumps({"msg_type": "bus", "payload": {"type": "t"},
+                            "target_peers": ["peer-B"],
                             "some_future_field": "ignore me"})
         assert HiveMessage.deserialize(frame).msg_type == HiveMessageType.BUS
+
+
+class TestWireSizeCeiling:
+    """A serialized envelope must fit one RSA block.
+
+    hivemind-core encrypts an INTERCOM inner body with raw RSA (PKCS1-OAEP),
+    which cannot be split across blocks. With 2048-bit identity keys the
+    ceiling is 214 bytes. The smallest useful BUS envelope is already ~207,
+    so the format has almost no headroom: adding one short key to as_dict
+    ("target_peers": [] costs 20 bytes) pushes real INTERCOM traffic over the
+    limit and a satellite that worked yesterday starts failing on payload
+    size. If this test fails because you added a field to as_dict, the field
+    does not go on the wire - carry it through forward() instead.
+    """
+
+    RSA_2048_OAEP_MAX_BYTES = 214
+
+    def test_minimal_bus_envelope_fits_one_rsa_block(self):
+        inner = HiveMessage(HiveMessageType.BUS,
+                            payload=Message("recognizer_loop:utterance", {}))
+        size = len(inner.serialize().encode("utf-8"))
+        assert size <= self.RSA_2048_OAEP_MAX_BYTES, (
+            f"serialized envelope grew to {size} bytes, over the "
+            f"{self.RSA_2048_OAEP_MAX_BYTES}-byte RSA block limit; "
+            f"INTERCOM traffic will fail with 'Plaintext is too long'")
+
+    def test_as_dict_keys_are_pinned(self):
+        """Pinned on purpose. Changing this set changes every frame on the
+        wire, so it should be a deliberate edit with a size measurement."""
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}))
+        assert set(msg.as_dict) == {"msg_type", "payload", "metadata", "route",
+                                    "node", "target_site_id", "target_pubkey",
+                                    "source_peer"}
 
 
 class TestPayloadIdentity:

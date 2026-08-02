@@ -221,11 +221,17 @@ class HiveMessage:
                 "node": self.node_id,
                 "target_site_id": self.target_site_id,
                 "target_pubkey": self.target_public_key,
-                "source_peer": self.source_peer,
-                # NOTE: raw self._targets, not the target_peers property. The
-                # property invents a target from source_peer when empty, which
-                # would put a target on the wire that the sender never set.
-                "target_peers": self._targets}
+                # NOTE: target_peers is deliberately NOT here, and no new key
+                # may be added without measuring. hivemind-core encrypts an
+                # INTERCOM inner body with raw RSA (PKCS1-OAEP), so a
+                # serialized envelope must fit one RSA block - about 214 bytes
+                # with 2048-bit keys. The smallest possible BUS envelope is
+                # already 207 bytes, so the whole format has ~7 bytes of
+                # headroom. Adding "target_peers": [] costs 20 and breaks real
+                # INTERCOM traffic. Next-hop targets travel via forward(),
+                # which is in-process and free.
+                # See tests/test_message.py::TestWireSizeCeiling.
+                "source_peer": self.source_peer}
 
     def forward(self,
                 payload=_UNSET,
@@ -281,13 +287,11 @@ class HiveMessage:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
                                    route=payload.get("route"),
-                                   # NOTE: node and source_peer are emitted by
-                                   # as_dict but deliberately NOT restored here
-                                   # - they are per-hop, the receiving node
-                                   # sets them from the connection.
-                                   # absent from frames sent by peers older
-                                   # than this change - never require it
-                                   target_peers=payload.get("target_peers"),
+                                   # NOTE: node, source_peer and target_peers
+                                   # are not restored here - they are per-hop.
+                                   # The receiving node sets node/source_peer
+                                   # from the connection, and it decides its
+                                   # own next-hop targets.
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
             except Exception:
