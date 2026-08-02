@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a1) (2026-08-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.5a2...0.10.6a1)
+
+**Merged pull requests:**
+
+- fix: never mislabel an unencodable message type as THIRDPRTY [\#151](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/151) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.10.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a2) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.5a1...0.10.5a2)
@@ -668,10 +676,6 @@
 ## [V0.0.4a4](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a4) (2023-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.0.1...V0.0.4a4)
-
-**Merged pull requests:**
-
-- ovos rebase + handshake + session support [\#15](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/15) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.0.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.0.1) (2021-04-22)
 
