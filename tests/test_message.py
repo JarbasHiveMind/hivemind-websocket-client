@@ -304,3 +304,156 @@ class TestDeserializePreservesFields:
             assert isinstance(hop, dict)
             assert "source" in hop
             assert "targets" in hop
+
+
+class TestForward:
+    """forward() must not lose envelope fields."""
+
+    @staticmethod
+    def _full():
+        return HiveMessage(HiveMessageType.PROPAGATE,
+                           payload={"msg_type": "bus", "payload": {"type": "t"}},
+                           node="node-1",
+                           source_peer="peer-A",
+                           route=[{"source": "peer-A", "targets": ["peer-B"]}],
+                           target_peers=["peer-B", "peer-C"],
+                           target_site_id="site-1",
+                           target_pubkey="pubkey-1",
+                           metadata={"k": "v"})
+
+    def test_forward_preserves_every_field(self):
+        original = self._full()
+        fwd = original.forward()
+        assert fwd.msg_type == original.msg_type
+        assert fwd._payload == original._payload
+        assert fwd.node_id == "node-1"
+        assert fwd.source_peer == "peer-A"
+        assert fwd.route == original.route
+        assert fwd._targets == ["peer-B", "peer-C"]
+        assert fwd.target_site_id == "site-1"
+        assert fwd.target_public_key == "pubkey-1"
+        assert fwd.metadata == {"k": "v"}
+        assert fwd.bin_type == original.bin_type
+
+    def test_forward_preserves_constructor_only_fields(self):
+        """metadata, target_site_id, target_pubkey, node and bin_type have no
+        setter, so a hand-rebuilt envelope is where they go missing."""
+        fwd = self._full().forward(source_peer="peer-B", target_peers=["peer-D"])
+        assert fwd.metadata == {"k": "v"}
+        assert fwd.target_site_id == "site-1"
+        assert fwd.target_public_key == "pubkey-1"
+        assert fwd.node_id == "node-1"
+
+    def test_forward_preserves_bin_type(self):
+        original = HiveMessage(HiveMessageType.BINARY, payload=b"\x01\x02",
+                               bin_type=HiveMindBinaryPayloadType.RAW_AUDIO)
+        assert original.forward().bin_type == HiveMindBinaryPayloadType.RAW_AUDIO
+
+    def test_explicit_override_wins(self):
+        fwd = self._full().forward(msg_type=HiveMessageType.CASCADE,
+                                   source_peer="peer-B",
+                                   target_peers=["peer-D"],
+                                   metadata={"other": 1},
+                                   route=[],
+                                   payload={"msg_type": "bus", "payload": {"type": "u"}})
+        assert fwd.msg_type == HiveMessageType.CASCADE
+        assert fwd.source_peer == "peer-B"
+        assert fwd._targets == ["peer-D"]
+        assert fwd.metadata == {"other": 1}
+        assert fwd.route == []
+        assert fwd._payload["payload"]["type"] == "u"
+
+    def test_explicit_none_drops_the_field(self):
+        fwd = self._full().forward(target_site_id=None, target_pubkey=None)
+        assert fwd.target_site_id is None
+        assert fwd.target_public_key is None
+
+    def test_forward_does_not_mutate_the_original(self):
+        original = self._full()
+        fwd = original.forward()
+        fwd.add_target_peer("peer-Z")
+        fwd.replace_route([])
+        assert original._targets == ["peer-B", "peer-C"]
+        assert original.route == [{"source": "peer-A", "targets": ["peer-B"]}]
+
+
+class TestAsDictRoundTrip:
+    """HiveMessage(**msg.as_dict) must be faithful."""
+
+    def test_as_dict_emits_target_peers(self):
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}),
+                          target_peers=["peer-B"])
+        assert msg.as_dict["target_peers"] == ["peer-B"]
+
+    def test_as_dict_target_peers_does_not_invent_source_peer(self):
+        """The target_peers property falls back to source_peer; the wire must
+        not claim a target the sender never set."""
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {}, {}),
+                          source_peer="peer-A")
+        assert msg.as_dict["target_peers"] == []
+
+    def test_constructor_round_trip_is_faithful(self):
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {"a": 1}, {}),
+                          node="node-1", source_peer="peer-A",
+                          route=[{"source": "peer-A", "targets": ["peer-B"]}],
+                          target_peers=["peer-B"], target_site_id="site-1",
+                          target_pubkey="pubkey-1", metadata={"k": "v"})
+        clone = HiveMessage(**msg.as_dict)
+        assert clone.as_dict == msg.as_dict
+
+    def test_json_round_trip_restores_target_peers(self):
+        msg = HiveMessage(HiveMessageType.PROPAGATE,
+                          payload={"msg_type": "bus", "payload": {"type": "t"}},
+                          target_peers=["peer-B", "peer-C"])
+        restored = HiveMessage.deserialize(msg.serialize())
+        assert restored._targets == ["peer-B", "peer-C"]
+
+    def test_frame_from_old_peer_without_target_peers_still_deserializes(self):
+        """Wire compat: a peer older than this change omits the key."""
+        old_frame = json.dumps({"msg_type": "bus",
+                                "payload": {"type": "t", "data": {}, "context": {}},
+                                "metadata": {}, "route": [], "node": None,
+                                "target_site_id": None, "target_pubkey": None,
+                                "source_peer": None})
+        restored = HiveMessage.deserialize(old_frame)
+        assert restored.msg_type == HiveMessageType.BUS
+        assert restored._targets == []
+
+    def test_unknown_future_keys_are_ignored(self):
+        frame = json.dumps({"msg_type": "bus", "payload": {"type": "t"},
+                            "some_future_field": "ignore me"})
+        assert HiveMessage.deserialize(frame).msg_type == HiveMessageType.BUS
+
+
+class TestPayloadIdentity:
+    """Repeated payload access must return the same object."""
+
+    def test_bus_payload_is_stable(self):
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {"a": 1}, {}))
+        assert msg.payload is msg.payload
+
+    def test_wrapper_payload_is_stable(self):
+        msg = HiveMessage(HiveMessageType.PROPAGATE,
+                          payload={"msg_type": "bus", "payload": {"type": "t"}})
+        assert msg.payload is msg.payload
+
+    def test_mutation_through_payload_survives(self):
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {"a": 1}, {}))
+        msg.payload.context["session"] = "sess-1"
+        assert msg.payload.context["session"] == "sess-1"
+
+    def test_dict_payload_is_stable(self):
+        msg = HiveMessage(HiveMessageType.THIRDPRTY, payload={"a": 1})
+        assert msg.payload is msg.payload
+
+    def test_setting_payload_invalidates_the_cached_view(self):
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {"a": 1}, {}))
+        assert msg.payload.msg_type == "t"
+        msg.payload = Message("u", {}, {})
+        assert msg.payload.msg_type == "u"
+
+    def test_item_assignment_invalidates_the_cached_view(self):
+        msg = HiveMessage(HiveMessageType.BUS, payload=Message("t", {"a": 1}, {}))
+        assert msg.payload.msg_type == "t"
+        msg["type"] = "u"
+        assert msg.payload.msg_type == "u"
