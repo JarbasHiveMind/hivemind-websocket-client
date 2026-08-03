@@ -437,8 +437,13 @@ class HiveMindSlaveProtocol:
         pin_id = self._noise_pin_id
         pinned = self.identity.get_pinned_noise_key(pin_id)
         if pinned and transport.remote_static_key != pinned:
-            LOG.error(f"server Noise static key CHANGED for {pin_id} — "
-                      "possible man-in-the-middle, aborting")
+            LOG.error(
+                f"server Noise static key CHANGED for {pin_id} — refusing "
+                "to connect. If you did not reinstall or replace the "
+                "master, another machine may be answering at this address. "
+                "If you did, the pinned key is stale: run "
+                "'hivemind-client forget-server' to drop it and reconnect "
+                "to trust the new key.")
             self._abort_noise("pinned key mismatch")
             return
         if not pinned and transport.remote_static_key:
@@ -465,16 +470,27 @@ class HiveMindSlaveProtocol:
         self.hm.handshake_event.set()
 
     def _abort_noise(self, reason: str):
-        """Fatal handshake failure — reject the connection (§3.4.3)."""
+        """Fatal handshake failure — reject the connection (§3.4.3).
+
+        The connection is dropped, but the client keeps reconnecting. Every
+        abort reason here can be transient or repairable from the other
+        side: a rotated password, a truncated handshake envelope, a master
+        that was reinstalled. A permanent stop would leave the node dead
+        until somebody edits its identity file by hand, and the failure
+        would be logged once and then never again. Retrying re-reports the
+        problem on every attempt and recovers by itself once the cause is
+        fixed. Refusing the connection is what protects the session, not
+        giving up on it.
+        """
         LOG.error(f"aborting protocol v3 connection: {reason}")
         self.noise_handshake = None
         self.hm.noise_transport = None
         try:
-            result = self.hm.close()
+            result = self.hm.close_connection()
             if asyncio.iscoroutine(result):
                 asyncio.ensure_future(result)
         except Exception:
-            pass
+            LOG.exception("failed to close the aborted connection")
 
     def start_handshake(self):
         # negotiated protocol v3 -> the Noise handshake replaces the legacy

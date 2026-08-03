@@ -154,5 +154,31 @@ hivemind-client reset-pgp
 ```
 
 ---
+
+## `forget-server`
+
+Forget the pinned encryption key of a hivemind-core.
+
+The first time this node connects to a master it records the master's static
+encryption key, and every later connection checks that the key did not change.
+This protects the connection, but it also stops the node when the master
+legitimately changes its key — after a reinstall, a new SD card, or a restore
+from a backup. The log then reports a key mismatch on every attempt.
+
+Forget the old key, then connect again to trust and record the new one.
+
+```bash
+hivemind-client forget-server --host 192.168.1.10 --port 5678
+```
+
+| Option | Description |
+|--------|-------------|
+| `--host` | Host of the master. Defaults to the master in the identity file. |
+| `--port` | Port of the master. Defaults to the port in the identity file. |
+
+Only forget a key you expected to change. If nothing was reinstalled, another
+machine may be answering at that address.
+
+---
 [← Identity & Credentials](identity.md) · [Home](index.md) · [CLI Guide →](cli_guide.md)
 

@@ -1,6 +1,7 @@
-from os.path import basename, dirname
+from os.path import basename, dirname, isfile
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
+from hivemind_bus_client.exceptions import IdentityFileCorrupted
 from typing import Dict, List, Optional
 
 
@@ -19,7 +20,35 @@ class NodeIdentity:
         Args:
             identity_file (Optional[str]): Path to a custom identity file (default: None, uses default configuration).
         """
-        self.IDENTITY_FILE = identity_file or JsonConfigXDG("_identity", subfolder="hivemind")
+        # an empty store is falsy, so test explicitly: a caller that passes
+        # its own (still empty) file must not silently get the default one
+        if identity_file is None:
+            identity_file = JsonConfigXDG("_identity", subfolder="hivemind")
+        self.IDENTITY_FILE = identity_file
+        self._assert_identity_readable()
+
+    def _assert_identity_readable(self):
+        """Refuse to start with an identity file that exists but did not load.
+
+        JsonStorage fails open: if the file is truncated or otherwise
+        unparseable it logs the error and leaves the dict empty. Every
+        property below would then fall back to a default, the node would
+        call itself "unnamed-node", and because the Noise static key path
+        is derived from the name it would generate a brand new static key.
+        To every peer that pinned the old key the node then looks like an
+        impostor. A node that cannot read its own identity must stop, not
+        come up as a different node.
+        """
+        path = self.IDENTITY_FILE.path
+        if not path or not isfile(path) or self.IDENTITY_FILE:
+            return
+        with open(path, encoding="utf-8") as f:
+            raw = f.read().strip()
+        if raw and raw != "{}":
+            raise IdentityFileCorrupted(
+                f"identity file {path} exists but could not be parsed. "
+                "Refusing to mint a new identity — restore it from a backup "
+                "or delete it to start over as a new node.")
 
     @property
     def name(self) -> str:
@@ -196,6 +225,27 @@ class NodeIdentity:
         keys[node_id] = pubkey
         self.IDENTITY_FILE["pinned_noise_keys"] = keys
         self.save()
+
+    def forget_noise_key(self, node_id: str) -> bool:
+        """Drop the pinned Noise static key for a node id.
+
+        Needed when the peer legitimately changed its static key, which
+        happens whenever a master is reinstalled or restored from a backup.
+        Without this the node refuses every later handshake with that peer.
+
+        Args:
+            node_id: The peer's node identifier.
+
+        Returns:
+            bool: True if a pin was removed, False if there was none.
+        """
+        keys = self.pinned_noise_keys
+        if node_id not in keys:
+            return False
+        keys.pop(node_id)
+        self.IDENTITY_FILE["pinned_noise_keys"] = keys
+        self.save()
+        return True
 
     @property
     def trusted_keys(self) -> Dict[str, str]:

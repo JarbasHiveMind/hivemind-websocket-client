@@ -258,5 +258,96 @@ class TestHiveMessageBusClientInit(unittest.TestCase):
         self.assertRegex(client.session_id, uuid_pattern)
 
 
+class TestPinnedNoiseKeys(unittest.TestCase):
+    """A pinned key must be removable — masters get reinstalled."""
+
+    def _make_identity(self, tmpdir):
+        from json_database import JsonStorage
+        from hivemind_bus_client.identity import NodeIdentity
+        store = JsonStorage(os.path.join(tmpdir, "identity.json"),
+                            disable_lock=True)
+        return NodeIdentity(identity_file=store)
+
+    def test_forget_removes_only_the_named_pin(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = self._make_identity(tmpdir)
+            identity.pin_noise_key("hive.example:5678", "aa" * 32)
+            identity.pin_noise_key("other.example:5678", "bb" * 32)
+
+            self.assertTrue(identity.forget_noise_key("hive.example:5678"))
+
+            self.assertEqual(identity.pinned_noise_keys,
+                             {"other.example:5678": "bb" * 32})
+
+    def test_forget_unknown_pin_reports_nothing_removed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = self._make_identity(tmpdir)
+            identity.pin_noise_key("hive.example:5678", "aa" * 32)
+
+            self.assertFalse(identity.forget_noise_key("nowhere:5678"))
+            self.assertEqual(identity.pinned_noise_keys,
+                             {"hive.example:5678": "aa" * 32})
+
+    def test_forget_survives_a_reload(self):
+        """The removal is written to disk, not only to the live dict."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from json_database import JsonStorage
+            from hivemind_bus_client.identity import NodeIdentity
+            path = os.path.join(tmpdir, "identity.json")
+            identity = self._make_identity(tmpdir)
+            identity.pin_noise_key("hive.example:5678", "aa" * 32)
+            identity.forget_noise_key("hive.example:5678")
+
+            reloaded = NodeIdentity(
+                identity_file=JsonStorage(path, disable_lock=True))
+            self.assertEqual(reloaded.pinned_noise_keys, {})
+
+
+class TestCorruptIdentityFile(unittest.TestCase):
+    """A node that cannot read its own identity must not become a new node.
+
+    The Noise static key path is derived from the node name, so falling
+    back to "unnamed-node" makes the node generate a fresh static key. To
+    every peer that pinned the old key it then looks like an impostor.
+    """
+
+    def _load(self, path):
+        from json_database import JsonStorage
+        from hivemind_bus_client.identity import NodeIdentity
+        return NodeIdentity(identity_file=JsonStorage(path, disable_lock=True))
+
+    def test_truncated_identity_file_raises(self):
+        from hivemind_bus_client.exceptions import IdentityFileCorrupted
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "identity.json")
+            with open(path, "w") as f:
+                f.write('{"name": "kitchen", "password": "hunt')
+
+            with self.assertRaises(IdentityFileCorrupted):
+                self._load(path)
+
+    def test_missing_identity_file_mints_a_new_identity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = self._load(os.path.join(tmpdir, "identity.json"))
+            self.assertEqual(identity.name, "unnamed-node")
+
+    def test_empty_identity_file_mints_a_new_identity(self):
+        """An empty object is what a first save() writes, not corruption."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "identity.json")
+            with open(path, "w") as f:
+                f.write("{}")
+
+            self.assertEqual(self._load(path).name, "unnamed-node")
+
+    def test_readable_identity_file_loads(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "identity.json")
+            with open(path, "w") as f:
+                f.write('{"name": "kitchen"}')
+
+            self.assertEqual(self._load(path).name, "kitchen")
+
+
 if __name__ == "__main__":
     unittest.main()
