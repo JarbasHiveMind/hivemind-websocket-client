@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.1a1) (2026-08-03)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.11.0a1...0.11.1a1)
+
+**Merged pull requests:**
+
+- fix: share one PING flood cache per node [\#161](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/161) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.11.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.0a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.6a2...0.11.0a1)
@@ -660,10 +668,6 @@
 ## [V0.0.4a9](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a9) (2023-09-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a8...V0.0.4a9)
-
-**Implemented enhancements:**
-
-- feat/identity\_file [\#18](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/18) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a8](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a8) (2023-09-12)
 
