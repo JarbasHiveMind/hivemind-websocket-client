@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.1a1) (2026-08-03)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.0a1...1.0.1a1)
+
+**Merged pull requests:**
+
+- fix: keep the envelope route across a binary frame [\#164](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/164) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.0a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.11.1a1...1.0.0a1)
@@ -660,10 +668,6 @@
 ## [V0.0.4a11](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a11) (2023-09-29)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a10...V0.0.4a11)
-
-**Fixed bugs:**
-
-- explicit session [\#20](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/20) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a10](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a10) (2023-09-14)
 
