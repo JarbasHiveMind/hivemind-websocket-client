@@ -591,3 +591,41 @@ class TestBuildUrl(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEmitBinType:
+    """A HiveMessage carries its own bin_type; emit must not discard it."""
+
+    def _emitted_frame(self, message, **kw):
+        from unittest.mock import MagicMock, patch
+        from hivemind_bus_client.client import HiveMessageBusClient
+        c = object.__new__(HiveMessageBusClient)
+        c.connected_event = MagicMock(is_set=lambda: True)
+        c.protocol = MagicMock(binarize=True)
+        c.binarize = True
+        c.compress = False
+        c.noise_transport = None
+        c.crypto_key = None
+        c.client = MagicMock()
+        c.identity = MagicMock(site_id="t")
+        with patch("hivemind_bus_client.client.get_bitstring") as gb:
+            gb.return_value = MagicMock(bytes=b"")
+            c.emit(message, **kw)
+        return gb.call_args.kwargs
+
+    def test_message_bin_type_reaches_the_wire(self):
+        from hivemind_bus_client.message import (
+            HiveMessage, HiveMessageType, HiveMindBinaryPayloadType)
+        m = HiveMessage(HiveMessageType.BINARY, payload=b"\x00" * 8,
+                        bin_type=HiveMindBinaryPayloadType.RAW_AUDIO)
+        assert self._emitted_frame(m)["binary_type"] == \
+            HiveMindBinaryPayloadType.RAW_AUDIO
+
+    def test_explicit_argument_still_wins(self):
+        from hivemind_bus_client.message import (
+            HiveMessage, HiveMessageType, HiveMindBinaryPayloadType)
+        m = HiveMessage(HiveMessageType.BINARY, payload=b"\x00" * 8,
+                        bin_type=HiveMindBinaryPayloadType.RAW_AUDIO)
+        got = self._emitted_frame(
+            m, binary_type=HiveMindBinaryPayloadType.FILE)
+        assert got["binary_type"] == HiveMindBinaryPayloadType.FILE
