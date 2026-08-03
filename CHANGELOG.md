@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.2a1) (2026-08-03)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.1a1...1.0.2a1)
+
+**Merged pull requests:**
+
+- fix: keep every route hop that names a source [\#158](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/158) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.1a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.0a1...1.0.1a1)
@@ -656,10 +664,6 @@
 ## [V0.0.4a13](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a13) (2023-10-26)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a12...V0.0.4a13)
-
-**Fixed bugs:**
-
-- refactor/mycroft\_events [\#21](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/21) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a12](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a12) (2023-10-17)
 
