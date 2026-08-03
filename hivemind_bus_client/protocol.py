@@ -16,7 +16,7 @@ from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers, hybrid_decrypt
-from hivemind_bus_client.hive_map import HiveMapper
+from hivemind_bus_client.hive_map import FloodIdCache, HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.noise import (NOISE_SUPPORTED, PROTOCOL_V3,
@@ -213,6 +213,28 @@ class HiveMindSlaveProtocol:
     _noise_pattern: Optional[str] = field(default=None, repr=False)
     _server_hello_payload: Optional[dict] = field(default=None, repr=False)
     _server_handshake_payload: Optional[dict] = field(default=None, repr=False)
+
+    def bind_flood_cache(self, cache: FloodIdCache) -> None:
+        """Share this node's PING flood dedup store with a co-located listener.
+
+        A node that has an upstream runs two protocol objects: this slave
+        (its connection to the upstream) and a
+        ``HiveMindListenerProtocol`` (serving its own downstream clients).
+        They are two halves of **one** node, and HIVEMIND-NODE-1 §4 gives
+        the node — not the connection — exactly one part in a PING flood.
+        With one cache each, both halves answer the same flood, under two
+        different identities, and the flood's originator maps one node as
+        two.
+
+        hivemind-core calls this from
+        ``HiveMindListenerProtocol.bind_upstream``, passing the listener's
+        cache, so whichever half sees a ``flood_id`` first suppresses the
+        other. A node with no upstream is unaffected and still answers
+        exactly once.
+        """
+        if self.hive_mapper is None:
+            self.hive_mapper = HiveMapper()
+        self.hive_mapper._seen_flood_ids = cache
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
@@ -675,7 +697,17 @@ class HiveMindSlaveProtocol:
         if self.hive_mapper.check_flood_id(flood_id):
             return
 
-        # Build our own responsive PING with the same flood_id
+        # Build our own responsive PING with the same flood_id.
+        #
+        # Two fields, two jobs. ``peer`` is the connection-level label the
+        # upstream master already knows this connection by, and is what the
+        # HiveMapper keys its node table on. ``public_key`` is the node's
+        # stable identity — it survives reconnects and is how the mesh
+        # addresses a node end-to-end (INTERCOM ``target_public_key``, and
+        # the loop-detection ``_node_id`` in hivemind-core). Every
+        # responsive PING carries both, on this side and on the listener
+        # side, so a consumer can always tell two nodes apart without
+        # relying on the per-connection label.
         peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
         # announce lang from active session if available
         sess = SessionManager.default_session

@@ -239,4 +239,4 @@ class TestHiveMapperClear:
         assert mapper.nodes == {}
         assert mapper.edges == {}
         assert mapper._seen_pings == {}
-        assert mapper._seen_flood_ids == {}
+        assert len(mapper._seen_flood_ids) == 0
