@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.3a1) (2026-08-03)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.2a1...1.0.3a1)
+
+**Merged pull requests:**
+
+- fix: jitter the reconnect backoff so a restart does not resynchronize the fleet [\#168](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/168) ([JarbasAl](https://github.com/JarbasAl))
+- feat: accept a precomputed psk in start\_noise\_handshake [\#167](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/167) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.2a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.1a1...1.0.2a1)
@@ -342,10 +351,6 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.1a2...0.4.2a1)
 
-**Closed issues:**
-
-- Execution example in the readme raises an error [\#22](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/22)
-
 **Merged pull requests:**
 
 - fix: no auto connect [\#66](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/66) ([JarbasAl](https://github.com/JarbasAl))
@@ -636,10 +641,6 @@
 ## [V0.0.4a19](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a19) (2024-04-21)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a18...V0.0.4a19)
-
-**Fixed bugs:**
-
-- fix/clients\_manage\_their\_own\_sessions [\#23](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/23) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a18](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a18) (2024-01-16)
 
