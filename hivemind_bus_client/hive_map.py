@@ -125,13 +125,25 @@ class HiveMapper:
         print(mapper.to_ascii(root_peer="my-node::session1"))
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_seen_pings: int = 1000, node_ttl: float = 600.0) -> None:
         # peer → NodeInfo for every node that responded
         self.nodes: Dict[str, NodeInfo] = {}
         # source peer → set of target peers (directed edges from route records)
         self.edges: Dict[str, Set[str]] = {}
-        # flood_id → set of peer IDs that already sent a PING (deduplication)
-        self._seen_pings: Dict[str, Set[str]] = {}
+        # flood_id → set of peer IDs that already sent a PING (deduplication),
+        # FIFO-bounded at the same order of magnitude as FloodIdCache's
+        # default: on_ping runs for every arrival, before the flood-id dedup
+        # gate (hivemind-core calls it unconditionally), so a hostile or
+        # looping peer can drive an unbounded number of distinct flood_ids.
+        self._seen_pings: "OrderedDict[str, Set[str]]" = OrderedDict()
+        self.max_seen_pings = max_seen_pings
+        # nodes/edges only grow from PING traffic and are never individually
+        # removed by protocol logic, unlike _seen_pings/_seen_flood_ids which
+        # exist purely to dedup a single flood. A hard cap would drop the
+        # oldest-known node even if it is still live and just quiet; instead
+        # nodes expire only after node_ttl seconds without a fresh PING, so a
+        # topology view only forgets peers it hasn't heard from in a while.
+        self.node_ttl = node_ttl
         # already-answered flood ids (FIFO eviction). Replaceable so the two
         # protocol halves of one node can share a single store — see
         # FloodIdCache and HiveMindSlaveProtocol.bind_flood_cache.
@@ -143,7 +155,25 @@ class HiveMapper:
         Args:
             flood_id: UUID string from the PING payload.
         """
-        self._seen_pings[flood_id] = set()
+        self._register_seen_ping(flood_id, set())
+
+    def _register_seen_ping(self, flood_id: str, seen: Set[str]) -> None:
+        if flood_id in self._seen_pings:
+            del self._seen_pings[flood_id]
+        while len(self._seen_pings) >= self.max_seen_pings:
+            self._seen_pings.popitem(last=False)  # FIFO — drop the oldest flood
+        self._seen_pings[flood_id] = seen
+
+    def prune_stale_nodes(self, now: Optional[float] = None) -> None:
+        """Drop nodes (and their edges) not heard from within ``node_ttl`` seconds."""
+        now = now if now is not None else time.time()
+        stale = [peer for peer, node in self.nodes.items()
+                 if node.received_at is not None and now - node.received_at > self.node_ttl]
+        for peer in stale:
+            del self.nodes[peer]
+            self.edges.pop(peer, None)
+            for targets in self.edges.values():
+                targets.discard(peer)
 
     def on_ping(self, message: HiveMessage, received_at: Optional[float] = None) -> bool:
         """Ingest a received PING HiveMessage and update the topology graph.
@@ -169,7 +199,13 @@ class HiveMapper:
         if not flood_id or not peer:
             return False
 
-        seen = self._seen_pings.setdefault(flood_id, set())
+        self.prune_stale_nodes()
+
+        if flood_id in self._seen_pings:
+            seen = self._seen_pings[flood_id]
+        else:
+            seen = set()
+            self._register_seen_ping(flood_id, seen)
         if peer in seen:
             return False
         seen.add(peer)
