@@ -7,6 +7,7 @@ Every node responds to a PING by propagating its own PING (with the same
 import json
 import time
 from collections import OrderedDict
+from collections.abc import MutableSet
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
@@ -38,6 +39,80 @@ class NodeInfo:
         return None
 
 
+class FloodIdCache(MutableSet):
+    """Set of already-seen ``flood_id`` values, with FIFO eviction.
+
+    HIVEMIND-MSG-1 §4 and HIVEMIND-NODE-1 §4 make flood deduplication a
+    property of **the node**: "nodes drop messages whose ``flood_id`` they
+    have already seen", and each node answers a PING flood exactly once.
+
+    A node that has an upstream runs two protocol objects at once — a
+    listener serving its downstream clients and a slave connected to its
+    upstream. They are two halves of one node, so they MUST share one
+    cache; otherwise each half answers the same flood independently and
+    the node is mapped twice. This class is the shared store: create one
+    per node and hand the same instance to both halves (hivemind-core's
+    ``HiveMindListenerProtocol.bind_upstream`` does exactly that).
+
+    It behaves as a plain ``set`` of strings (``add``, ``in``, ``len``,
+    iteration) so existing code and tests keep working, and adds
+    :meth:`check` for the test-and-register step a flood handler needs.
+    """
+
+    def __init__(self, max_size: int = 1000) -> None:
+        self.max_size = max_size
+        # flood_id → insertion timestamp; ordered so eviction is FIFO
+        self._ids: "OrderedDict[str, float]" = OrderedDict()
+
+    # --- MutableSet interface ---------------------------------------
+
+    def __contains__(self, flood_id: object) -> bool:
+        return flood_id in self._ids
+
+    def __iter__(self):
+        return iter(self._ids)
+
+    def __len__(self) -> int:
+        return len(self._ids)
+
+    def __getitem__(self, flood_id: str) -> float:
+        """Insertion time of *flood_id*, for age inspection and debugging."""
+        return self._ids[flood_id]
+
+    def add(self, flood_id: str) -> None:
+        """Register *flood_id*, evicting the oldest entries when full."""
+        if flood_id in self._ids:
+            return
+        while len(self._ids) >= self.max_size:
+            self._ids.popitem(last=False)  # FIFO — drop the oldest
+        self._ids[flood_id] = time.time()
+
+    def discard(self, flood_id: str) -> None:
+        self._ids.pop(flood_id, None)
+
+    def clear(self) -> None:
+        self._ids.clear()
+
+    # --- flood handling ---------------------------------------------
+
+    def check(self, flood_id: str, max_size: Optional[int] = None) -> bool:
+        """Test *flood_id* and register it in one step.
+
+        Returns ``True`` when the flood was **already** seen (the caller
+        must drop the message), ``False`` the first time (the caller
+        handles it). An empty ``flood_id`` always reads as seen, so a
+        malformed PING never triggers a response.
+        """
+        if not flood_id:
+            return True
+        if flood_id in self._ids:
+            return True
+        if max_size is not None:
+            self.max_size = max_size
+        self.add(flood_id)
+        return False
+
+
 class HiveMapper:
     """Collect responsive PINGs from a flood and build a directed hive topology graph.
 
@@ -57,8 +132,10 @@ class HiveMapper:
         self.edges: Dict[str, Set[str]] = {}
         # flood_id → set of peer IDs that already sent a PING (deduplication)
         self._seen_pings: Dict[str, Set[str]] = {}
-        # flood_id → timestamp for flood-loop prevention (FIFO eviction by age)
-        self._seen_flood_ids: OrderedDict[str, float] = OrderedDict()
+        # already-answered flood ids (FIFO eviction). Replaceable so the two
+        # protocol halves of one node can share a single store — see
+        # FloodIdCache and HiveMindSlaveProtocol.bind_flood_cache.
+        self._seen_flood_ids: FloodIdCache = FloodIdCache()
 
     def start_ping(self, flood_id: str) -> None:
         """Register a new PING session, clearing stale deduplication state for that ID.
@@ -273,15 +350,7 @@ class HiveMapper:
         Returns:
             ``True`` if the flood_id was already seen, ``False`` otherwise.
         """
-        if not flood_id:
-            return True  # empty flood_id is always "seen" (rejected)
-        if flood_id in self._seen_flood_ids:
-            return True
-        # evict oldest entries when cache is full
-        while len(self._seen_flood_ids) >= max_size:
-            self._seen_flood_ids.popitem(last=False)  # FIFO — remove oldest
-        self._seen_flood_ids[flood_id] = time.time()
-        return False
+        return self._seen_flood_ids.check(flood_id, max_size=max_size)
 
     def clear(self) -> None:
         """Reset the mapper to an empty state."""
