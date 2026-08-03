@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.0a1) (2026-08-03)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.11.1a1...1.0.0a1)
+
+**Breaking changes:**
+
+- feat!: remove the THIRDPRTY message type [\#160](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/160) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.11.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.1a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.11.0a1...0.11.1a1)
@@ -660,10 +668,6 @@
 ## [V0.0.4a10](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a10) (2023-09-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a9...V0.0.4a10)
-
-**Implemented enhancements:**
-
-- feat/identity\_file host [\#19](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/19) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a9](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a9) (2023-09-14)
 
