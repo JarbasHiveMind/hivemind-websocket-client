@@ -139,7 +139,12 @@ class HiveMessage:
 
     @property
     def route(self) -> List[str]:
-        return [r for r in self._route if isinstance(r, dict) and r.get("targets") and r.get("source")]
+        # HIVEMIND-MSG-1 §5: a hop records AT LEAST the forwarding node in
+        # `source`. `targets` is optional provenance that no consumer reads,
+        # so requiring it here silently dropped spec-minimal hops -- and
+        # because relaying copies this filtered view back over the route,
+        # dropped hops were erased from the message for every later node.
+        return [r for r in self._route if isinstance(r, dict) and r.get("source")]
 
     @property
     def payload(self) -> Union['HiveMessage', Message, dict, bytes]:
