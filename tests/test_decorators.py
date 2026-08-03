@@ -8,7 +8,6 @@ from hivemind_bus_client.decorators import (
     HivePayloadListener,
     on_hive_message,
     on_mycroft_message,
-    on_third_party,
     on_broadcast,
     on_ping,
     on_propagate,
@@ -180,16 +179,6 @@ class TestPayloadDecorators(unittest.TestCase):
 
     def test_on_rendezvous(self):
         self._test_decorator(on_rendezvous, HiveMessageType.RENDEZVOUS, "speak")
-
-    def test_on_third_party(self):
-        bus = MagicMock()
-
-        @on_third_party(bus)
-        def handler(msg):
-            pass
-
-        bus.once.assert_called_once()
-        self.assertTrue(hasattr(handler, "shutdown"))
 
     def test_on_payload(self):
         bus = MagicMock()

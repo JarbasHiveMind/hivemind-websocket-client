@@ -50,11 +50,11 @@ class TestHiveMessageInit:
         assert hm._payload["type"] == "speak"
 
     def test_from_dict(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"custom": "data"})
+        hm = HiveMessage(HiveMessageType.PING, {"custom": "data"})
         assert hm._payload["custom"] == "data"
 
     def test_none_payload_becomes_empty_dict(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY)
+        hm = HiveMessage(HiveMessageType.PING)
         assert hm._payload == {}
 
     def test_binary_requires_bytes(self):
@@ -86,8 +86,8 @@ class TestHiveMessagePayloadProperty:
         assert isinstance(payload, HiveMessage)
         assert payload.msg_type == HiveMessageType.PING
 
-    def test_thirdparty_returns_dict(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"foo": "bar"})
+    def test_plain_type_returns_dict(self):
+        hm = HiveMessage(HiveMessageType.PING, {"foo": "bar"})
         assert isinstance(hm.payload, dict)
         assert hm.payload["foo"] == "bar"
 
@@ -114,16 +114,16 @@ class TestHiveMessageSerialization:
         restored = HiveMessage.deserialize(d)
         assert restored.msg_type == HiveMessageType.BUS
 
-    def test_deserialize_unknown_falls_to_thirdparty(self):
+    def test_deserialize_unknown_raises(self):
         d = {"random_key": "value"}
-        restored = HiveMessage.deserialize(d)
-        assert restored.msg_type == HiveMessageType.THIRDPRTY
+        with pytest.raises(ValueError):
+            HiveMessage.deserialize(d)
 
     def test_as_dict(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"k": "v"},
+        hm = HiveMessage(HiveMessageType.PING, {"k": "v"},
                           node="node1", source_peer="peer1")
         d = hm.as_dict
-        assert d["msg_type"] == HiveMessageType.THIRDPRTY
+        assert d["msg_type"] == HiveMessageType.PING
         assert d["payload"] == {"k": "v"}
         assert d["node"] == "node1"
         assert d["source_peer"] == "peer1"
@@ -136,7 +136,7 @@ class TestHiveMessageSerialization:
 
 class TestHiveMessageRouting:
     def test_route_filters_incomplete_hops(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           route=[{"source": "a", "targets": ["b"]},
                                  {"source": "", "targets": []},
                                  {"source": "c", "targets": []}])
@@ -145,32 +145,32 @@ class TestHiveMessageRouting:
         assert hm.route[0]["source"] == "a"
 
     def test_target_peers_defaults_to_source(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           source_peer="peer1")
         assert hm.target_peers == ["peer1"]
 
     def test_update_hop_data(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           source_peer="a", target_peers=["b"])
         hm.update_hop_data()
         assert len(hm._route) == 1
         assert hm._route[0]["source"] == "a"
 
     def test_replace_route(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {})
+        hm = HiveMessage(HiveMessageType.PING, {})
         new_route = [{"source": "x", "targets": ["y"]}]
         hm.replace_route(new_route)
         assert hm.route == new_route
 
     def test_add_remove_target_peer(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {})
+        hm = HiveMessage(HiveMessageType.PING, {})
         hm.add_target_peer("peer1")
         assert "peer1" in hm._targets
         hm.remove_target_peer("peer1")
         assert "peer1" not in hm._targets
 
     def test_update_source_peer(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {})
+        hm = HiveMessage(HiveMessageType.PING, {})
         result = hm.update_source_peer("new_peer")
         assert hm.source_peer == "new_peer"
         assert result is hm  # returns self for chaining
@@ -178,12 +178,12 @@ class TestHiveMessageRouting:
 
 class TestHiveMessageItemAccess:
     def test_getitem(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"key": "value"})
+        hm = HiveMessage(HiveMessageType.PING, {"key": "value"})
         assert hm["key"] == "value"
         assert hm["missing"] is None
 
     def test_setitem(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"key": "old"})
+        hm = HiveMessage(HiveMessageType.PING, {"key": "old"})
         hm["key"] = "new"
         assert hm["key"] == "new"
 
@@ -200,10 +200,10 @@ class TestHiveMessageItemAccess:
 
 class TestHiveMessageStr:
     def test_str_normal(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"k": "v"})
+        hm = HiveMessage(HiveMessageType.PING, {"k": "v"})
         s = str(hm)
         parsed = json.loads(s)
-        assert parsed["msg_type"] == "3rdparty"
+        assert parsed["msg_type"] == "ping"
 
     def test_str_binary(self):
         hm = HiveMessage(HiveMessageType.BINARY, b"\x00\x01\x02")
@@ -213,20 +213,20 @@ class TestHiveMessageStr:
 
 class TestHiveMessagePayloadSetter:
     def test_set_message_payload(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        hm = HiveMessage(HiveMessageType.PING, {"old": "data"})
         new_msg = Message("speak", {"utterance": "hi"})
         hm.payload = new_msg
         # Stored as dict internally
         assert isinstance(hm._payload, dict)
 
     def test_set_hive_message_payload(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        hm = HiveMessage(HiveMessageType.PING, {"old": "data"})
         inner = HiveMessage(HiveMessageType.PING, {"flood_id": "x"})
         hm.payload = inner
         assert isinstance(hm._payload, dict)
 
     def test_set_dict_payload(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {"old": "data"})
+        hm = HiveMessage(HiveMessageType.PING, {"old": "data"})
         hm.payload = {"new": "data"}
         assert hm._payload == {"new": "data"}
 
@@ -238,30 +238,30 @@ class TestHiveMessagePayloadSetter:
 
 class TestHiveMessageTargetPeers:
     def test_target_peers_with_source_peer_fallback(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           source_peer="peer1")
         assert hm.target_peers == ["peer1"]
 
     def test_target_peers_explicit(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           source_peer="peer1", target_peers=["peer2"])
         assert hm.target_peers == ["peer2"]
 
     def test_target_peers_no_source(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {})
+        hm = HiveMessage(HiveMessageType.PING, {})
         assert hm.target_peers == []
 
 
 class TestHiveMessageUpdateHopData:
     def test_update_hop_with_data_merge(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           source_peer="a", target_peers=["b"])
         hm.update_hop_data(data={"extra": "info"})
         assert len(hm._route) == 1
         assert hm._route[0]["extra"] == "info"
 
     def test_update_hop_same_source_no_duplicate(self):
-        hm = HiveMessage(HiveMessageType.THIRDPRTY, {},
+        hm = HiveMessage(HiveMessageType.PING, {},
                           source_peer="a", target_peers=["b"])
         hm.update_hop_data()
         hm.update_hop_data()  # same source, should not duplicate
@@ -466,7 +466,7 @@ class TestPayloadIdentity:
         assert msg.payload.context["session"] == "sess-1"
 
     def test_dict_payload_is_stable(self):
-        msg = HiveMessage(HiveMessageType.THIRDPRTY, payload={"a": 1})
+        msg = HiveMessage(HiveMessageType.PING, payload={"a": 1})
         assert msg.payload is msg.payload
 
     def test_setting_payload_invalidates_the_cached_view(self):

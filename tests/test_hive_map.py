@@ -71,9 +71,7 @@ class TestHiveMapperOnPing:
         mapper = HiveMapper()
         # HiveMessageType.PING with a non-dict payload (raw string won't happen
         # in practice but tests the guard)
-        msg = HiveMessage(HiveMessageType.THIRDPRTY, {"flood_id": "x", "peer": "y"})
-        # msg_type is THIRDPRTY so payload returns dict — but for PING type,
-        # payload is returned as-is (dict). Let's test with a proper PING.
+        # PING payload is returned as-is (dict)
         msg2 = HiveMessage(HiveMessageType.PING, {})
         assert mapper.on_ping(msg2) is False
 

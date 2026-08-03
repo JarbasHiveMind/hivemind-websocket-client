@@ -25,7 +25,6 @@ class HiveMessageType(str, Enum):
     # all nodes in the hive (responses optional)
     PING = "ping"  # like cascade, but used to map the network
     RENDEZVOUS = "rendezvous"  # reserved for rendezvous-nodes
-    THIRDPRTY = "3rdparty"  # user land message, do whatever you want
     BINARY = "bin"  # binary data container, payload for something else
 
 
@@ -299,7 +298,7 @@ class HiveMessage:
 
         if "type" in payload:
             try:
-                # NOTE: technically could also be SHARED_BUS or THIRDPRTY
+                # NOTE: technically could also be SHARED_BUS
                 return HiveMessage(HiveMessageType.BUS,
                                    payload=Message.deserialize(payload),
                                    metadata=payload.get("metadata", {}),
@@ -308,10 +307,7 @@ class HiveMessage:
             except Exception:
                 pass  # not a mycroft message
 
-        return HiveMessage(HiveMessageType.THIRDPRTY, payload,
-                           metadata=payload.get("metadata", {}),
-                           target_site_id=payload.get("target_site_id"),
-                           target_pubkey=payload.get("target_pubkey"))
+        raise ValueError(f"not a HiveMind message: {payload}")
 
     def __getitem__(self, item):
         if not isinstance(self._payload, dict):

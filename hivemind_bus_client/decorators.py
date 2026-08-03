@@ -62,7 +62,7 @@ class HivePayloadListener(HiveMessageListener):
         **kwargs: Forwarded to ``HiveMessageListener``.
     """
 
-    def __init__(self, payload_type: Union[HiveMessageType, str] = HiveMessageType.THIRDPRTY,
+    def __init__(self, payload_type: Union[HiveMessageType, str],
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.payload_type = payload_type
@@ -280,22 +280,6 @@ def on_rendezvous(payload_type: str,
     def wrapped_handler(func: Callable) -> Callable:
         waiter = HivePayloadListener(bus=bus, payload_type=payload_type,
                                      message_type=HiveMessageType.RENDEZVOUS)
-        waiter.add_handler(func)
-        waiter.listen()
-        func.shutdown = waiter.shutdown
-        return func
-    return wrapped_handler
-
-
-def on_third_party(bus: 'HiveMessageBusClient') -> Callable:
-    """Decorator: register the wrapped function for ``THIRDPRTY`` messages.
-
-    Args:
-        bus: The bus to register on.
-    """
-    def wrapped_handler(func: Callable) -> Callable:
-        waiter = HiveMessageListener(bus=bus,
-                                     message_type=HiveMessageType.THIRDPRTY)
         waiter.add_handler(func)
         waiter.listen()
         func.shutdown = waiter.shutdown

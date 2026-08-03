@@ -297,7 +297,6 @@ client.connect()
 | `INTERCOM` | any → any | End-to-end hybrid-encrypted (AES-GCM + RSA) |
 | `PING` | inside PROPAGATE | Flood-based network topology discovery |
 | `BINARY` | hub → satellite | Raw binary payload (TTS audio, file transfer) |
-| `THIRDPRTY` | any → any | User-land payload. HiveMind relays it and does nothing else |
 
 `emit()` raises `ValueError` for a message type that has no binary wire code. It never
 relabels the type to get the frame out.

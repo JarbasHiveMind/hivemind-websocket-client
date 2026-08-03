@@ -19,18 +19,16 @@ PROTOCOL_VERSION = 1  # integer, a version increase signals new functionality ad
 # vectors.json) actually emit on the wire. They are retained EXACTLY as
 # assigned for wire compatibility with those decoders. This numbering
 # does NOT match the aspirational table in HIVEMIND-WIRE-1 §4.2 (which
-# lists 6=INTERCOM, 7=PING, 8=reserved, 9=HELLO, 10=THIRDPRTY,
-# 11=reserved, and makes QUERY/CASCADE/RENDEZVOUS text-only wrapper
-# types). Reconciling the two — renumbering the wire and moving the
-# wrapper types to text-only — is a wire-breaking change that belongs to
-# a coordinated spec revision, NOT to this bugfix. Changing any code
-# here would break interop with every deployed peer.
+# makes QUERY/CASCADE/RENDEZVOUS text-only wrapper types). Reconciling
+# the two is a wire-breaking change that belongs to a coordinated spec
+# revision. Changing any code here would break interop with every
+# deployed peer.
 #
-# What this fix DOES enforce from §4.2: a receiver MUST reject a frame
-# carrying an unassigned/reserved 5-bit code as malformed. Every code in
-# this map is currently assigned and round-trips; codes not in this map
-# (13-31) are unassigned and are rejected by _decode_bitstring_v1
-# instead of being silently coerced to THIRDPRTY (the fixed bug).
+# What this map DOES enforce from §4.2: a receiver MUST reject a frame
+# carrying an unassigned 5-bit code as malformed. Every code in this map
+# is assigned and round-trips; every other code is unassigned and is
+# rejected by _decode_bitstring_v1. Code 11 was THIRDPRTY, which is now
+# removed; do not reuse it. A new type takes the next free code from 13.
 _INT2TYPE = {0: HiveMessageType.HANDSHAKE,
              1: HiveMessageType.BUS,
              2: HiveMessageType.SHARED_BUS,
@@ -42,7 +40,6 @@ _INT2TYPE = {0: HiveMessageType.HANDSHAKE,
              8: HiveMessageType.CASCADE,
              9: HiveMessageType.PING,
              10: HiveMessageType.RENDEZVOUS,
-             11: HiveMessageType.THIRDPRTY,
              12: HiveMessageType.BINARY}
 
 _TYPE2INT = {v: k for k, v in _INT2TYPE.items()}
@@ -74,7 +71,7 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
     if hive_type not in _TYPE2INT:
         # WIRE-1 §4.3: a type with no assigned 5-bit code cannot be binarized
         # and must travel as a text-encoded frame. Encoding it anyway used to
-        # fall back to code 11 and put it on the wire labelled THIRDPRTY.
+        # fall back to a wrong code and mislabel the frame.
         raise ValueError(
             f"{hive_type} has no assigned WIRE-1 message-type code and "
             f"cannot be sent as a binary frame; send it as text instead"
@@ -136,8 +133,8 @@ def _decode_bitstring_v1(s):
     if type_code not in _INT2TYPE:
         # WIRE-1 §4.2: "A receiver MUST reject a frame carrying an
         # unassigned or reserved value as malformed." Previously any
-        # unknown code was silently coerced to 11 (THIRDPRTY), which
-        # masked corrupt/forged frames. Codes 13-31 are unassigned.
+        # unknown code was silently coerced to a default type, which
+        # masked corrupt/forged frames.
         raise ValueError(
             f"malformed binary frame: unassigned WIRE-1 message-type "
             f"code {type_code} (assigned codes: "

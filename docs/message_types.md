@@ -26,7 +26,6 @@ The `msg_type` (defined in `hivemind_bus_client.message.HiveMessageType`) dictat
 | **`PING`** | Network discovery flood | Each node responds with its own PING (same `flood_id`). Carried inside PROPAGATE. Route metadata = hive path. |
 | **`HELLO`** | Node announcement | Session sync at connection time. |
 | **`HANDSHAKE`** | Crypto negotiation | Key exchange at connection time. |
-| **`THIRDPRTY`** | User-land custom | Application-defined payload. HiveMind relays it without interpretation. |
 
 ## QUERY: First-Match Request-Response
 
