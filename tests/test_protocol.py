@@ -437,3 +437,41 @@ class TestHandlePropagate:
             called_with = mock_ping.call_args[0][0]
             assert called_with.msg_type == HiveMessageType.PING
             assert called_with.payload == {"flood_id": "abc", "peer": "x"}
+
+
+class TestUnhandledInnerPayloadType:
+    """MSG-1 §3: a node MUST forward or ignore a payload type it does not
+    handle, and MUST NOT reject the connection. The old code asserted the
+    inner type, which crashed the handler (and vanished under "python -O")."""
+
+    def test_propagate_with_unhandled_inner_type_is_ignored(self):
+        proto = _make_protocol()
+        inner = HiveMessage(HiveMessageType.HELLO, {"whatever": 1})
+        outer = HiveMessage(HiveMessageType.PROPAGATE, inner)
+
+        with patch.object(proto, 'handle_ping') as mock_ping, \
+                patch.object(proto, 'handle_intercom') as mock_intercom, \
+                patch.object(proto, 'handle_bus') as mock_bus:
+            proto.handle_propagate(outer)  # must not raise
+            mock_ping.assert_not_called()
+            mock_intercom.assert_not_called()
+            mock_bus.assert_not_called()
+
+    def test_broadcast_with_unhandled_inner_type_is_ignored(self):
+        proto = _make_protocol()
+        inner = HiveMessage(HiveMessageType.HELLO, {"whatever": 1})
+        outer = HiveMessage(HiveMessageType.BROADCAST, inner)
+
+        with patch.object(proto, 'handle_intercom') as mock_intercom, \
+                patch.object(proto, 'handle_bus') as mock_bus:
+            proto.handle_broadcast(outer)  # must not raise
+            mock_intercom.assert_not_called()
+            mock_bus.assert_not_called()
+
+    def test_propagate_wrong_outer_type_is_dropped(self):
+        proto = _make_protocol()
+        inner = HiveMessage(HiveMessageType.PING, {"flood_id": "a"})
+        outer = HiveMessage(HiveMessageType.BROADCAST, inner)
+        with patch.object(proto, 'handle_ping') as mock_ping:
+            proto.handle_propagate(outer)  # must not raise
+            mock_ping.assert_not_called()

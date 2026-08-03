@@ -614,17 +614,25 @@ class HiveMindSlaveProtocol:
             message: The BROADCAST HiveMessage.
         """
         LOG.info(f"BROADCAST: {message.payload}")
-        assert message.msg_type == HiveMessageType.BROADCAST
-        assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
+        if message.msg_type != HiveMessageType.BROADCAST:
+            LOG.error(f"not a BROADCAST message, dropping: {message.msg_type}")
+            return
 
-        if message.payload.msg_type == HiveMessageType.INTERCOM:
+        inner = getattr(message.payload, "msg_type", None)
+        if inner == HiveMessageType.INTERCOM:
             self.handle_intercom(message.payload)
-        elif message.payload.msg_type == HiveMessageType.BUS:
+        elif inner == HiveMessageType.BUS:
             # if the message targets our site_id, send it to internal bus
             site = message.target_site_id
             if site and site == self.site_id:
                 # always trusted, comes from a master, never from other satellite
                 self.handle_bus(message.payload)
+        else:
+            # MSG-1 §3: a node MUST forward or ignore a payload type it does
+            # not handle. It MUST NOT reject the connection, and it must not
+            # crash the handler either. An assert here also disappeared under
+            # "python -O".
+            LOG.debug(f"ignoring BROADCAST with unhandled payload type: {inner}")
 
     def handle_propagate(self, message: HiveMessage):
         """Handle a PROPAGATE message (bidirectional flood).
@@ -637,21 +645,28 @@ class HiveMindSlaveProtocol:
             message: The PROPAGATE HiveMessage.
         """
         LOG.info(f"PROPAGATE: {message.payload}")
-        assert message.msg_type == HiveMessageType.PROPAGATE
-        assert message.payload.msg_type in [HiveMessageType.BUS,
-                                            HiveMessageType.INTERCOM,
-                                            HiveMessageType.PING]
-        if message.payload.msg_type == HiveMessageType.INTERCOM:
+        if message.msg_type != HiveMessageType.PROPAGATE:
+            LOG.error(f"not a PROPAGATE message, dropping: {message.msg_type}")
+            return
+
+        inner = getattr(message.payload, "msg_type", None)
+        if inner == HiveMessageType.INTERCOM:
             self.handle_intercom(message.payload)
-        elif message.payload.msg_type == HiveMessageType.PING:
+        elif inner == HiveMessageType.PING:
             self.handle_ping(message.payload)
-        elif message.payload.msg_type == HiveMessageType.BUS:
+        elif inner == HiveMessageType.BUS:
             site = message.target_site_id
             if site and site == self.site_id:
                 if self._is_source_trusted(message):
                     self.handle_bus(message.payload)
                 else:
                     LOG.warning(f"Dropping untrusted PROPAGATE(BUS) from {message.source_peer}")
+        else:
+            # MSG-1 §3: a node MUST forward or ignore a payload type it does
+            # not handle. It MUST NOT reject the connection, and it must not
+            # crash the handler either. An assert here also disappeared under
+            # "python -O".
+            LOG.debug(f"ignoring PROPAGATE with unhandled payload type: {inner}")
 
     def handle_ping(self, message: HiveMessage):
         """Handle a received PROPAGATE(PING) using flood-based discovery.
