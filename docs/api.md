@@ -45,7 +45,6 @@ Enumeration of HiveMind message types.
 | `PING` | `"ping"` | Network topology discovery (flood-based) |
 | `RENDEZVOUS` | `"rendezvous"` | Reserved for rendezvous nodes |
 | `BINARY` | `"bin"` | Raw binary data container |
-| `THIRDPRTY` | `"3rdparty"` | User-defined message type |
 
 ---
 
@@ -82,7 +81,7 @@ WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 ### Waiting for Messages
 
 - `wait_for_message(message_type, timeout=3.0)` (`client.py`): Blocks until a specific `HiveMessageType` is received.
-- `wait_for_payload(payload_type, message_type=THIRDPRTY, timeout=3.0)` (`client.py`): Blocks until a message of a specific type with a specific payload type is received.
+- `wait_for_payload(payload_type, message_type=BUS, timeout=3.0)` (`client.py`): Blocks until a message of a specific type with a specific payload type is received.
 - `wait_for_mycroft(mycroft_msg_type, timeout=3.0)` (`client.py`): Blocks until a specific OVOS message is received over the `BUS` message type.
 - `wait_for_response(message, reply_type=None, timeout=3.0)` (`client.py`): Sends a message and waits for a response.
 - `wait_for_payload_response(message, payload_type, reply_type=None, timeout=3.0)` (`client.py`): Sends a message and waits for a specific payload in the response.

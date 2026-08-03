@@ -35,7 +35,7 @@ Either via CLI (`hivemind-client set-identity --key X --password Y --siteid Z`) 
 The fundamental message unit. Wraps a payload with routing metadata (`msg_type`, `route`, `source_peer`, `target_peers`, `target_site_id`). Source: `HiveMessage` — `message.py:44`
 
 ### What message types exist?
-`HiveMessageType` enum (`message.py:9`): `HANDSHAKE`, `BUS`, `SHARED_BUS`, `INTERCOM`, `BROADCAST`, `PROPAGATE`, `ESCALATE`, `HELLO`, `QUERY`, `CASCADE`, `PING`, `RENDEZVOUS`, `THIRDPRTY`, `BINARY`.
+`HiveMessageType` enum (`message.py:9`): `HANDSHAKE`, `BUS`, `SHARED_BUS`, `INTERCOM`, `BROADCAST`, `PROPAGATE`, `ESCALATE`, `HELLO`, `QUERY`, `CASCADE`, `PING`, `RENDEZVOUS`, `BINARY`.
 
 ### How does `BUS` vs `PROPAGATE` vs `BROADCAST` differ?
 - `BUS`: Standard message sent to the hub for processing (like a regular OVOS bus message).

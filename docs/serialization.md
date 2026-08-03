@@ -55,10 +55,12 @@ All fields are packed MSB-first. The bitstring is left-padded with `0` bits to r
 | 8 | CASCADE |
 | 9 | PING |
 | 10 | RENDEZVOUS |
-| 11 | THIRDPRTY |
 | 12 | BINARY |
 
-Codes 13-31 are **unassigned**. Per HIVEMIND-WIRE-1 §4.2 a receiver
+Code 11 was `THIRDPRTY`, which is removed. Do not reuse it: a new type
+takes the next free code from 13.
+
+Code 11 and codes 13-31 are **unassigned**. Per HIVEMIND-WIRE-1 §4.2 a receiver
 **MUST** reject a frame carrying an unassigned message-type code as
 malformed: `decode_bitstring()` raises `ValueError` for any code not in
 this map instead of silently coercing it to a type. The three client
@@ -68,10 +70,9 @@ that error, log it, and drop the frame rather than crashing.
 > **Spec-vs-impl note.** This numbering is the wire reality retained for
 > compatibility with deployed encoders and the HiveMind-js peer; it does
 > **not** match the aspirational table in HIVEMIND-WIRE-1 §4.2 (which
-> lists 6=INTERCOM, 7=PING, 8/11=reserved, 9=HELLO, 10=THIRDPRTY and
 > makes QUERY/CASCADE/RENDEZVOUS text-only wrapper types). Reconciling
 > the two is a wire-breaking change reserved for a coordinated spec
-> revision; only the unassigned-code rejection (13-31) is enforced here.
+> revision; only the unassigned-code rejection is enforced here.
 
 ### Binary Payload Subtypes (`HiveMindBinaryPayloadType`, `message.py`)
 
@@ -123,7 +124,7 @@ hive_msg = decode_bitstring(raw_bytes)  # returns HiveMessage
 
 The frozen set of message types that have a 5-bit wire code. `INTERCOM` is not in it: it
 has never had a code, so it can only travel as a text frame. `_get_bitstring_v1` raises
-`ValueError` for a type outside this set instead of relabelling the frame as `THIRDPRTY`,
+`ValueError` for a type outside this set instead of relabelling the frame,
 which is what it used to do. Senders check the set before they pick a framing.
 
 ### `mycroft2bitstring()`, `serialization.py`

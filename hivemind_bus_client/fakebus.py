@@ -241,7 +241,7 @@ class AsyncFakeHiveMessageBus:
 
     async def wait_for_payload(self,
                                payload_type: Union[HiveMessageType, str],
-                               message_type: Union[HiveMessageType, str] = HiveMessageType.THIRDPRTY,
+                               message_type: Union[HiveMessageType, str] = HiveMessageType.BUS,
                                timeout: float = 3.0) -> Optional[HiveMessage]:
         evt = asyncio.Event()
         captured = {"msg": None}

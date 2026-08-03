@@ -689,7 +689,7 @@ class HiveMessageBusClient(OVOSBusClient):
         return HiveMessageWaiter(self, message_type).wait(timeout)
 
     def wait_for_payload(self, payload_type: Union[HiveMessageType, str],
-                         message_type: Union[HiveMessageType, str] = HiveMessageType.THIRDPRTY,
+                         message_type: Union[HiveMessageType, str] = HiveMessageType.BUS,
                          timeout=3.0):
         """Wait for a message of a specific type + payload of a specific type.
 

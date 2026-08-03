@@ -618,7 +618,7 @@ class AsyncHiveMessageBusClient:
 
     async def wait_for_payload(self,
                                payload_type: Union[HiveMessageType, str],
-                               message_type: Union[HiveMessageType, str] = HiveMessageType.THIRDPRTY,
+                               message_type: Union[HiveMessageType, str] = HiveMessageType.BUS,
                                timeout: float = 3.0) -> Optional[HiveMessage]:
         return await AsyncHivePayloadWaiter(
             bus=self, payload_type=payload_type, message_type=message_type,
