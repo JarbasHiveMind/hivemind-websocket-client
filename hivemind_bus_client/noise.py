@@ -184,11 +184,13 @@ class NoiseTransport:
 def start_noise_handshake(initiator: bool,
                           pattern: str,
                           suite: str,
-                          password: Union[str, bytes],
+                          password: Optional[Union[str, bytes]],
                           node_id: str,
                           prologue: bytes,
                           key_path: Optional[str] = None,
-                          remote_pubkey: Optional[str] = None
+                          remote_pubkey: Optional[str] = None,
+                          *,
+                          psk: Optional[bytes] = None
                           ) -> "NoiseHandShake":
     """Initialize a Noise handshake for a HiveMind protocol-v3 connection.
 
@@ -203,15 +205,29 @@ def start_noise_handshake(initiator: bool,
         suite: selected cipher suite (e.g. ``25519_ChaChaPoly_SHA256``).
         password: the shared site password (the only secret; never
             transmitted — it authenticates the handshake as the Noise PSK).
+            May be omitted if ``psk`` is supplied instead.
         node_id: the server's node id announced in its cleartext HELLO.
         prologue: bytes from :func:`build_prologue`.
         key_path: where the static X25519 private key persists.
         remote_pubkey: hex-encoded pinned remote static key (required for
             ``KKpsk0``).
+        psk: a precomputed 32-byte pre-shared key, i.e. the output of
+            ``derive_psk(password, node_id=node_id)``. Deriving the PSK
+            runs argon2id (time_cost=3, memory_cost=64 MiB), which takes
+            150-330ms; since the salt is ``SHA-256(node_id)`` the result is
+            constant for a given (password, node_id) pair, so callers that
+            handshake repeatedly against the same node should derive it
+            once and pass it here to skip re-deriving it every time. It
+            must equal ``derive_psk(password, node_id=node_id)`` for this
+            node — a mismatched psk does not fail locally, it makes the
+            handshake fail on the peer. Takes precedence over ``password``
+            when both are given, matching :class:`NoiseHandShake`.
     """
     if not NOISE_SUPPORTED:
         raise NoiseHandshakeFailed(
             "poorman-handshake was installed without the noise primitive")
+    if psk is None and password is None:
+        raise ValueError("either 'password' or 'psk' is required")
     name = noise_protocol_name(pattern, suite)
     if key_path and os.path.dirname(key_path):
         os.makedirs(os.path.dirname(key_path), exist_ok=True)
@@ -221,6 +237,7 @@ def start_noise_handshake(initiator: bool,
             path=key_path,
             password=password,
             node_id=node_id,
+            psk=psk,
             remote_pubkey=remote_pubkey if pattern == NOISE_PATTERN_KK else None,
             prologue=prologue,
             pattern=name.encode("utf-8"),

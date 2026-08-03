@@ -1,6 +1,9 @@
 """Unit tests for the protocol v3 Noise glue (hivemind_bus_client.noise)."""
 
 import unittest
+from unittest.mock import patch
+
+from poorman_handshake.noise import derive_psk
 
 from hivemind_bus_client.noise import (
     NOISE_PATTERN_KK,
@@ -186,6 +189,56 @@ class TestHandshakeAndTransport(unittest.TestCase):
         alice, _ = self._handshake_pair()
         with self.assertRaises(NoiseHandshakeFailed):
             NoiseTransport(alice)
+
+
+class TestPskPassthrough(unittest.TestCase):
+    """A precomputed PSK must interoperate with password-derived peers and
+    skip the argon2id derivation (HIVEMIND-CRYPTO-1 §3.4.4)."""
+
+    common = dict(pattern=NOISE_PATTERN_XX, suite=NOISE_SUITE_CHACHA,
+                 node_id="server")
+
+    def _prologue(self):
+        return build_prologue({"node_id": "server"},
+                              {"max_protocol_version": 3},
+                              noise_protocol_name(NOISE_PATTERN_XX, NOISE_SUITE_CHACHA))
+
+    def test_psk_interoperates_with_equivalent_password(self):
+        prologue = self._prologue()
+        psk = derive_psk("s3cr3t", node_id="server")
+        alice = start_noise_handshake(initiator=True, password=None, psk=psk,
+                                      prologue=prologue, **self.common)
+        bob = start_noise_handshake(initiator=False, password="s3cr3t",
+                                    prologue=prologue, **self.common)
+        m1 = alice.write_message(b"hi")
+        bob.read_message(m1)
+        m2 = bob.write_message(b"ho")
+        alice.read_message(m2)
+        m3 = alice.write_message(b"")
+        bob.read_message(m3)
+        ta, tb = NoiseTransport(alice), NoiseTransport(bob)
+        ct = ta.encrypt_frame("payload")
+        self.assertEqual(tb.decrypt_frame(ct), "payload")
+
+    def test_psk_skips_derivation(self):
+        psk = derive_psk("s3cr3t", node_id="server")
+        with patch("poorman_handshake.noise.derive_psk") as mocked:
+            start_noise_handshake(initiator=True, password=None, psk=psk,
+                                  prologue=self._prologue(), **self.common)
+            mocked.assert_not_called()
+
+    def test_neither_password_nor_psk_raises(self):
+        with self.assertRaises(ValueError):
+            start_noise_handshake(initiator=True, password=None,
+                                  prologue=self._prologue(), **self.common)
+
+    def test_wrong_length_psk_raises(self):
+        # the 32-byte check lives in NoiseHandShake; start_noise_handshake
+        # wraps whatever it raises in NoiseHandshakeFailed like any other
+        # handshake init failure
+        with self.assertRaises(NoiseHandshakeFailed):
+            start_noise_handshake(initiator=True, password=None, psk=b"too-short",
+                                  prologue=self._prologue(), **self.common)
 
 
 if __name__ == "__main__":
