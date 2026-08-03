@@ -5,6 +5,7 @@ Every node responds to a PING by propagating its own PING (with the same
 ``flood_id`` prevents infinite loops.
 """
 import json
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import MutableSet
@@ -57,30 +58,45 @@ class FloodIdCache(MutableSet):
     It behaves as a plain ``set`` of strings (``add``, ``in``, ``len``,
     iteration) so existing code and tests keep working, and adds
     :meth:`check` for the test-and-register step a flood handler needs.
+
+    The two halves of a node run on different threads — the listener on
+    the server IOLoop, the slave on its websocket client thread — so this
+    class carries its own lock. :meth:`check` is atomic: for one
+    ``flood_id``, exactly one caller ever gets ``False``.
     """
 
     def __init__(self, max_size: int = 1000) -> None:
         self.max_size = max_size
         # flood_id → insertion timestamp; ordered so eviction is FIFO
         self._ids: "OrderedDict[str, float]" = OrderedDict()
+        self._lock = threading.Lock()
 
     # --- MutableSet interface ---------------------------------------
 
     def __contains__(self, flood_id: object) -> bool:
-        return flood_id in self._ids
+        with self._lock:
+            return flood_id in self._ids
 
     def __iter__(self):
-        return iter(self._ids)
+        with self._lock:
+            return iter(list(self._ids))
 
     def __len__(self) -> int:
-        return len(self._ids)
+        with self._lock:
+            return len(self._ids)
 
     def __getitem__(self, flood_id: str) -> float:
         """Insertion time of *flood_id*, for age inspection and debugging."""
-        return self._ids[flood_id]
+        with self._lock:
+            return self._ids[flood_id]
 
     def add(self, flood_id: str) -> None:
         """Register *flood_id*, evicting the oldest entries when full."""
+        with self._lock:
+            self._add(flood_id)
+
+    def _add(self, flood_id: str) -> None:
+        """``add`` without the lock, for callers that already hold it."""
         if flood_id in self._ids:
             return
         while len(self._ids) >= self.max_size:
@@ -88,10 +104,12 @@ class FloodIdCache(MutableSet):
         self._ids[flood_id] = time.time()
 
     def discard(self, flood_id: str) -> None:
-        self._ids.pop(flood_id, None)
+        with self._lock:
+            self._ids.pop(flood_id, None)
 
     def clear(self) -> None:
-        self._ids.clear()
+        with self._lock:
+            self._ids.clear()
 
     # --- flood handling ---------------------------------------------
 
@@ -102,15 +120,19 @@ class FloodIdCache(MutableSet):
         must drop the message), ``False`` the first time (the caller
         handles it). An empty ``flood_id`` always reads as seen, so a
         malformed PING never triggers a response.
+
+        The test and the registration happen under one lock, so two
+        threads racing on the same ``flood_id`` cannot both win.
         """
         if not flood_id:
             return True
-        if flood_id in self._ids:
-            return True
-        if max_size is not None:
-            self.max_size = max_size
-        self.add(flood_id)
-        return False
+        with self._lock:
+            if flood_id in self._ids:
+                return True
+            if max_size is not None:
+                self.max_size = max_size
+            self._add(flood_id)
+            return False
 
 
 class HiveMapper:

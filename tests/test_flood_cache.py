@@ -13,6 +13,7 @@ listener as its public key. The originator then maps one node as two.
 ``HiveMindSlaveProtocol.bind_flood_cache`` is how the listener hands its
 cache over.
 """
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -63,6 +64,47 @@ class TestFloodIdCache:
         cache.add("f2")
         cache.clear()
         assert len(cache) == 0
+
+    def test_check_is_atomic_across_threads(self):
+        """The two halves of a node race on one cache from two threads.
+
+        Only one of them may answer a given flood, so exactly one caller
+        gets ``False`` no matter how many threads ask at once.
+        """
+        cache = FloodIdCache()
+        winners = []
+        start = threading.Barrier(16)
+
+        def contend():
+            start.wait()
+            if not cache.check("contended-flood"):
+                winners.append(threading.current_thread().name)
+
+        threads = [threading.Thread(target=contend) for _ in range(16)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(winners) == 1
+
+    def test_concurrent_adds_keep_the_cache_bounded(self):
+        """Eviction under contention must not corrupt the ordered store."""
+        cache = FloodIdCache(max_size=50)
+        start = threading.Barrier(8)
+
+        def fill(offset):
+            start.wait()
+            for i in range(200):
+                cache.check(f"f-{offset}-{i}")
+
+        threads = [threading.Thread(target=fill, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(cache) == 50
 
 
 class TestHiveMapperUsesTheCache:
