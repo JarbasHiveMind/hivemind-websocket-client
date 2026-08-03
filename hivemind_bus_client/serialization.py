@@ -157,13 +157,42 @@ def _decode_bitstring_v1(s):
     payload_len = len(s) - s.pos
     payload = s.read(payload_len)
 
+    route = None
     if not is_bin:
         payload = bytes2str(payload.bytes, compressed)
+        route = _route_from_payload(payload)
     else:
         payload = payload.bytes
 
     return HiveMessage(hive_type, payload,
-                       metadata=meta, bin_type=bin_type)
+                       metadata=meta, bin_type=bin_type, route=route)
+
+
+def _route_from_payload(payload: str):
+    """Recover the envelope ``route`` of a binary frame from its payload.
+
+    The WIRE-1 §4.3 binary frame carries only the message type, the metadata
+    and the payload - it has no field for the envelope ``route``, and the
+    metadata field is limited to 255 bytes, which a real route does not fit.
+    A frame therefore used to arrive with an empty route, and HIVEMIND-MSG-1
+    §5 loop suppression on the receiving node saw nothing: a relay's own hop
+    was gone, so the message could cycle back through that relay undetected.
+
+    A wrapper envelope (ESCALATE, PROPAGATE, CASCADE, ...) carries a
+    serialized HiveMessage as its payload, and a relay keeps the two routes
+    equal - it stamps its hop on the inner message and copies the result onto
+    the envelope. The inner route survives binarization, so it is the
+    authoritative copy and is restored here. Payloads that are not a
+    HiveMessage (a mycroft Message in a BUS frame) have no route and give
+    None, which keeps the previous behaviour.
+    """
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(data, dict) and data.get("route"):
+        return data["route"]
+    return None
 
 
 def mycroft2bitstring(msg, compressed=False):
