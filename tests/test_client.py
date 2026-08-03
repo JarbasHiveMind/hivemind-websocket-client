@@ -500,6 +500,27 @@ class TestHiveMessageBusClientKeepalive(unittest.TestCase):
 
         self.assertEqual(observed_retries, [1, 2, 4, 8, 16, 32, 60])
 
+    def test_wait_never_exceeds_60s_at_the_retry_ceiling(self):
+        # jitter is uniform(0.5, 1.5), so at the ceiling (retry=60) an
+        # unclamped wait can reach 90s; the actual wait must stay capped.
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 60
+        waited_delays = []
+
+        def fake_wait(delay):
+            waited_delays.append(delay)
+            return len(waited_delays) >= 20
+
+        client._stop_event.wait = fake_wait
+        client.create_client = MagicMock(return_value=MagicMock())
+
+        client.run_forever()
+
+        self.assertTrue(waited_delays)
+        for delay in waited_delays:
+            self.assertLessEqual(delay, 60)
+
     def test_stop_event_still_interrupts_reconnect_wait_promptly(self):
         client = _make_client()
         client.allow_self_signed = False
