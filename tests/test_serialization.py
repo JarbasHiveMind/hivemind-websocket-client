@@ -525,5 +525,35 @@ class TestUnencodableTypes(unittest.TestCase):
                 self.assertEqual(decode_bitstring(bs.bytes).msg_type, msg_type)
 
 
+class TestBinaryFrameRoute(unittest.TestCase):
+    """HIVEMIND-MSG-1 §5: a relayed wrapper envelope must keep its ``route``
+    across the binary framing, or the receiving node cannot see the relay in
+    the route and loop suppression goes blind."""
+
+    def _wrapper(self, route):
+        inner = HiveMessage(HiveMessageType.BUS,
+                            payload=Message("speak", {"utterance": "hi"}),
+                            route=route)
+        outer = HiveMessage(HiveMessageType.ESCALATE, payload=inner)
+        outer.replace_route(route)
+        return outer
+
+    def test_escalate_keeps_route_over_binary_frame(self):
+        route = [{"source": "leaf::abc", "targets": ["leaf::abc"]},
+                 {"source": "PUBKEY-MIDDLE", "targets": ["PUBKEY-MIDDLE"]}]
+        msg = self._wrapper(route)
+        decoded = decode_bitstring(
+            get_bitstring(msg.msg_type, payload=msg.payload,
+                          hivemeta=msg.metadata, compressed=False).bytes)
+        self.assertEqual([h["source"] for h in decoded.route],
+                         ["leaf::abc", "PUBKEY-MIDDLE"])
+
+    def test_bus_frame_without_route_stays_routeless(self):
+        bs = get_bitstring(HiveMessageType.BUS,
+                           payload=Message("speak", {"utterance": "hi"}),
+                           compressed=False)
+        self.assertEqual(decode_bitstring(bs.bytes).route, [])
+
+
 if __name__ == "__main__":
     unittest.main()
