@@ -1,4 +1,5 @@
 import json
+import random
 import ssl
 from collections.abc import Callable
 from threading import Event, Lock, Thread, current_thread
@@ -441,7 +442,12 @@ class HiveMessageBusClient(OVOSBusClient):
                 if self._stop_event.is_set():
                     break
 
-                delay = self.retry
+                # Jitter the wait (not the stored retry value) so that a core
+                # restart, which disconnects the whole fleet at once, does not
+                # make every satellite wake up and reconnect at the exact same
+                # instant. Without this the herd never de-phases and keeps
+                # re-forming into synchronized reconnect waves.
+                delay = self.retry * random.uniform(0.5, 1.5)
                 LOG.warning("HiveMind websocket disconnected; reconnecting "
                             "in %.1f seconds", delay)
                 if self._stop_event.wait(delay):

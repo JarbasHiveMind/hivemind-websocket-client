@@ -444,6 +444,80 @@ class TestHiveMessageBusClientKeepalive(unittest.TestCase):
         client.emitter.emit.assert_called_once_with("reconnecting")
         self.assertEqual(client.retry, 2)
 
+    def test_run_forever_jitters_the_wait_but_not_the_retry_series(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 5
+        client._stop_event.wait = MagicMock(return_value=True)
+        client.client.run_forever.side_effect = lambda **kwargs: None
+
+        client.run_forever()
+
+        # the wait delay must have been jittered away from the raw retry value
+        waited_delay = client._stop_event.wait.call_args.args[0]
+        self.assertNotEqual(waited_delay, 5)
+        self.assertGreaterEqual(waited_delay, 5 * 0.5)
+        self.assertLessEqual(waited_delay, 5 * 1.5)
+        # the stored retry value is untouched by jitter: reconnect loop broke
+        # out on wait() returning True, so the exponential bump never ran
+        self.assertEqual(client.retry, 5)
+
+    def test_reconnect_wait_delay_varies_across_calls(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 10
+        waited_delays = []
+
+        def fake_wait(delay):
+            waited_delays.append(delay)
+            return len(waited_delays) >= 5
+
+        client._stop_event.wait = fake_wait
+        second_socket = MagicMock()
+        client.create_client = MagicMock(return_value=second_socket)
+
+        client.run_forever()
+
+        self.assertEqual(len(waited_delays), 5)
+        self.assertTrue(len(set(waited_delays)) > 1)
+        for delay in waited_delays:
+            self.assertGreaterEqual(delay, 0)
+
+    def test_retry_series_stays_clean_exponential_regardless_of_jitter(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 1
+        observed_retries = []
+
+        def fake_wait(delay):
+            observed_retries.append(client.retry)
+            return len(observed_retries) >= 7
+
+        client._stop_event.wait = fake_wait
+        client.create_client = MagicMock(return_value=MagicMock())
+
+        client.run_forever()
+
+        self.assertEqual(observed_retries, [1, 2, 4, 8, 16, 32, 60])
+
+    def test_stop_event_still_interrupts_reconnect_wait_promptly(self):
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 5
+        real_wait = client._stop_event.wait
+
+        def stop_immediately(delay):
+            client._stop_event.set()
+            return real_wait(0)
+
+        client._stop_event.wait = stop_immediately
+        client.create_client = MagicMock()
+
+        client.run_forever()
+
+        self.assertTrue(client._stop_event.is_set())
+        client.create_client.assert_not_called()
+
     def test_reconnecting_listener_failure_does_not_stop_worker(self):
         client = _make_client()
         client.allow_self_signed = False
