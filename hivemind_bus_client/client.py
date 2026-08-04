@@ -446,11 +446,12 @@ class HiveMessageBusClient(OVOSBusClient):
                 # restart, which disconnects the whole fleet at once, does not
                 # make every satellite wake up and reconnect at the exact same
                 # instant. Without this the herd never de-phases and keeps
-                # re-forming into synchronized reconnect waves. The jitter can
-                # push the wait past the stored retry value, so cap the actual
-                # wait itself at 60s - capping only the stored value (below)
-                # let the wait reach 90s at the ceiling.
-                delay = min(self.retry * random.uniform(0.5, 1.5), 60)
+                # re-forming into synchronized reconnect waves. Clamp the base
+                # first and jitter afterwards: clamping the jittered value
+                # instead would collapse half of the probability mass onto
+                # exactly 60s at the ceiling, waking the whole fleet at the
+                # same instant - the very thing the jitter prevents.
+                delay = min(self.retry, 60) * random.uniform(0.5, 1.5)
                 LOG.warning("HiveMind websocket disconnected; reconnecting "
                             "in %.1f seconds", delay)
                 if self._stop_event.wait(delay):
