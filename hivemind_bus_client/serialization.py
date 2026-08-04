@@ -13,22 +13,15 @@ PROTOCOL_VERSION = 1  # integer, a version increase signals new functionality ad
                       # version 0 is the original hivemind protocol, 1 supports handshake + binary
 
 
-# WIRE-1 §4.2 registry-history note (spec-vs-impl divergence):
-# The 5-bit codes below are the codes that deployed HiveMind encoders
-# (this library and the HiveMind-js peer, see tests/../HiveMind-js
-# vectors.json) actually emit on the wire. They are retained EXACTLY as
-# assigned for wire compatibility with those decoders. This numbering
-# does NOT match the aspirational table in HIVEMIND-WIRE-1 §4.2 (which
-# makes QUERY/CASCADE/RENDEZVOUS text-only wrapper types). Reconciling
-# the two is a wire-breaking change that belongs to a coordinated spec
-# revision. Changing any code here would break interop with every
-# deployed peer.
-#
-# What this map DOES enforce from §4.2: a receiver MUST reject a frame
-# carrying an unassigned 5-bit code as malformed. Every code in this map
-# is assigned and round-trips; every other code is unassigned and is
-# rejected by _decode_bitstring_v1. Code 11 was THIRDPRTY, which is now
-# removed; do not reuse it. A new type takes the next free code from 13.
+# WIRE-1 §4.2: the 5-bit codes below are frozen for wire compatibility
+# with every deployed HiveMind decoder (this library, hivemind-core,
+# and the HiveMind-js peer). They match the HIVEMIND-WIRE-1 §4.2 table
+# exactly. A receiver MUST reject a frame carrying an unassigned 5-bit
+# code as malformed; every code in this map is assigned and round-trips,
+# and every other code is unassigned and is rejected by
+# _decode_bitstring_v1. Code 11 was THIRDPRTY, which is now removed and
+# stays reserved; do not reuse it. A new type takes the next free code
+# from 13.
 _INT2TYPE = {0: HiveMessageType.HANDSHAKE,
              1: HiveMessageType.BUS,
              2: HiveMessageType.SHARED_BUS,
