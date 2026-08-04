@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.4a1) (2026-08-04)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.3a1...1.0.4a1)
+
+**Merged pull requests:**
+
+- fix: bound HiveMapper memory growth [\#170](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/170) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.3a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.2a1...1.0.3a1)
@@ -633,10 +641,6 @@
 ## [V0.0.4a21](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a21) (2024-05-20)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a19...V0.0.4a21)
-
-**Implemented enhancements:**
-
-- feat/better\_kwargs [\#24](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/24) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a19](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a19) (2024-04-21)
 
