@@ -32,6 +32,8 @@ from poorman_handshake.asymmetric.utils import load_RSA_key
 # wrapping this control message (protocol contract with hivemind-core; the
 # end-of-stream is content, not metadata).
 QUERY_STREAM_END = "hive.query.complete"
+# emitted by the node at the top of the chain when nothing answered (AGENT-1 §5)
+QUERY_TIMEOUT = "hive.query.timeout"
 
 
 def _pw_min_bits() -> float:
@@ -130,6 +132,80 @@ class CascadeAggregator:
             self._resolved = True
 
 
+class QueryTimeoutGuard:
+    """Bounds how long the originator of a QUERY waits for the mesh to answer.
+
+    HIVEMIND-NODE-1 §5.5 (and HIVEMIND-AGENT-1 §5) require the originator to
+    treat a query as failed when no chunk, no ``hive.query.complete`` and no
+    ``hive.query.timeout`` arrives within a configured interval. Without it a
+    vanished intermediate node strands the originator forever.
+
+    Shaped after :class:`CascadeAggregator`: one daemon ``threading.Timer``,
+    one lock, resolve-once semantics. The difference is what starts the clock —
+    a CASCADE window opens on the *first response*, a QUERY window opens when
+    the query is *sent*, because the failure being bounded is getting nothing
+    at all. Every chunk restarts the clock, so a slow stream is not killed
+    mid-flight.
+
+    Like ``cascade_aggregator`` this is a single per-connection window rather
+    than a table keyed by query id: the originator does not know its query id
+    until the answers come back, because the id is minted by the node that
+    admits the query.
+
+    Args:
+        timeout: Seconds of silence tolerated before the query is failed.
+        emit_callback: Called with the last seen ``query_id`` on expiry.
+    """
+
+    def __init__(self, timeout: float, emit_callback: Callable[[str], None]) -> None:
+        self.timeout = timeout
+        self.emit_callback = emit_callback
+        self.query_id = ""
+        self._timer: Optional[threading.Timer] = None
+        self._lock = threading.Lock()
+        self._resolved = False
+
+    def start(self) -> None:
+        """Open the window. Called when the QUERY leaves the originator."""
+        with self._lock:
+            self._resolved = False
+            self.query_id = ""
+            self._restart()
+
+    def keepalive(self, query_id: str = "") -> None:
+        """Restart the window because a chunk arrived."""
+        with self._lock:
+            if self._resolved:
+                return
+            if query_id:
+                self.query_id = query_id
+            self._restart()
+
+    def _restart(self) -> None:
+        """Caller must hold ``_lock``."""
+        if self._timer is not None:
+            self._timer.cancel()
+        self._timer = threading.Timer(self.timeout, self._expire)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _expire(self) -> None:
+        with self._lock:
+            if self._resolved:
+                return
+            self._resolved = True
+            self._timer = None
+        self.emit_callback(self.query_id)
+
+    def cancel(self) -> None:
+        """Close the window without failing — the answer stream completed."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            self._resolved = True
+
+
 @dataclass()
 class HiveMindSlaveInternalProtocol:
     """ this class handles all interactions between a hivemind listener and a ovos-core messagebus"""
@@ -137,6 +213,7 @@ class HiveMindSlaveInternalProtocol:
     share_bus: bool = False
     bus: Optional[MessageBusClient] = None
     node_id: str = ""  # this is how ovos-core bus refers to this slave's master
+    slave_protocol: Optional["HiveMindSlaveProtocol"] = None
 
     def register_bus_handlers(self):
         self.bus.on("hive.send.upstream", self.handle_send) # meant for internal usage by agent protocol plugins
@@ -163,6 +240,8 @@ class HiveMindSlaveInternalProtocol:
             pass
         else:
             self.hm_bus.emit(hmessage)
+            if msg_type == HiveMessageType.QUERY and self.slave_protocol is not None:
+                self.slave_protocol.arm_query_timeout()
 
     def handle_outgoing_mycroft(self, message: Message):
         """ forward internal messages to masters"""
@@ -205,9 +284,11 @@ class HiveMindSlaveProtocol:
     binarize: bool = False
     site_id: str = "unknown"
     cascade_timeout: float = 5.0
+    query_timeout: float = 30.0
     cascade_select_callback: Optional[Callable[[List[HiveMessage]], Optional[HiveMessage]]] = None
     hive_mapper: Optional[HiveMapper] = None
     cascade_aggregator: Optional[CascadeAggregator] = field(default=None, repr=False)
+    query_guard: Optional[QueryTimeoutGuard] = field(default=None, repr=False)
     # protocol v3 (Noise handshake) state — HIVEMIND-CRYPTO-1 §3.4
     noise_handshake: Optional[object] = field(default=None, repr=False)
     _noise_pattern: Optional[str] = field(default=None, repr=False)
@@ -249,7 +330,8 @@ class HiveMindSlaveProtocol:
             bus.run_in_thread()
             bus.connected_event.wait()
         LOG.info("Initializing HiveMindSlaveInternalProtocol")
-        self.internal_protocol = HiveMindSlaveInternalProtocol(bus=bus, hm_bus=self.hm)
+        self.internal_protocol = HiveMindSlaveInternalProtocol(bus=bus, hm_bus=self.hm,
+                                                               slave_protocol=self)
         self.internal_protocol.register_bus_handlers()
         LOG.info("registering protocol handlers")
         self.hm.on(HiveMessageType.HELLO, self.handle_hello)
@@ -750,6 +832,31 @@ class HiveMindSlaveProtocol:
         return (inner.msg_type == HiveMessageType.BUS
                 and getattr(inner.payload, "msg_type", "") == QUERY_STREAM_END)
 
+    def arm_query_timeout(self) -> None:
+        """Open the originator-side liveness window for a QUERY we just sent.
+
+        HIVEMIND-NODE-1 §5.5 — the originator, not the mesh, is responsible
+        for bounding how long it waits.
+        """
+        if self.query_guard is None:
+            self.query_guard = QueryTimeoutGuard(timeout=self.query_timeout,
+                                                 emit_callback=self._emit_query_timeout)
+        self.query_guard.start()
+
+    def _emit_query_timeout(self, query_id: str) -> None:
+        """Report the expired query on the internal bus.
+
+        Uses the HIVEMIND-AGENT-1 §5 payload shape, with
+        ``error="originator_timeout"`` so a consumer can tell "nobody
+        answered in time" apart from the mesh's own ``no_answer``, which
+        means the query was answered with nothing.
+        """
+        LOG.warning(f"QUERY timed out after {self.query_timeout}s: {query_id}")
+        self.internal_protocol.bus.emit(
+            Message("hive.query.timeout", {"query_id": query_id,
+                                           "error": "originator_timeout"})
+        )
+
     def handle_query(self, message: HiveMessage):
         """Handle a QUERY message received from the master.
 
@@ -760,10 +867,20 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"QUERY: {message.payload}")
         assert message.msg_type == HiveMessageType.QUERY
+        query_id = (message.metadata or {}).get("query_id", "")
+        inner = message.payload
+        terminal = self._is_stream_end(message) or (
+            inner.msg_type == HiveMessageType.BUS
+            and getattr(inner.payload, "msg_type", "") == QUERY_TIMEOUT
+        )
+        if terminal and self.query_guard is not None:
+            # the mesh reported the outcome in time; our own window is moot
+            self.query_guard.cancel()
         if self._is_stream_end(message):
-            LOG.debug("QUERY stream complete: "
-                      f"{(message.metadata or {}).get('query_id')}")
+            LOG.debug(f"QUERY stream complete: {query_id}")
             return
+        if not terminal and self.query_guard is not None:
+            self.query_guard.keepalive(query_id)
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
