@@ -130,6 +130,57 @@ class CascadeAggregator:
             self._resolved = True
 
 
+class QueryLivenessTimer:
+    """Bounds how long a QUERY originator waits for the answer stream.
+
+    HIVEMIND-NODE-1 §5.5 / HIVEMIND-AGENT-1 §5: a node whose backend
+    declines a QUERY escalates it silently, sending nothing back down. The
+    originator therefore cannot tell "still travelling" from "the node
+    holding it went away", and without a bound of its own it waits forever.
+
+    Every chunk restarts the clock, because a stream that is still
+    producing is alive. The stream terminator and an explicit
+    ``hive.query.timeout`` stop it. On expiry ``on_timeout`` is called with
+    the last query id seen, or an empty string when no response ever
+    arrived to name one.
+    """
+
+    def __init__(self, timeout: float, on_timeout: Callable[[str], None]) -> None:
+        self.timeout = timeout
+        self.on_timeout = on_timeout
+        self.query_id = ""
+        self._timer: Optional[threading.Timer] = None
+        self._lock = threading.Lock()
+
+    def arm(self, query_id: str = "") -> None:
+        """Start or restart the interval. A known query id is remembered."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+            if query_id:
+                self.query_id = query_id
+            self._timer = threading.Timer(self.timeout, self._fire)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def cancel(self) -> None:
+        """Stop waiting — the stream ended or failed explicitly."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            self.query_id = ""
+
+    def _fire(self) -> None:
+        with self._lock:
+            if self._timer is None:
+                return
+            self._timer = None
+            query_id = self.query_id
+            self.query_id = ""
+        self.on_timeout(query_id)
+
+
 @dataclass()
 class HiveMindSlaveInternalProtocol:
     """ this class handles all interactions between a hivemind listener and a ovos-core messagebus"""
@@ -205,9 +256,13 @@ class HiveMindSlaveProtocol:
     binarize: bool = False
     site_id: str = "unknown"
     cascade_timeout: float = 5.0
+    # NODE-1 §5.5: the deployment-configured interval after which this node,
+    # as originator, gives up on a QUERY. Set to 0 to wait forever.
+    query_timeout: float = 30.0
     cascade_select_callback: Optional[Callable[[List[HiveMessage]], Optional[HiveMessage]]] = None
     hive_mapper: Optional[HiveMapper] = None
     cascade_aggregator: Optional[CascadeAggregator] = field(default=None, repr=False)
+    query_liveness: Optional[QueryLivenessTimer] = field(default=None, repr=False)
     # protocol v3 (Noise handshake) state — HIVEMIND-CRYPTO-1 §3.4
     noise_handshake: Optional[object] = field(default=None, repr=False)
     _noise_pattern: Optional[str] = field(default=None, repr=False)
@@ -766,6 +821,34 @@ class HiveMindSlaveProtocol:
         return (inner.msg_type == HiveMessageType.BUS
                 and getattr(inner.payload, "msg_type", "") == QUERY_STREAM_END)
 
+    def arm_query_timeout(self) -> None:
+        """Start the originator's liveness bound for a QUERY just sent upstream.
+
+        HIVEMIND-NODE-1 §5.5 requires the originator to carry this bound
+        itself; intermediate declines are silent, so nothing else can tell it
+        the query was lost.
+        """
+        if self.query_timeout <= 0:
+            return
+        if self.query_liveness is None:
+            self.query_liveness = QueryLivenessTimer(self.query_timeout,
+                                                     self.handle_query_timeout)
+        self.query_liveness.arm()
+
+    def handle_query_timeout(self, query_id: str) -> None:
+        """Report a query that produced nothing within ``query_timeout``.
+
+        The failure is announced with the same ``hive.query.timeout`` payload
+        a top-of-chain node would have sent (HIVEMIND-AGENT-1 §5), so a
+        consumer has one code path for "nobody answered" whether the mesh
+        said so or the wait simply ran out.
+        """
+        LOG.warning(f"no QUERY response within {self.query_timeout}s, "
+                    f"treating the query as failed: query_id={query_id}")
+        self.internal_protocol.bus.emit(
+            Message("hive.query.timeout",
+                    {"query_id": query_id, "error": "no_answer"}))
+
     def handle_query(self, message: HiveMessage):
         """Handle a QUERY message received from the master.
 
@@ -776,15 +859,23 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"QUERY: {message.payload}")
         assert message.msg_type == HiveMessageType.QUERY
+        query_id = (message.metadata or {}).get("query_id", "")
         if self._is_stream_end(message):
-            LOG.debug("QUERY stream complete: "
-                      f"{(message.metadata or {}).get('query_id')}")
+            LOG.debug(f"QUERY stream complete: {query_id}")
+            if self.query_liveness is not None:
+                self.query_liveness.cancel()
             return
         assert message.payload.msg_type in [HiveMessageType.BUS, HiveMessageType.INTERCOM]
         if message.payload.msg_type == HiveMessageType.INTERCOM:
             # using INTERCOM allows end2end privacy, nodes along the chain can't read responses
             self.handle_intercom(message)
         elif message.payload.msg_type == HiveMessageType.BUS:
+            if self.query_liveness is not None:
+                if message.payload.payload.msg_type == "hive.query.timeout":
+                    self.query_liveness.cancel()
+                else:
+                    # a chunk arrived, so the answer is still being produced
+                    self.query_liveness.arm(query_id)
             # each streamed chunk wraps an inner BUS speak; emit that, not the wrapper
             self.handle_bus(message.payload)
 

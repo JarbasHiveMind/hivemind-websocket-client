@@ -15,6 +15,7 @@ from ovos_utils.log import LOG
 from hivemind_bus_client.client import BinaryDataCallbacks
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
                                             SupportedEncodings, SupportedCiphers)
+from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
@@ -314,12 +315,22 @@ class HiveMindHTTPClient(threading.Thread):
               and message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]):
             binarize = self.protocol.binarize and self.binarize
 
+        bitstr = None
         if binarize:
-            bitstr = get_bitstring(hive_type=message.msg_type,
-                                   payload=message.payload,
-                                   compressed=self.compress,
-                                   binary_type=binary_type,
-                                   hivemeta=message.metadata)
+            try:
+                bitstr = get_bitstring(hive_type=message.msg_type,
+                                       payload=message.payload,
+                                       compressed=self.compress,
+                                       binary_type=binary_type,
+                                       hivemeta=message.metadata)
+            except MetadataTooLarge as e:
+                # WIRE-1 §4.1: fall back to a text frame. A BINARY payload has
+                # no text form, so that one has to be refused.
+                if message.msg_type == HiveMessageType.BINARY:
+                    raise
+                LOG.warning(f"sending {message.msg_type} as a text frame: {e}")
+
+        if bitstr is not None:
             if self.crypto_key:
                 payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.cipher)
             else:

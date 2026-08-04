@@ -25,6 +25,7 @@ from hivemind_bus_client.encryption import (
     encrypt_bin,
     hybrid_encrypt,
 )
+from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
@@ -625,6 +626,10 @@ class HiveMessageBusClient(OVOSBusClient):
                 # also send event to client registered handlers
                 self.internal_bus.emit(message.payload)
 
+            elif message.msg_type == HiveMessageType.QUERY and self.protocol is not None:
+                # NODE-1 §5.5: as originator, bound our own wait for the answer
+                self.protocol.arm_query_timeout()
+
             LOG.debug(f"sending to HiveMind: {message.msg_type}")
             binarize = False
             if message.msg_type == HiveMessageType.BINARY:
@@ -633,6 +638,7 @@ class HiveMessageBusClient(OVOSBusClient):
                   and message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]):
                 binarize = self.protocol.binarize and self.binarize
 
+            bitstr = None
             if binarize:
                 # the message carries its own bin_type; an explicit
                 # binary_type argument overrides it. Without this a caller
@@ -641,11 +647,21 @@ class HiveMessageBusClient(OVOSBusClient):
                 # receiver could not tell audio from a file.
                 if binary_type == HiveMindBinaryPayloadType.UNDEFINED:
                     binary_type = message.bin_type
-                bitstr = get_bitstring(hive_type=message.msg_type,
-                                       payload=message.payload,
-                                       compressed=self.compress,
-                                       binary_type=binary_type,
-                                       hivemeta=message.metadata)
+                try:
+                    bitstr = get_bitstring(hive_type=message.msg_type,
+                                           payload=message.payload,
+                                           compressed=self.compress,
+                                           binary_type=binary_type,
+                                           hivemeta=message.metadata)
+                except MetadataTooLarge as e:
+                    # WIRE-1 §4.1 offers text framing as the last of the three
+                    # remedies; taking it beats dropping the message. A BINARY
+                    # payload has no text form, so that one has to be refused.
+                    if message.msg_type == HiveMessageType.BINARY:
+                        raise
+                    LOG.warning(f"sending {message.msg_type} as a text frame: {e}")
+
+            if bitstr is not None:
                 if self.noise_transport is not None:
                     # protocol v3: Noise transport CipherState (replay
                     # resistant sequential nonces) replaces the v2 AEAD

@@ -4,7 +4,7 @@ from inspect import signature
 
 from bitstring import BitArray, BitStream
 
-from hivemind_bus_client.exceptions import UnsupportedProtocolVersion
+from hivemind_bus_client.exceptions import MetadataTooLarge, UnsupportedProtocolVersion
 from ovos_bus_client.message import Message
 from hivemind_bus_client.message import HiveMessageType, HiveMessage, HiveMindBinaryPayloadType
 from hivemind_bus_client.util import compress_payload, decompress_payload, cast2bytes, bytes2str
@@ -42,6 +42,10 @@ _TYPE2INT = {v: k for k, v in _INT2TYPE.items()}
 # check this before choosing a framing.
 BINARY_ENCODABLE_TYPES = frozenset(_TYPE2INT)
 
+# WIRE-1 §4.1: the metadata-length field is 8 bits, so a frame carries at
+# most this many bytes of metadata. It is a hard limit of the frame layout.
+MAX_METADATA_BYTES = 255
+
 
 def get_bitstring(hive_type=HiveMessageType.BUS, payload=None,
                   compressed=None, hivemeta=None,
@@ -49,8 +53,13 @@ def get_bitstring(hive_type=HiveMessageType.BUS, payload=None,
                   proto_version=PROTOCOL_VERSION, versioned=False):
     if proto_version <= 1:
         if compressed is None:  # auto
-            unc = _get_bitstring_v1(hive_type, payload, False, hivemeta, binary_type, versioned)
             comp = _get_bitstring_v1(hive_type, payload, True, hivemeta, binary_type, versioned)
+            try:
+                unc = _get_bitstring_v1(hive_type, payload, False, hivemeta, binary_type, versioned)
+            except MetadataTooLarge:
+                # WIRE-1 §4.1 names compression as a way to bring an over-long
+                # metadata block under the limit; take it before giving up.
+                return comp
             if len(unc) <= len(comp):
                 return unc
             return comp
@@ -82,6 +91,15 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
 
     # NOTE: hivemind meta is reserved TBD arbitrary data
     hivemeta = cast2bytes(hivemeta or {}, compressed)
+    if len(hivemeta) > MAX_METADATA_BYTES:
+        # WIRE-1 §4.1: the sender must shorten the metadata, compress it, or
+        # send the message as text. It must never build the frame anyway: the
+        # length field would wrap and every field after it becomes unreadable.
+        raise MetadataTooLarge(
+            f"metadata block is {len(hivemeta)} bytes, over the "
+            f"{MAX_METADATA_BYTES} byte binary-frame limit; "
+            f"send this message as a text frame instead"
+        )
     s.append(f'uint:8={len(hivemeta)}')  # 8 bit unsigned integer - N of bytes for metadata
     s.append(hivemeta)  # arbitrary hivemind meta
 
