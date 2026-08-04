@@ -340,6 +340,37 @@ class TestCorruptIdentityFile(unittest.TestCase):
 
             self.assertEqual(self._load(path).name, "unnamed-node")
 
+    def test_zero_byte_identity_file_raises(self):
+        """The likeliest corruption of all: the write truncated and stopped."""
+        from hivemind_bus_client.exceptions import IdentityFileCorrupted
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "identity.json")
+            with open(path, "w"):
+                pass
+
+            with self.assertRaises(IdentityFileCorrupted):
+                self._load(path)
+
+    def test_whitespaced_empty_object_mints_a_new_identity(self):
+        """A templated placeholder is valid json and must boot."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "identity.json")
+            with open(path, "w") as f:
+                f.write("{\n}\n")
+
+            self.assertEqual(self._load(path).name, "unnamed-node")
+
+    def test_identity_file_holding_a_list_raises(self):
+        """Valid json, but not an identity."""
+        from hivemind_bus_client.exceptions import IdentityFileCorrupted
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "identity.json")
+            with open(path, "w") as f:
+                f.write("[]")
+
+            with self.assertRaises(IdentityFileCorrupted):
+                self._load(path)
+
     def test_readable_identity_file_loads(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "identity.json")

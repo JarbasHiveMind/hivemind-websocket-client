@@ -1,3 +1,4 @@
+import json
 from os.path import basename, dirname, isfile
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
@@ -42,9 +43,18 @@ class NodeIdentity:
         path = self.IDENTITY_FILE.path
         if not path or not isfile(path) or self.IDENTITY_FILE:
             return
+        # ask json itself, not a string comparison: a zero byte file is the
+        # likeliest corruption of all (a non atomic write truncates first,
+        # then a power cut lands there) and an empty string would pass any
+        # "looks like {}" test, while a hand written or templated "{ }" is
+        # perfectly valid and must boot
         with open(path, encoding="utf-8") as f:
-            raw = f.read().strip()
-        if raw and raw != "{}":
+            raw = f.read()
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
             raise IdentityFileCorrupted(
                 f"identity file {path} exists but could not be parsed. "
                 "Refusing to mint a new identity — restore it from a backup "
