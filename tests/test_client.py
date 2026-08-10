@@ -1,6 +1,7 @@
 """Tests for hivemind_bus_client.client — BinaryDataCallbacks, Waiters, HiveMessageBusClient."""
 import ssl
 import unittest
+from collections import Counter
 from threading import Event
 from unittest.mock import MagicMock, patch
 
@@ -499,6 +500,36 @@ class TestHiveMessageBusClientKeepalive(unittest.TestCase):
         client.run_forever()
 
         self.assertEqual(observed_retries, [1, 2, 4, 8, 16, 32, 60])
+
+    def test_wait_stays_jittered_at_the_retry_ceiling(self):
+        # A sustained outage parks every satellite at retry=60. Clamping the
+        # jittered wait would pile half of the delays onto exactly 60s and
+        # re-synchronize the fleet, so the delays must stay spread out over
+        # the full [30, 90] window with no repeated value.
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 60
+        waited_delays = []
+
+        def fake_wait(delay):
+            waited_delays.append(delay)
+            return len(waited_delays) >= 500
+
+        client._stop_event.wait = fake_wait
+        client.create_client = MagicMock(return_value=MagicMock())
+
+        client.run_forever()
+
+        self.assertEqual(len(waited_delays), 500)
+        for delay in waited_delays:
+            self.assertGreaterEqual(delay, 30)
+            self.assertLessEqual(delay, 90)
+        # no probability atom: a continuous distribution repeats no value
+        most_common = max(Counter(waited_delays).values())
+        self.assertEqual(most_common, 1)
+        # and it really spans the window rather than hugging one end
+        self.assertLess(min(waited_delays), 40)
+        self.assertGreater(max(waited_delays), 80)
 
     def test_stop_event_still_interrupts_reconnect_wait_promptly(self):
         client = _make_client()
