@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a2) (2026-08-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a1...1.0.6a2)
+
+**Merged pull requests:**
+
+- chore\(ci\): drop the broken, redundant Dependabot config [\#180](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/180) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a1) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.5a1...1.0.6a1)
@@ -573,10 +581,6 @@
 ## [0.1.0](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.0) (2024-10-30)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.0a1...0.1.0)
-
-**Merged pull requests:**
-
-- Release 0.1.0a1 [\#34](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/34) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.1.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.0a1) (2024-10-30)
 
