@@ -190,14 +190,41 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
 
 @hmclient_cmds.command(help="test if Identity file can connect to HiveMind",
                        name="test-identity")
-def test_identity():
+@click.option("--timeout", help="seconds to wait before giving up", type=float, default=30.0)
+def test_identity(timeout: float):
     node = HiveMessageBusClient()
-    node.connect(FakeBus())
 
-    node.connected_event.wait()
-    print("== Identity successfully connected to HiveMind!")
+    # Bounded on purpose. connect() defaults to retrying the handshake
+    # forever, so a refused identity used to hang here indefinitely while the
+    # reconnect loop printed raw close frames - which reads as "the tool
+    # froze" rather than "your key is wrong".
+    retries = max(1, int(timeout // 5))
+    connected = False
+    try:
+        node.connect(FakeBus(), handshake_max_retries=retries)
+        connected = node.handshake_event.is_set() or node.connected_event.is_set()
+    except ConnectionRefusedError:
+        connected = False
+    except RuntimeError:
+        connected = False
+    finally:
+        node.close()
 
-    node.close()
+    if connected and not node._auth_rejected:
+        print("== Identity successfully connected to HiveMind!")
+        return
+
+    if node._auth_rejected:
+        raise click.ClickException(
+            f"HiveMind refused this identity: {node._auth_rejected}\n"
+            f"Check the access key and password with 'hivemind-client "
+            f"set-identity', and confirm the client is registered on the "
+            f"server with 'hivemind-core list-clients'."
+        )
+    raise click.ClickException(
+        f"could not reach HiveMind within {timeout:g}s. Check the host and "
+        f"port in the identity file, and that hivemind-core is listening."
+    )
 
 
 @hmclient_cmds.command(help="forget the pinned encryption key of a hivemind-core",

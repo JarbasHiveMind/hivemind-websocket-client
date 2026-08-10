@@ -178,6 +178,9 @@ class HiveMessageBusClient(OVOSBusClient):
 
     def _init_worker_lifecycle(self) -> None:
         """Initialize reconnect-worker ownership state."""
+        # set to the server's reason when it refuses our credentials; while
+        # set, the reconnect lifecycle stays stopped
+        self._auth_rejected = None
         self._stop_event = Event()
         self._worker_lock = Lock()
         self._worker_token: object | None = None
@@ -273,8 +276,23 @@ class HiveMessageBusClient(OVOSBusClient):
 
     def on_error(self, *args):
         error = args[0] if len(args) == 1 else args[1]
-        # websocket-client can invoke this callback with a control frame
-        # instead of an exception. It is not a connection failure.
+
+        # websocket-client hands a CLOSE frame to on_error rather than to
+        # on_close when the peer closes mid-read, so this is where an
+        # "authorization refused" close is actually observable. It arrives as
+        # a control frame, not an exception, so it must be classified before
+        # the not-an-exception guard below drops it.
+        if isinstance(error, ABNF):
+            if self._is_auth_rejection(error):
+                self._clear_connection_state()
+                self.close()
+            else:
+                LOG.debug("ignoring websocket control frame: opcode=%s",
+                          error.opcode)
+            return
+
+        # websocket-client can invoke this callback with other non-exception
+        # values. Those are not connection failures.
         if not isinstance(error, BaseException):
             LOG.debug("ignoring non-exception websocket error callback: %r",
                       error)
@@ -311,9 +329,74 @@ class HiveMessageBusClient(OVOSBusClient):
             LOG.exception("Failed to close errored websocket: %s",
                           close_error)
 
+    #: WebSocket close code the server sends when it refuses the credentials
+    #: (hivemind-websocket-protocol: ``close(code=1008, reason="invalid
+    #: authorization")``).
+    AUTH_REJECTED_CLOSE_CODE = 1008
+
+    #: RFC6455 CLOSE opcode, as websocket-client reports it on an ABNF frame
+
     def on_close(self, *args):
+        # websocket-client calls this as (ws, close_status_code, close_msg).
+        # Older versions call it with no arguments at all, so read defensively
+        # by position rather than assuming an arity.
+        close_code = args[1] if len(args) > 1 else None
+        close_reason = args[2] if len(args) > 2 else None
+
+        if close_code == self.AUTH_REJECTED_CLOSE_CODE:
+            # Reconnecting cannot help: the credentials do not change between
+            # attempts, so a retry loop here is an infinite loop that only
+            # emits close frames. Record it, say so once, and stop.
+            self._auth_rejected = (
+                close_reason or "the server refused these credentials"
+            )
+            LOG.error(
+                f"HiveMind refused this identity: {self._auth_rejected}. "
+                f"Check the access key and password "
+                f"(hivemind-client set-identity), and that the client is "
+                f"registered on the server (hivemind-core list-clients). "
+                f"Not reconnecting."
+            )
+            self._clear_connection_state()
+            self.emitter.emit("auth_rejected", self._auth_rejected)
+            self.emitter.emit("close")
+            self.close()
+            return
+
         self._clear_connection_state()
         self.emitter.emit("close")
+
+    def _is_auth_rejection(self, frame: ABNF) -> bool:
+        """True when *frame* is a CLOSE saying the credentials were refused.
+
+        Retrying cannot help: the identity does not change between attempts, so
+        without this the client reconnects forever and the operator sees only a
+        repeating raw close frame instead of "your key is wrong".
+        """
+        if frame.opcode != ABNF.OPCODE_CLOSE:
+            return False
+        data = frame.data or b""
+        if len(data) < 2:
+            return False
+        code = 256 * data[0] + data[1]
+        if code != self.AUTH_REJECTED_CLOSE_CODE:
+            return False
+        try:
+            reason = data[2:].decode("utf-8") or "credentials refused"
+        except UnicodeDecodeError:
+            reason = "credentials refused"
+        self._auth_rejected = reason
+        LOG.error(
+            f"HiveMind refused this identity: {reason}. Check the access key "
+            f"and password (hivemind-client set-identity) and that the client "
+            f"is registered on the server (hivemind-core list-clients). "
+            f"Not reconnecting."
+        )
+        try:
+            self.emitter.emit("auth_rejected", reason)
+        except Exception:  # noqa: BLE001
+            LOG.exception("failed to emit auth_rejected")
+        return True
 
     def _clear_connection_state(self):
         self.connected_event.clear()
@@ -363,6 +446,11 @@ class HiveMessageBusClient(OVOSBusClient):
             self.handshake_event.wait(timeout=timeout)
             if self.handshake_event.is_set():
                 return
+            if self._auth_rejected:
+                # no number of retries fixes a wrong key or password
+                raise ConnectionRefusedError(
+                    f"HiveMind refused this identity: {self._auth_rejected}"
+                )
             if max_retries is not None and attempts >= max_retries:
                 raise RuntimeError("timed out waiting for handshake")
             attempts += 1
