@@ -14,7 +14,7 @@ from hivemind_bus_client.client import HiveMessageBusClient
 
 # Uses identity from ~/.config/hivemind/_identity.json by default
 client = HiveMessageBusClient(host="ws://192.168.1.10", port=5678)
-client.connect() # Executes poorman_handshake.PasswordHandShake
+client.connect() # Negotiates the handshake; max_protocol_version defaults to 3 (Noise), falling back to the v2 password handshake
 ```
 
 ### Handling AI Events

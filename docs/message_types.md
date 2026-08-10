@@ -67,7 +67,7 @@ CASCADE propagates like PROPAGATE (bidirectional flood) but expects responses fr
 Responses are buffered in a `CascadeAggregator` (`protocol.py`). After `cascade_timeout` seconds (default 5.0) **or** when the number of responses reaches the known node count from `hive_mapper`, the `cascade_select_callback` picks the best response and emits it on the internal bus.
 
 - Inner payload must be `BUS` or `INTERCOM`.
-- Default select callback returns the first response.
+- Default select callback is `random.choice` over the collected responses.
 - Set `cascade_select_callback` on the protocol to provide custom disambiguation.
 - Set `hive_mapper` to enable early resolution when all nodes have responded.
 
@@ -131,7 +131,7 @@ ping_inner = HiveMessage(
     payload={
         "flood_id":  flood_id,
         "timestamp": time.time(),
-        "peer":      client.peer,
+        "peer":      f"{identity.name}::{client.session_id}",
         "site_id":   client.site_id,
         "public_key": identity.public_key,
         "lang":      "en-us",

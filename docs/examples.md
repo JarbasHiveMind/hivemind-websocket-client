@@ -155,7 +155,7 @@ client.emit(HiveMessage(HiveMessageType.CASCADE, payload=inner))
 
 ## Peer-to-peer encrypted message (INTERCOM)
 
-Send a message directly to another node using its RSA public key. Uses hybrid encryption (AES-256-GCM payload + RSA-encrypted ephemeral key) so there is no payload size limit.
+Send a message directly to another node using its RSA public key. Uses hybrid encryption (AES-256-GCM payload + RSA-encrypted ephemeral key). `hivemind-core` decrypts the envelope with plain RSA, so a message sent to a hub must fit one RSA block (about 214 bytes with a 2048-bit key).
 
 ```python
 other_node_pubkey = "-----BEGIN PUBLIC KEY-----\n..."
