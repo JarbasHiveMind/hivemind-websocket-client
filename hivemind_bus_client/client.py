@@ -622,6 +622,13 @@ class HiveMessageBusClient(OVOSBusClient):
                 binarize = self.protocol.binarize and self.binarize
 
             if binarize:
+                # the message carries its own bin_type; an explicit
+                # binary_type argument overrides it. Without this a caller
+                # that set bin_type on the HiveMessage -- the obvious thing
+                # to do -- silently put UNDEFINED on the wire, and the
+                # receiver could not tell audio from a file.
+                if binary_type == HiveMindBinaryPayloadType.UNDEFINED:
+                    binary_type = message.bin_type
                 bitstr = get_bitstring(hive_type=message.msg_type,
                                        payload=message.payload,
                                        compressed=self.compress,
