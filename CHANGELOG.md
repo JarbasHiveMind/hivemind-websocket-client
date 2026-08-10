@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.7a1) (2026-08-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a3...1.0.7a1)
+
+**Merged pull requests:**
+
+- fix: stop reconnecting when the hub refuses the identity [\#184](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/184) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.6a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a3) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a2...1.0.6a3)
@@ -576,7 +584,6 @@
 **Merged pull requests:**
 
 - Release 0.1.2a1 [\#37](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/37) ([github-actions[bot]](https://github.com/apps/github-actions))
-- fix: port from identity file [\#36](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/36) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.1.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.1) (2024-11-29)
 
