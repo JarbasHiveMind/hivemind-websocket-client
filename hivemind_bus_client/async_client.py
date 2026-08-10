@@ -49,6 +49,7 @@ from hivemind_bus_client.encryption import (SupportedCiphers,
                                             encrypt_bin, hybrid_encrypt)
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.noise import NoiseTransportFailed
+from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
@@ -546,12 +547,22 @@ class AsyncHiveMessageBusClient:
                 binarize = (getattr(self.protocol, "binarize", False)
                             and self.binarize)
 
+            bitstr = None
             if binarize:
-                bitstr = get_bitstring(hive_type=message.msg_type,
-                                       payload=message.payload,
-                                       compressed=self.compress,
-                                       binary_type=binary_type,
-                                       hivemeta=message.metadata)
+                try:
+                    bitstr = get_bitstring(hive_type=message.msg_type,
+                                           payload=message.payload,
+                                           compressed=self.compress,
+                                           binary_type=binary_type,
+                                           hivemeta=message.metadata)
+                except MetadataTooLarge as e:
+                    # WIRE-1 §4.1: fall back to a text frame. A BINARY payload
+                    # has no text form, so that one has to be refused.
+                    if message.msg_type == HiveMessageType.BINARY:
+                        raise
+                    LOG.warning(f"sending {message.msg_type} as a text frame: {e}")
+
+            if bitstr is not None:
                 if self.noise_transport is not None:
                     # protocol v3: Noise transport CipherState (replay
                     # resistant sequential nonces) replaces the v2 AEAD

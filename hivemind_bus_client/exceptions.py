@@ -3,6 +3,10 @@ class UnsupportedProtocolVersion(ValueError):
     """ Specified protocol version is not supported """
 
 
+class MetadataTooLarge(ValueError):
+    """ Metadata block does not fit the 8-bit length field of a binary frame """
+
+
 class HiveMindException(Exception):
     """ An Exception inside the HiveMind"""
 
