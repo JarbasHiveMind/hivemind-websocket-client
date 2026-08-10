@@ -33,7 +33,7 @@ All fields are packed MSB-first. The bitstring is left-padded with `0` bits to r
 | Start marker | 1 | Always `1`. Decoder skips `0`s until it finds this | `serialization.py` |
 | Versioned flag | 1 | `1` = next 8 bits are a protocol version, `0` = assume current version | `serialization.py` |
 | Protocol version | 8 (optional) | Only present when versioned=1. Integer protocol version | `serialization.py` |
-| Message type | 5 | Index into `_INT2TYPE` mapping (13 types, 0-12) | `serialization.py`, `_INT2TYPE`, `serialization.py` |
+| Message type | 5 | Index into `_INT2TYPE` mapping (12 assigned codes: 0-10 and 12; 11 is retired) | `serialization.py`, `_INT2TYPE`, `serialization.py` |
 | Compressed | 1 | `1` = payload is zlib-compressed | `serialization.py` |
 | Metadata length | 8 | Number of **bytes** of metadata that follow | `serialization.py` |
 | Metadata | N×8 | JSON-encoded dict, optionally zlib-compressed | `serialization.py` |

@@ -78,7 +78,7 @@ asyncio.run(main())
 |---|---|---|
 | `await bus.connect(bus, protocol, site_id)` | `bus.connect(...)` | Awaits handshake completion. |
 | `await bus.close()` | n/a (close happens via `client.close()`) | Cancels the receive task, clears state. |
-| `await bus.emit(msg, binary_type=...)` | `bus.emit(...)` | Awaits send. Accepts `MycroftMessage` or `HiveMessage`. |
+| `await bus.emit(msg, binary_type=...)` | `bus.emit(...)` | Awaits send. Accepts `MycroftMessage` or `HiveMessage`. See the caveats below. |
 | `await bus.emit_mycroft(msg)` | `bus.emit_mycroft(...)` | Convenience for BUS-wrapped Mycroft messages. |
 | `await bus.wait_for_message(type, timeout)` | `bus.wait_for_message(...)` | Returns `HiveMessage` or `None`. |
 | `await bus.wait_for_payload(payload_type, message_type, timeout)` | `bus.wait_for_payload(...)` | Filters by inner payload type. |
@@ -89,6 +89,17 @@ asyncio.run(main())
 | `await bus.emit_intercom(msg, pubkey)` | `bus.emit_intercom(...)` | Hybrid-encrypted INTERCOM send. |
 | `bus.on(event, fn)` / `bus.once(event, fn)` / `bus.remove(event, fn)` | same | **Synchronous**, like the sync client. Keeps `HiveMindSlaveProtocol` drop-in compatible. |
 | `bus.on_mycroft(msg_type, fn)` | same | Internal-bus handler registration. |
+
+### `emit()` caveats
+
+`await bus.emit(...)` is not at full parity with the sync client:
+
+- It does not arm the NODE-1 §5.5 QUERY timeout. Send a `QUERY` and nothing
+  bounds your own wait for the answer; use `wait_for_response` with an explicit
+  timeout.
+- It ignores `HiveMessage.bin_type`. The sync client falls back to the message's
+  own `bin_type` when `binary_type` is left `UNDEFINED`; the async client does
+  not, so pass `binary_type=` explicitly when you send binary payloads.
 
 `AsyncHiveMessageWaiter` and `AsyncHivePayloadWaiter` are the
 asyncio.Event-based equivalents of `HiveMessageWaiter` and

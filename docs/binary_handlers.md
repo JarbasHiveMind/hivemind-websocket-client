@@ -4,7 +4,7 @@ The `hivemind-websocket-client` provides a flexible way to handle binary data (a
 
 ## Subclassing `BinaryDataCallbacks`
 
-To process binary data, subclass `BinaryDataCallbacks` and implement the methods you need. The client invokes these methods when it receives a `HiveMessage` of type `BIN`.
+To process binary data, subclass `BinaryDataCallbacks` and implement the methods you need. The client invokes these methods when it receives a `HiveMessage` of type `BINARY`.
 
 ```python
 from hivemind_bus_client.client import BinaryDataCallbacks

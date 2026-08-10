@@ -6,7 +6,7 @@
 
 - **Transparent Routing**: Automatically handles message routing between satellites and hubs.
 - **Per-link Encryption**: AES-GCM or ChaCha20-Poly1305, negotiated at handshake.
-- **Hybrid INTERCOM Encryption**: AES-256-GCM payload + RSA-encrypted ephemeral key per message, with no size limit.
+- **Hybrid INTERCOM Encryption**: AES-256-GCM payload + RSA-encrypted ephemeral key per message. `hivemind-core` decrypts the envelope with plain RSA, so a message sent to a hub must fit one RSA block (about 214 bytes with a 2048-bit key).
 - **Trusted Peers**: `NodeIdentity.trusted_keys` gates BUS injection for PROPAGATE and INTERCOM from untrusted sources.
 - **CASCADE Aggregation**: Collects responses from all nodes with timeout and early resolution via `HiveMapper`.
 - **PING Discovery**: Flood-based topology mapping with public key and locale announcement.

@@ -52,7 +52,7 @@ hivemind-client set-identity \
   --siteid "living-room"
 ```
 
-This writes the values to `~/_identity.json`. You can also set `default_master` / `default_port` so you don't need to pass `--host` / `--port` on every invocation.
+This writes the values to `~/.config/hivemind/_identity.json`. You can also set `default_master` / `default_port` so you don't need to pass `--host` / `--port` on every invocation.
 
 ## Using NodeIdentity in Python
 

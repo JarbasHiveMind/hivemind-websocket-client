@@ -298,13 +298,15 @@ client.connect()
 | `PING` | inside PROPAGATE | Flood-based network topology discovery |
 | `BINARY` | hub → satellite | Raw binary payload (TTS audio, file transfer) |
 
-`emit()` raises `ValueError` for a message type that has no binary wire code. It never
-relabels the type to get the frame out.
+`emit()` only binarizes types listed in `BINARY_ENCODABLE_TYPES`. A type with no
+binary wire code, such as `INTERCOM`, goes out as a text frame. The `ValueError`
+for an unassigned wire code is raised by `serialization.get_bitstring`, which
+`emit()` never calls for those types.
 
 ## Security
 
 - **Per-link encryption**: AES-GCM or ChaCha20-Poly1305, negotiated at handshake via `poorman_handshake`
-- **Hybrid INTERCOM encryption**: Random AES-256 key per message, RSA-encrypted key exchange, no payload size limit
+- **Hybrid INTERCOM encryption**: Random AES-256 key per message, RSA-encrypted key exchange. The payload size the peer accepts depends on the peer: `hivemind-core` decrypts the envelope with plain RSA, so the serialized message must fit one RSA block (about 214 bytes with a 2048-bit key).
 - **Self-signed TLS**: `self_signed=True` (default) accepts self-signed certificates. Set it to `False` in production.
 - **Trusted peers**: Only peers with a public key in `NodeIdentity.trusted_keys` can inject BUS messages via PROPAGATE and INTERCOM. The client silently drops untrusted messages.
 
