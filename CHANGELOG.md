@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.6a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a3) (2026-08-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a2...1.0.6a3)
+
+**Merged pull requests:**
+
+- docs: correct claims that no longer match the code [\#182](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/182) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a2) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a1...1.0.6a2)
@@ -573,10 +581,6 @@
 ## [0.1.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.1) (2024-11-29)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.0...0.1.1)
-
-**Fixed bugs:**
-
-- \[client\] Use PROTOCOL\_TLS\_CLIENT [\#35](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/35) ([goldyfruit](https://github.com/goldyfruit))
 
 ## [0.1.0](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.0) (2024-10-30)
 
