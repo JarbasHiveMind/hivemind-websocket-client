@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a1) (2026-08-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.5a1...1.0.6a1)
+
+**Merged pull requests:**
+
+- fix: bound the QUERY originator's wait and the binary metadata block [\#177](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/177) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.5a1) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.4a1...1.0.5a1)
@@ -574,10 +582,6 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.0.4...0.1.0a1)
 
-**Merged pull requests:**
-
-- feat:binary handlers [\#33](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/33) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.0.4](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.0.4) (2024-10-25)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.0.4a0...0.0.4)
@@ -585,10 +589,6 @@
 ## [0.0.4a0](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.0.4a0) (2024-10-25)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/V0.0.4a29...0.0.4a0)
-
-**Merged pull requests:**
-
-- feat:semver [\#32](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/32) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [V0.0.4a29](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/V0.0.4a29) (2024-10-24)
 
