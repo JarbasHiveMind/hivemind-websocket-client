@@ -321,6 +321,15 @@ class AsyncHiveMessageBusClient:
         self.protocol.bind(bus)
         await self.wait_for_handshake()
 
+    async def close_connection(self):
+        """Close the current websocket, leaving the client reusable.
+
+        Counterpart of :meth:`HiveMessageBusClient.close_connection`. The
+        async client has no reconnect loop of its own — the caller drives
+        ``connect()`` — so this is the same as :meth:`close`.
+        """
+        await self.close()
+
     async def close(self):
         """Cleanly close the WebSocket and stop the receive loop."""
         self.handshake_event.clear()
@@ -419,7 +428,7 @@ class AsyncHiveMessageBusClient:
                 # receive counter is now out of sync so the session is dead
                 LOG.exception("rejecting invalid Noise transport message, "
                               "closing connection")
-                asyncio.ensure_future(self.close())
+                asyncio.ensure_future(self.close_connection())
                 return
         elif self.crypto_key:
             if isinstance(message, (bytes, bytearray)):

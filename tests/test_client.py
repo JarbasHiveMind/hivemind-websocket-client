@@ -581,6 +581,61 @@ class TestHiveMessageBusClientKeepalive(unittest.TestCase):
         client.create_client.assert_not_called()
 
 
+class TestHiveMessageBusClientHandshakeAbort(unittest.TestCase):
+    """A rejected handshake must not brick the node.
+
+    Aborting the Noise handshake means this connection is refused. It does
+    not mean the node should stop trying: the master may have been
+    reinstalled, the password may have been rotated, the envelope may have
+    been truncated. Public close() is for an intentional shutdown only.
+    """
+
+    def _make_protocol(self, client):
+        from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+
+        return HiveMindSlaveProtocol(hm=client, identity=client.identity,
+                                     site_id="living-room")
+
+    def test_abort_keeps_the_reconnect_loop_alive(self):
+        client = _make_client()
+        protocol = self._make_protocol(client)
+
+        protocol._abort_noise("pinned key mismatch")
+
+        client.client.close.assert_called_once_with()
+        self.assertFalse(client._stop_event.is_set())
+        self.assertIsNone(client.noise_transport)
+
+    def test_client_retries_after_an_abort(self):
+        """End to end: an abort during a session leads to a new socket."""
+        client = _make_client()
+        client.allow_self_signed = False
+        client.retry = 0
+        protocol = self._make_protocol(client)
+        first_socket = client.client
+        first_socket.run_forever.side_effect = (
+            lambda **kwargs: protocol._abort_noise("pinned key mismatch")
+        )
+        second_socket = MagicMock()
+        second_socket.run_forever.side_effect = (
+            lambda **kwargs: client._stop_event.set()
+        )
+        client.create_client = MagicMock(return_value=second_socket)
+
+        client.run_forever()
+
+        first_socket.close.assert_called_once_with()
+        second_socket.run_forever.assert_called_once()
+
+    def test_close_connection_does_not_stop_reconnecting(self):
+        client = _make_client()
+
+        client.close_connection()
+
+        client.client.close.assert_called_once_with()
+        self.assertFalse(client._stop_event.is_set())
+
+
 class TestHiveMessageBusClientOn(unittest.TestCase):
     def test_on_mycroft_event_registers_on_internal_bus(self):
         client = _make_client()

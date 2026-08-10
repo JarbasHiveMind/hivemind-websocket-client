@@ -119,10 +119,40 @@ class TestNoiseHandshakePinning:
 
         assert proto.hm.noise_transport is None
         proto.hm.handshake_event.set.assert_not_called()
-        proto.hm.close.assert_called_once()
+        # the transport-level close: the reconnect loop must survive
+        proto.hm.close_connection.assert_called_once()
+        proto.hm.close.assert_not_called()
         proto.identity.pin_noise_key.assert_not_called()
         assert any("pin" in call.args[0].lower() and "mismatch" in call.args[0].lower()
                    for call in error.call_args_list)
+
+    def test_mismatch_message_says_how_to_recover(self):
+        """The pin also trips on a legitimate rebuild of the master, so the
+        log line must name the way out instead of only shouting MITM.
+        """
+        remote_key = b"r" * 32
+        proto, message = self._make_protocol_at_noise_msg2(remote_key)
+        proto.identity.get_pinned_noise_key.return_value = b"p" * 32
+
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = remote_key
+            with patch("hivemind_bus_client.protocol.LOG.error") as error:
+                proto.receive_noise_handshake(message)
+
+        logged = " ".join(call.args[0] for call in error.call_args_list)
+        assert "forget-server" in logged
+
+    def test_malformed_envelope_also_keeps_reconnecting(self):
+        """Every abort reason is repairable from the other side, so none of
+        them may stop the reconnect loop.
+        """
+        proto = _make_protocol()
+        message = HiveMessage(HiveMessageType.HANDSHAKE, {"noise": {}})
+
+        proto.receive_noise_handshake(message)
+
+        proto.hm.close_connection.assert_called_once()
+        proto.hm.close.assert_not_called()
 
     def test_pinned_key_matches_completes_handshake(self):
         """A pin that matches the negotiated static key is the expected,
@@ -141,7 +171,7 @@ class TestNoiseHandshakePinning:
 
         assert proto.hm.noise_transport is transport_cls.return_value
         proto.hm.handshake_event.set.assert_called_once()
-        proto.hm.close.assert_not_called()
+        proto.hm.close_connection.assert_not_called()
         proto.identity.pin_noise_key.assert_not_called()
 
     def test_no_pin_tofu_pins_new_key(self):
@@ -161,7 +191,7 @@ class TestNoiseHandshakePinning:
 
         assert proto.hm.noise_transport is transport_cls.return_value
         proto.hm.handshake_event.set.assert_called_once()
-        proto.hm.close.assert_not_called()
+        proto.hm.close_connection.assert_not_called()
         proto.identity.pin_noise_key.assert_called_once_with(
             proto._noise_pin_id, remote_key)
 

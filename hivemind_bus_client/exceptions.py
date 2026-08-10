@@ -54,3 +54,7 @@ class DecodingError(HiveMindException):
 class Z85DecodeError(DecodingError):
     """Exception raised for errors in decoding Z85b."""
 
+
+
+class IdentityFileCorrupted(HiveMindException):
+    """ The identity file exists but could not be read """

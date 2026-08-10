@@ -349,6 +349,9 @@ hivemind-client test-identity
 
 # Generate a new RSA key pair for peer-to-peer messages
 hivemind-client reset-pgp
+
+# Forget the pinned key of a master that was reinstalled
+hivemind-client forget-server --host 192.168.1.10 --port 5678
 ```
 
 ## Troubleshooting
@@ -358,6 +361,8 @@ hivemind-client reset-pgp
 **`RuntimeError: timed out waiting for handshake`**: The hub is unreachable or the port is wrong. Verify the hub is running (`hivemind-core listen`) and the firewall allows port 5678. Try `hivemind-client ping` first.
 
 **`got encrypted message, but could not decrypt!`**: The access key or password does not match what was registered on the hub. Re-run `hivemind-core add-client` and update the satellite identity.
+
+**`server Noise static key CHANGED`**: The master is answering with a different encryption key than the one this node pinned. If you reinstalled or restored the master, the pinned key is stale: run `hivemind-client forget-server --host HOST --port PORT` and connect again. If you changed nothing, another machine may be answering at that address. The node keeps retrying and reports this on every attempt.
 
 **Connection drops immediately**: The hub rejected the access key, or the protocol version the client offered is below the hub's `min_protocol_version`. Check hub logs: `journalctl -u hivemind-core -f`.
 

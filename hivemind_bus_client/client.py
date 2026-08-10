@@ -322,6 +322,17 @@ class HiveMessageBusClient(OVOSBusClient):
         if self.protocol is not None:
             self.protocol.reset_connection_state()
 
+    def close_connection(self):
+        """Close the current websocket but keep reconnecting.
+
+        Use this for a connection that has become unusable — a failed
+        handshake, an invalid Noise transport frame — so that
+        ``run_forever()`` returns and the reconnect loop establishes a
+        fresh session. Public :meth:`close` is reserved for an intentional
+        permanent shutdown.
+        """
+        self.client.close()
+
     def close(self):
         """Permanently stop reconnecting and close the websocket."""
         # Serialize the stop request with worker reservation. A worker that is
@@ -495,10 +506,7 @@ class HiveMessageBusClient(OVOSBusClient):
                 # receive counter is now out of sync so the session is dead
                 LOG.exception("rejecting invalid Noise transport message, "
                               "closing connection")
-                # Close this connection so run_forever() establishes a fresh
-                # Noise session. Public close() is reserved for an intentional
-                # permanent shutdown.
-                self.client.close()
+                self.close_connection()
                 return
         elif self.crypto_key:
             # handle binary encryption

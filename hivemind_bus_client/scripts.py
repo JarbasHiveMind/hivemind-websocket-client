@@ -200,6 +200,35 @@ def test_identity():
     node.close()
 
 
+@hmclient_cmds.command(help="forget the pinned encryption key of a hivemind-core",
+                       name="forget-server")
+@click.option("--host", help="host of the hivemind-core (default read from identity file)", type=str, default="")
+@click.option("--port", help="port of the hivemind-core (default read from identity file)", type=int, required=False)
+def forget_server(host: str, port: int):
+    """Drop the pinned Noise key of a master.
+
+    A master is pinned the first time it is seen and every later
+    connection checks that the key did not change. Reinstalling the master
+    or restoring it from a backup gives it a new key, so the satellite
+    stops connecting. Forget the old key here, then connect again to trust
+    the new one.
+    """
+    identity = NodeIdentity()
+    host = host or identity.default_master or ""
+    host = host.replace("ws://", "").replace("wss://", "")
+    port = port or identity.default_port or 5678
+    pin_id = f"{host}:{port}"
+    if not host:
+        raise ValueError("please set --host, no default master in the identity file")
+    if identity.forget_noise_key(pin_id):
+        print(f"forgot pinned key for {pin_id}")
+        print("the next connection will trust and pin the key it sees")
+    else:
+        print(f"no pinned key for {pin_id}")
+        known = ", ".join(identity.pinned_noise_keys) or "none"
+        print(f"pinned servers: {known}")
+
+
 @hmclient_cmds.command(help="recreate the private RSA key for inter-node communication", name="reset-pgp")
 def reset_keys():
     identity = NodeIdentity()

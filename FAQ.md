@@ -109,4 +109,4 @@ For `BUS` messages, `emit()` (`client.py:348`) auto-injects `source`, `platform`
 ## CLI
 
 ### What CLI commands are available?
-`set-identity`, `terminal`, `send-mycroft`, `escalate`, `propagate`, `reset-keys`. Run `hivemind-client --help` for the full list. Source: `scripts.py`
+`set-identity`, `terminal`, `send-mycroft`, `escalate`, `propagate`, `reset-pgp`, `forget-server`, `ping`. Run `hivemind-client --help` for the full list. Source: `scripts.py`
