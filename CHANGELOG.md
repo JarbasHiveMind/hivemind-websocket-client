@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.8a1) (2026-08-12)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.7a1...1.0.8a1)
+
+**Closed issues:**
+
+- protocol v3: a client with a stale Noise pin locks itself out permanently \(KKpsk0 retry loop, no XXpsk2 fallback\) [\#186](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/186)
+
+**Merged pull requests:**
+
+- fix: recover from a stale Noise pin instead of looping on KKpsk0 forever [\#187](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/187) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.7a1) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a3...1.0.7a1)
@@ -575,15 +587,10 @@
 **Merged pull requests:**
 
 - Release 0.1.3a1 [\#39](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/39) ([github-actions[bot]](https://github.com/apps/github-actions))
-- fix: update imports to get rid of deprecation warnings [\#38](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/38) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.2a1) (2024-12-21)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.1...0.1.2a1)
-
-**Merged pull requests:**
-
-- Release 0.1.2a1 [\#37](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/37) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.1.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.1) (2024-11-29)
 
