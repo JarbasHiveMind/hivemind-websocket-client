@@ -19,7 +19,7 @@ from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers,
 from hivemind_bus_client.hive_map import FloodIdCache, HiveMapper
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
-from hivemind_bus_client.noise import (NOISE_SUPPORTED, PROTOCOL_V3,
+from hivemind_bus_client.noise import (NOISE_PATTERN_KK, NOISE_SUPPORTED, PROTOCOL_V3,
                                        NoiseTransport, NoiseHandshakeFailed,
                                        build_prologue, canonical_json,
                                        noise_protocol_name, select_noise_options,
@@ -266,6 +266,11 @@ class HiveMindSlaveProtocol:
     # protocol v3 (Noise handshake) state — HIVEMIND-CRYPTO-1 §3.4
     noise_handshake: Optional[object] = field(default=None, repr=False)
     _noise_pattern: Optional[str] = field(default=None, repr=False)
+    # True once a Noise session actually established on this socket. Read on
+    # disconnect to tell "the handshake worked and the peer went away" from
+    # "the handshake never completed", which is what distinguishes a normal
+    # reconnect from the KKpsk0 lockout.
+    _noise_established: bool = field(default=False, repr=False)
     _server_hello_payload: Optional[dict] = field(default=None, repr=False)
     _server_handshake_payload: Optional[dict] = field(default=None, repr=False)
 
@@ -325,6 +330,13 @@ class HiveMindSlaveProtocol:
         handshake on the replacement socket would make the next server
         negotiation envelope look like a malformed Noise response.
         """
+        # A KKpsk0 that never reached a session is the lockout signal. The
+        # server does not send a Noise error for a KK it cannot complete — it
+        # closes the socket — so this, not receive_noise_handshake, is where
+        # most failures are observable.
+        if not self._noise_established:
+            self._drop_stale_pin_after_kk_failure()
+        self._noise_established = False
         self.handshake = HandShake(self.identity.private_key)
         self.pswd_handshake = None
         self.mpubkey = ""
@@ -485,6 +497,7 @@ class HiveMindSlaveProtocol:
             # fails cryptographically at handshake time (§3.4.3)
             LOG.exception("protocol v3 Noise handshake FAILED "
                           "(wrong password or tampered negotiation)")
+            self._drop_stale_pin_after_kk_failure()
             self._abort_noise("Noise handshake authentication failure")
             return
 
@@ -513,6 +526,7 @@ class HiveMindSlaveProtocol:
 
         self.hm.noise_transport = transport  # session encryption from here on
         self.noise_handshake = None
+        self._noise_established = True
         LOG.info("protocol v3 Noise session established "
                  f"(pattern={self._noise_pattern})")
 
@@ -523,6 +537,41 @@ class HiveMindSlaveProtocol:
                                   "session": sess.serialize(),
                                   "site_id": self.site_id}))
         self.hm.handshake_event.set()
+
+    def _drop_stale_pin_after_kk_failure(self) -> None:
+        """Forget the pinned server key when a ``KKpsk0`` handshake fails.
+
+        KK needs each side to hold the other's static key, but the client
+        picks it on the strength of having pinned the *server's* key — which
+        says nothing about whether the server still holds this node's. The two
+        diverge whenever the identity is recreated (reinstall, fresh
+        container, new machine on the same credentials) or when one access key
+        is used from a second useragent, since the server stores one pin per
+        access key.
+
+        Without this the node is locked out for good: it retries KK, fails,
+        and retries KK again, every few seconds, forever. Dropping the pin
+        makes the next attempt an ``XXpsk2`` handshake, which re-establishes
+        trust and re-pins.
+
+        This is not a downgrade an attacker can profit from. Both patterns
+        carry the password-derived PSK, so whoever answers still has to know
+        the password; failing KK on purpose only moves them to a handshake
+        they equally cannot complete. The genuine MITM signal is a *completed*
+        handshake whose static key contradicts the pin, and that path is
+        untouched below — it still refuses and keeps the pin.
+        """
+        if self._noise_pattern != NOISE_PATTERN_KK:
+            return
+        pin_id = self._noise_pin_id
+        if not self.identity.get_pinned_noise_key(pin_id):
+            return
+        LOG.warning(
+            f"KKpsk0 failed for {pin_id} and a pinned server key is present. "
+            "The master no longer holds this node's static key — most likely "
+            "this identity was recreated, or these credentials are in use "
+            "from another node. Dropping the pin and retrying with XXpsk2.")
+        self.identity.forget_noise_key(pin_id)
 
     def _abort_noise(self, reason: str):
         """Fatal handshake failure — reject the connection (§3.4.3).

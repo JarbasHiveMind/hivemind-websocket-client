@@ -505,3 +505,92 @@ class TestUnhandledInnerPayloadType:
         with patch.object(proto, 'handle_ping') as mock_ping:
             proto.handle_propagate(outer)  # must not raise
             mock_ping.assert_not_called()
+
+
+class TestNoiseKKFallback:
+    """A KKpsk0 failure must not lock the node out.
+
+    KK is chosen on the strength of having pinned the *server's* key, which
+    says nothing about whether the server still holds this node's static key.
+    When they diverge — identity recreated, or one access key used from a
+    second useragent — KK fails on every attempt and the client used to retry
+    KK forever.
+    """
+
+    def _protocol_failing_handshake(self, pattern: str, pinned):
+        proto = _make_protocol()
+        proto.noise_handshake = MagicMock()
+        proto.noise_handshake.read_message.side_effect = Exception("decrypt failed")
+        proto._noise_pattern = pattern
+        proto.hm.config.host = "hive.example"
+        proto.hm.config.port = 5678
+        proto.identity.get_pinned_noise_key.return_value = pinned
+        message = HiveMessage(HiveMessageType.HANDSHAKE,
+                              {"noise": {"msg": (b"x" * 16).hex()}})
+        return proto, message
+
+    def test_failed_kk_drops_the_stale_pin(self):
+        proto, message = self._protocol_failing_handshake("KKpsk0", b"pinned-key")
+        proto.receive_noise_handshake(message.payload)
+        proto.identity.forget_noise_key.assert_called_once_with(proto._noise_pin_id)
+
+    def test_failed_xx_keeps_the_pin(self):
+        # XX failing says nothing about the pin, and dropping it there would
+        # discard the only MITM signal the node has
+        proto, message = self._protocol_failing_handshake("XXpsk2", b"pinned-key")
+        proto.receive_noise_handshake(message.payload)
+        proto.identity.forget_noise_key.assert_not_called()
+
+    def test_failed_kk_without_a_pin_forgets_nothing(self):
+        proto, message = self._protocol_failing_handshake("KKpsk0", None)
+        proto.receive_noise_handshake(message.payload)
+        proto.identity.forget_noise_key.assert_not_called()
+
+    def test_a_completed_handshake_contradicting_the_pin_keeps_it(self):
+        # the genuine MITM signal: the handshake succeeded but the static key
+        # is not the pinned one. That must still refuse, and must NOT drop the
+        # pin, or an attacker could clear it by presenting a wrong key.
+        proto = _make_protocol()
+        proto.noise_handshake = MagicMock()
+        proto.noise_handshake.read_message.return_value = b""
+        proto.noise_handshake.handshake_finished = True
+        proto._noise_pattern = "KKpsk0"
+        proto.hm.config.host = "hive.example"
+        proto.hm.config.port = 5678
+        proto.identity.get_pinned_noise_key.return_value = b"pinned-key"
+        message = HiveMessage(HiveMessageType.HANDSHAKE,
+                              {"noise": {"msg": (b"x" * 16).hex()}})
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = b"different-key"
+            proto.receive_noise_handshake(message.payload)
+        proto.identity.forget_noise_key.assert_not_called()
+        assert proto.hm.noise_transport is None
+
+    @patch("hivemind_bus_client.protocol.HandShake")
+    def test_a_closed_socket_mid_kk_drops_the_pin(self, _handshake_cls):
+        """The server closes rather than answering a KK it cannot complete,
+        so the client never reaches receive_noise_handshake. The disconnect
+        path has to be what recovers, or the node loops on KK forever."""
+        proto = _make_protocol()
+        proto._noise_pattern = "KKpsk0"
+        proto._noise_established = False
+        proto.identity.get_pinned_noise_key.return_value = b"pinned-key"
+        proto.hm.config.host = "hive.example"
+        proto.hm.config.port = 5678
+
+        proto.reset_connection_state()
+
+        proto.identity.forget_noise_key.assert_called_once_with("hive.example:5678")
+
+    @patch("hivemind_bus_client.protocol.HandShake")
+    def test_a_normal_disconnect_after_a_good_session_keeps_the_pin(self, _handshake_cls):
+        proto = _make_protocol()
+        proto._noise_pattern = "KKpsk0"
+        proto._noise_established = True
+        proto.identity.get_pinned_noise_key.return_value = b"pinned-key"
+        proto.hm.config.host = "hive.example"
+        proto.hm.config.port = 5678
+
+        proto.reset_connection_state()
+
+        proto.identity.forget_noise_key.assert_not_called()
