@@ -2,7 +2,7 @@
 import ssl
 import unittest
 from collections import Counter
-from threading import Event
+from threading import Event, Thread
 from unittest.mock import MagicMock, patch
 
 from ovos_bus_client.message import Message
@@ -291,20 +291,78 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         self.assertIsNone(client._worker_token)
 
     @patch("hivemind_bus_client.client.Thread")
-    def test_run_forever_is_rejected_while_thread_worker_is_active(
+    def test_run_forever_blocks_on_existing_worker_instead_of_raising(
             self, mock_thread):
+        """run_forever() after connect()/run_in_thread() must not raise.
+
+        Calling connect() (which already starts the reconnect worker in a
+        background thread) and then run_forever() to block the caller used
+        to raise RuntimeError("... already running"), which made this
+        completely reasonable pair of calls a footgun for every bridge that
+        wrote it. run_forever() must instead block on the worker that is
+        already running -- here observed as joining the existing worker
+        thread -- and must not try to start a second one.
+        """
         client = _make_client()
 
         client.run_in_thread()
-        worker = mock_thread.call_args.kwargs["target"]
-        worker_args = mock_thread.call_args.kwargs["args"]
+        worker_thread = mock_thread.return_value
 
-        with self.assertRaisesRegex(RuntimeError, "already running"):
-            client.run_forever()
+        client.run_forever()
 
+        # blocked on (joined) the thread already started by run_in_thread,
+        # rather than raising or starting a second worker
+        worker_thread.join.assert_called_once_with()
         mock_thread.assert_called_once()
+        self.assertIsNotNone(client._worker_token)
+
+    def test_run_forever_alone_still_starts_and_runs_the_worker(self):
+        """With no worker running yet, run_forever() still starts one."""
+        client = _make_client()
+        client.client.run_forever.side_effect = (
+            lambda **kwargs: client._stop_event.set()
+        )
+        client.run_forever()
+        client.client.run_forever.assert_called_once()
+        self.assertIsNone(client._worker_token)
+
+    def test_live_worker_run_forever_blocks_until_close_then_returns(self):
+        """End-to-end: run_forever() after a real threaded connect() blocks
+        the caller and returns once close() stops the worker, never raising.
+        """
+        client = _make_client()
+        worker_entered = Event()
+        release_worker = Event()
+
+        def _block_socket(**kwargs):
+            worker_entered.set()
+            release_worker.wait(timeout=1)
+
+        client.client.run_forever.side_effect = _block_socket
+        thread = client.run_in_thread()
+        self.assertTrue(worker_entered.wait(timeout=1))
+
+        blocked_return = Event()
+
+        def _call_run_forever():
+            client.run_forever()
+            blocked_return.set()
+
+        blocker = Thread(target=_call_run_forever, daemon=True)
+        blocker.start()
+
+        # run_forever() must not return (or raise) while the worker is
+        # still connected
+        self.assertFalse(blocked_return.wait(timeout=0.2))
+
         client.close()
-        worker(*worker_args)
+        release_worker.set()
+        thread.join(timeout=1)
+        blocker.join(timeout=1)
+
+        self.assertTrue(blocked_return.is_set())
+        self.assertIsNone(client._worker_token)
+        self.assertIsNone(client._worker_thread)
 
     def test_live_worker_rejects_duplicate_start_until_exit(self):
         client = _make_client()

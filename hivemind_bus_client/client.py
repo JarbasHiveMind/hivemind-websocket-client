@@ -519,23 +519,63 @@ class HiveMessageBusClient(OVOSBusClient):
         return thread
 
     def run_forever(self) -> None:
-        """Run the reconnect lifecycle on the calling thread."""
-        token = self._reserve_worker()
-        self._set_worker_thread(token, current_thread())
-        self._run_worker(token)
+        """Block the calling thread while the connection is maintained.
+
+        If nothing owns the reconnect lifecycle yet, this starts it and
+        runs it on the calling thread, same as before.
+
+        If ``connect()`` (or ``run_in_thread()``) already started it in a
+        background thread -- the common case for a bridge that calls
+        ``connect()`` in ``__init__`` and then wants to block ``run()`` on
+        the connection -- this used to raise ``RuntimeError("HiveMind
+        websocket reconnect worker is already running")``. That made the
+        combination of "connect() to get a synchronous, retried handshake"
+        and "run_forever() to block the main thread" -- a completely
+        reasonable pair of calls -- a footgun: every bridge that wrote it
+        naturally hit the crash. There is nothing to "start" a second time
+        in that case; what the caller actually wants is to block on the
+        worker that already exists, so that is what this does instead.
+        """
+        while True:
+            token = self._try_reserve_worker()
+            if token is not None:
+                self._set_worker_thread(token, current_thread())
+                self._run_worker(token)
+                return
+            existing = self._get_worker_thread()
+            if existing is None:
+                # Reservation raced with the owning worker's shutdown
+                # (it released the token between our failed reserve and
+                # this read); nothing left to join, so try again -- either
+                # we win the reservation this time or a new worker to
+                # join appears.
+                continue
+            existing.join()
+            return
 
     def _reserve_worker(self) -> object:
-        """Claim exclusive ownership of the reconnect lifecycle."""
+        """Claim exclusive ownership of the reconnect lifecycle, or raise."""
+        token = self._try_reserve_worker()
+        if token is None:
+            raise RuntimeError(
+                "HiveMind websocket reconnect worker is already running"
+            )
+        return token
+
+    def _try_reserve_worker(self) -> Optional[object]:
+        """Claim exclusive ownership of the reconnect lifecycle, or return None."""
         with self._worker_lock:
             if self._worker_token is not None:
-                raise RuntimeError(
-                    "HiveMind websocket reconnect worker is already running"
-                )
+                return None
             token = object()
             self._worker_token = token
             self._worker_thread = None
             self._stop_event.clear()
             return token
+
+    def _get_worker_thread(self) -> Optional[Thread]:
+        with self._worker_lock:
+            return self._worker_thread
 
     def _set_worker_thread(self, token: object, thread: Thread) -> None:
         with self._worker_lock:
