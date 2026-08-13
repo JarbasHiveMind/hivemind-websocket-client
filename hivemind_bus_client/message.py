@@ -332,10 +332,24 @@ class HiveMessage:
         return self.as_json
 
     def update_hop_data(self, data=None, **kwargs):
-        if not self._route or self._route[-1]["source"] != self.source_peer:
+        """
+        Append/refresh this node's hop entry at the end of `route`.
+
+        A route entry is only trusted when it is a dict exposing a `source`
+        (same shape check as the `route` property, HIVEMIND-MSG-1 §5). An
+        inbound frame is attacker-controlled and may carry a malformed last
+        entry (e.g. `{}` or a bare string) -- rather than raising on that
+        (pre-auth DoS), we treat a malformed last entry the same as a
+        missing one and APPEND a fresh, well-formed hop for this node. The
+        malformed entry is left in place earlier in the list (not dropped),
+        it is just never indexed into or merged with.
+        """
+        last = self._route[-1] if self._route else None
+        last_source = last.get("source") if isinstance(last, dict) else None
+        if not self._route or last_source != self.source_peer:
             self._route += [{"source": self.source_peer,
                              "targets": self.target_peers}]
-        if self._route and data:
+        if self._route and data and isinstance(self._route[-1], dict):
             self._route[-1] = merge_dict(self._route[-1], data, **kwargs)
 
     def replace_route(self, route):
