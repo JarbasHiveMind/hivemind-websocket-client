@@ -902,4 +902,19 @@ class HiveMessageBusClient(OVOSBusClient):
         """
         private_key = load_RSA_key(self.identity.private_key)
         envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload=envelope))
+        # Two things this used to leave out, which together meant a peer-to-peer
+        # INTERCOM never arrived anywhere.
+        #
+        # `target_pubkey` is the address. Without it a node reads
+        # `target_public_key` as None, tries to decrypt the envelope with its
+        # own key, fails, and has nothing left to route on.
+        #
+        # PROPAGATE is the envelope that travels. A bare INTERCOM is dispatched
+        # by `handle_message` to `handle_intercom_message`, whose return value
+        # that call site discards — so a frame addressed to someone else is
+        # consumed and dropped at the first node it reaches. The fan-out and
+        # upstream-forward live in the PROPAGATE handler, which does check that
+        # return value and keeps relaying a frame that is not for it.
+        inner = HiveMessage(HiveMessageType.INTERCOM, payload=envelope,
+                            target_pubkey=pubkey if isinstance(pubkey, str) else None)
+        self.emit(HiveMessage(HiveMessageType.PROPAGATE, payload=inner))

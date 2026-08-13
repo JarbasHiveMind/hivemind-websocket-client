@@ -684,11 +684,22 @@ class AsyncHiveMessageBusClient:
     async def emit_intercom(self,
                             message: Union[MycroftMessage, HiveMessage],
                             pubkey):
-        """INTERCOM (hybrid-encrypted) send. Same shape as sync client."""
+        """INTERCOM (hybrid-encrypted) send. Same shape as sync client.
+
+        Matches ``HiveMessageBusClient.emit_intercom`` in ``client.py``: a
+        bare, unaddressed INTERCOM is consumed and dropped at the first node
+        it reaches (``handle_message`` discards ``handle_intercom_message``'s
+        "not for me, keep relaying" answer — only the PROPAGATE handler
+        checks it), and without ``target_pubkey`` the receiving node has
+        nothing to route on. So the frame is addressed via ``target_pubkey``
+        and wrapped in PROPAGATE, exactly like the sync client.
+        """
         from poorman_handshake.asymmetric.utils import load_RSA_key
         private_key = load_RSA_key(self.identity.private_key)
         envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
-        await self.emit(HiveMessage(HiveMessageType.INTERCOM, payload=envelope))
+        inner = HiveMessage(HiveMessageType.INTERCOM, payload=envelope,
+                            target_pubkey=pubkey if isinstance(pubkey, str) else None)
+        await self.emit(HiveMessage(HiveMessageType.PROPAGATE, payload=inner))
 
 
 __all__ = [
