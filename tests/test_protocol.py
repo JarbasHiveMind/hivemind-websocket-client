@@ -14,9 +14,10 @@ def _make_protocol() -> HiveMindSlaveProtocol:
     """Create a minimal HiveMindSlaveProtocol with mocked dependencies."""
     hm = MagicMock()
     hm.session_id = "test-session"
+    # the credential belongs to the link, so it lives on the client
+    hm.password = "test-node-horse-battery-staple-92"
     identity = MagicMock(spec=NodeIdentity)
     identity.name = "test-node"
-    identity.password = "test-node-horse-battery-staple-92"
     proto = HiveMindSlaveProtocol(hm=hm, identity=identity, site_id="living-room")
     return proto
 
@@ -25,7 +26,7 @@ class TestHandshakeInitialization:
     def test_bind_defers_legacy_password_validation(self):
         """Binding must not construct a handshake that may never be used."""
         proto = _make_protocol()
-        proto.identity.password = "sat123"
+        proto.hm.password = "sat123"
         bus = MagicMock()
 
         with patch("hivemind_bus_client.protocol.HandShake"):
@@ -36,7 +37,7 @@ class TestHandshakeInitialization:
     def test_legacy_password_handshake_still_rejects_weak_password(self):
         """The negotiated legacy path must retain its strength policy."""
         proto = _make_protocol()
-        proto.identity.password = "sat123"
+        proto.hm.password = "sat123"
         message = HiveMessage(HiveMessageType.HANDSHAKE,
                               {"password": True})
 

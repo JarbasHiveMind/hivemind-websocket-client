@@ -210,53 +210,56 @@ class AsyncHiveMessageBusClient:
 
     def init_identity(self, site_id: Optional[str] = None):
         self.identity = self.identity or NodeIdentity()
-        self.identity.password = self._password or self.identity.password
-        self.identity.access_key = self._access_key or self.identity.access_key
-        self.identity.default_master = self._host = self._host or self.identity.default_master
-        self.identity.default_port = self._port = self._port or self.identity.default_port
-        self.identity.name = self._name or "AsyncHiveMessageBusClientV0.0.1"
-        self.identity.site_id = site_id or self.identity.site_id
+        # Credentials say how to reach one master; they are not the node's
+        # identity. Writing them back overwrote the node's own access key,
+        # password and name on the first save — and pinning a peer key saves.
+        self._password = self._password or self.identity.password
+        self._access_key = self._access_key or self.identity.access_key
+        self._host = self._host or self.identity.default_master
+        self._port = self._port or self.identity.default_port
+        self._name = self._name or "AsyncHiveMessageBusClientV0.0.1"
+        self._site_id = site_id or self.identity.site_id
 
-        if not self.identity.access_key or not self.identity.password:
+        if not self._access_key or not self._password:
             raise RuntimeError(
                 "NodeIdentity not set, please pass key and password or "
                 "call 'hivemind-client set-identity'")
-        if not self.identity.default_master:
+        if not self._host:
             raise RuntimeError(
                 "host not set, please pass host and port or "
                 "call 'hivemind-client set-identity'")
 
     @property
     def useragent(self) -> str:
-        return self.identity.name
+        return self._name
 
     @useragent.setter
     def useragent(self, val: str):
-        self.identity.name = val
+        self._name = val
 
     @property
     def password(self) -> str:
-        return self.identity.password
+        return self._password
 
     @password.setter
     def password(self, val: str):
-        self.identity.password = val
+        self._password = val
 
     @property
     def key(self) -> str:
-        return self.identity.access_key
+        return self._access_key
 
     @key.setter
     def key(self, val: str):
-        self.identity.access_key = val
+        self._access_key = val
 
     @property
     def site_id(self) -> Optional[str]:
-        return self.identity.site_id
+        return self._site_id
 
     @site_id.setter
     def site_id(self, val: str):
-        self.identity.site_id = val
+        self._site_id = val
 
     @staticmethod
     def build_url(key: str, host: str = "127.0.0.1", port: int = 5678,
@@ -279,21 +282,24 @@ class AsyncHiveMessageBusClient:
         from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 
         bus = bus if bus is not None else FakeBus()
-        self.identity.site_id = site_id or self.identity.site_id
+        # The site this connection reports is the client's, not the identity's
+        # — writing it back would rewrite the node's own site, and reading it
+        # back would silently ignore `client.site_id = ...` set before connect.
+        self._site_id = site_id or self._site_id or self.identity.site_id
 
         if protocol is None:
             LOG.debug("Initializing HiveMindSlaveProtocol")
             self.protocol = HiveMindSlaveProtocol(
                 self,
                 shared_bus=self.share_bus,
-                site_id=self.identity.site_id or "unknown",
+                site_id=self._site_id or "unknown",
                 identity=self.identity,
             )
         else:
             self.protocol = protocol
             self.protocol.identity = self.identity
-            if self.identity.site_id is not None:
-                self.protocol.site_id = self.identity.site_id
+            if self._site_id is not None:
+                self.protocol.site_id = self._site_id
 
         host = self._host
         use_ssl = host.startswith("wss://")

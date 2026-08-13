@@ -422,7 +422,13 @@ class HiveMindSlaveProtocol:
         protocol v3 (noise primitive available + shared password set). Any
         other combination falls back to the legacy (v2 and below) handshake.
         """
-        if not NOISE_SUPPORTED or not self.identity or not self.identity.password:
+        # The password belongs to this LINK, not to the node. A relay reaches
+        # its master with credentials the master issued it, while its own
+        # identity carries the keypair it is known by in both directions —
+        # reading the password off the identity meant a node whose identity
+        # holds no credentials silently skipped the encrypted handshake and
+        # spoke plaintext to a server that requires crypto.
+        if not NOISE_SUPPORTED or not self.identity or not self.hm.password:
             return False
         if getattr(self.hm, "max_protocol_version", 2) < PROTOCOL_V3:
             return False
@@ -462,7 +468,7 @@ class HiveMindSlaveProtocol:
         try:
             self.noise_handshake = start_noise_handshake(
                 initiator=True, pattern=pattern, suite=suite,
-                password=self.identity.password, node_id=node_id,
+                password=self.hm.password, node_id=node_id,
                 prologue=prologue, key_path=self.identity.noise_key,
                 remote_pubkey=pinned)
             self._noise_pattern = pattern
@@ -704,8 +710,8 @@ class HiveMindSlaveProtocol:
 
             # TODO - flag to give preference to / require password or use RSA handshake
             # currently if password is set then it is always used
-            if message.payload.get("password") and self.identity.password:
-                self.pswd_handshake = PasswordHandShake(self.identity.password,
+            if message.payload.get("password") and self.hm.password:
+                self.pswd_handshake = PasswordHandShake(self.hm.password,
                                                         min_bits=_pw_min_bits())
                 self._legacy_start_handshake(self._server_handshake_payload)
 
