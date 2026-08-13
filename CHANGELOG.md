@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.9a1) (2026-08-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.8a1...1.0.9a1)
+
+**Merged pull requests:**
+
+- fix: tolerate malformed route entries in update\_hop\_data [\#192](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/192) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.8a1) (2026-08-12)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.7a1...1.0.8a1)
@@ -583,10 +591,6 @@
 ## [0.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a1) (2024-12-21)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.2a1...0.1.3a1)
-
-**Merged pull requests:**
-
-- Release 0.1.3a1 [\#39](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/39) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.2a1) (2024-12-21)
 
