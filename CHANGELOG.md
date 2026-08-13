@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.13a1) (2026-08-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.12a1...1.0.13a1)
+
+**Merged pull requests:**
+
+- fix: emit\(\) must not block the caller's loop when the transport is down [\#197](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/197) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.12a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.11a1...1.0.12a1)
@@ -580,10 +588,6 @@
 ## [0.1.4](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.4) (2024-12-30)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.4a1...0.1.4)
-
-**Merged pull requests:**
-
-- Release 0.1.4a1 [\#43](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/43) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.1.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.4a1) (2024-12-30)
 
