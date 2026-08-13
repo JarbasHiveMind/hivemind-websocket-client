@@ -107,6 +107,14 @@ class HivePayloadWaiter(HiveMessageWaiter):
 
 
 class HiveMessageBusClient(OVOSBusClient):
+    # emit() grace window (seconds) for the "connection not currently open"
+    # case. Kept short and non-configurable on purpose: it only exists to let
+    # a send that races the final moments of a handshake still succeed. It is
+    # NOT a retry/backoff knob - if the transport is actually down (eg. an
+    # unreachable master) emit() must fail fast rather than block its caller,
+    # since callers include event-loop code (see emit() docstring).
+    _EMIT_NOT_CONNECTED_GRACE = 0.05
+
     def __init__(self, key: Optional[str] = None,
                  password: Optional[str] = None,
                  crypto_key: Optional[str] = None,
@@ -700,16 +708,31 @@ class HiveMessageBusClient(OVOSBusClient):
        
         Raises:
             ValueError: If the client has not been started with run_forever() and the connection is not ready.
+            RuntimeError: If the transport is down (eg. master unreachable) and does not
+                          come up within a brief grace window.
+
+        Note:
+            When the connection is not currently open, this method waits only a short,
+            bounded margin (``_EMIT_NOT_CONNECTED_GRACE`` seconds) rather than the old
+            10 second timeout. ``emit()`` is called synchronously from callers that may
+            themselves be running on an event loop (eg. hivemind-core forwarding a
+            PROPAGATE message from its Tornado ioloop); blocking that caller for
+            seconds every time a master/relay is unreachable stalls the whole loop and,
+            because the subsequent RuntimeError bubbles up as a send failure, can get
+            the sender itself disconnected. The short grace window still lets a send
+            that merely races a connection that is finishing its handshake succeed,
+            without parking an ioloop for multiple seconds on the common "peer is
+            unreachable" case.
         """
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS,
                                   payload=message)
         if not self.connected_event.is_set():
             LOG.warning("hivemind connection not ready!")
-            if not self.connected_event.wait(10):
-                if not self.started_running:
-                    raise ValueError('You must execute run_forever() '
-                                     'before emitting messages')
+            if not self.started_running:
+                raise ValueError('You must execute run_forever() '
+                                 'before emitting messages')
+            if not self.connected_event.wait(self._EMIT_NOT_CONNECTED_GRACE):
                 raise RuntimeError(f"Can not send messages before opening the websocket connection. Failed to emit : {message.serialize()}")
 
         try:
