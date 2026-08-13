@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.11a1) (2026-08-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.9a1...1.0.11a1)
+
+**Merged pull requests:**
+
+- fix: make the hive map readable, and show the nodes that answered [\#191](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/191) ([JarbasAl](https://github.com/JarbasAl))
+- fix: a node has one identity, and connecting somewhere must not rewrite it [\#190](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/190) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.9a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.8a1...1.0.9a1)
@@ -576,17 +585,9 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3a2...0.1.3)
 
-**Merged pull requests:**
-
-- Release 0.1.3a2 [\#41](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/41) ([github-actions[bot]](https://github.com/apps/github-actions))
-
 ## [0.1.3a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a2) (2024-12-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3a1...0.1.3a2)
-
-**Merged pull requests:**
-
-- performance: speed up b64 operations [\#40](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/40) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3a1) (2024-12-21)
 
