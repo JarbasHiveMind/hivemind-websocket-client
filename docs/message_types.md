@@ -167,6 +167,14 @@ Each hop is a dict: `{"source": "peer_id", "targets": ["peer_id1", "peer_id2"]}`
 - `source`: the peer that forwarded the message at this hop
 - `targets`: the peers the message was sent to from this hop
 
+A hop entry is only trusted when it is a dict carrying a `source` key — the
+same shape check `route` and `update_hop_data()` both apply. An inbound
+frame's route is attacker-controlled and reaches `update_hop_data()` before
+any authentication; a malformed last entry (`{}`, a bare string, or similar)
+is treated as absent and a fresh, well-formed hop is appended, rather than
+being indexed into. A malformed entry earlier in the list is left in place
+untouched — only the last entry is ever read or written.
+
 ### Multi-Hop Example
 
 After S0 → R1 → M0 traversal:

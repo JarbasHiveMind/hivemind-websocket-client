@@ -274,6 +274,63 @@ class TestHiveMessageUpdateHopData:
         hm.update_hop_data()  # same source, should not duplicate
         assert len(hm._route) == 1
 
+    def test_update_hop_data_well_formed_multi_hop_unchanged(self):
+        """Control: a well-formed multi-hop route gets exactly the same new
+        hop appended as it does today -- proves the malformed-entry handling
+        does not change good-path behaviour."""
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          route=[{"source": "peer-A", "targets": ["peer-B"]}],
+                          source_peer="peer-B", target_peers=["peer-C"])
+        hm.update_hop_data()
+        assert hm._route == [
+            {"source": "peer-A", "targets": ["peer-B"]},
+            {"source": "peer-B", "targets": ["peer-C"]},
+        ]
+
+    def test_update_hop_data_empty_dict_last_entry_does_not_raise(self):
+        """route=[{}] -- malformed last hop has no 'source' key. Must not
+        KeyError; a fresh well-formed hop is appended instead."""
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          route=[{}], source_peer="a", target_peers=["b"])
+        hm.update_hop_data()
+        assert hm._route[0] == {}
+        assert hm._route[-1] == {"source": "a", "targets": ["b"]}
+
+    def test_update_hop_data_non_dict_last_entry_does_not_raise(self):
+        """route=["not-a-dict"] -- last hop isn't even a dict. Must not
+        TypeError; a fresh well-formed hop is appended instead."""
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          route=["not-a-dict"], source_peer="a", target_peers=["b"])
+        hm.update_hop_data()
+        assert hm._route[0] == "not-a-dict"
+        assert hm._route[-1] == {"source": "a", "targets": ["b"]}
+
+    def test_update_hop_data_malformed_entry_in_middle_does_not_raise(self):
+        """A malformed entry NOT at the end must not raise either -- only
+        the last entry is ever indexed into by update_hop_data."""
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          route=[{"source": "x", "targets": ["y"]},
+                                 "not-a-dict",
+                                 {"source": "y", "targets": ["z"]}],
+                          source_peer="z", target_peers=["w"])
+        hm.update_hop_data()
+        assert hm._route[1] == "not-a-dict"
+        assert hm._route[-1] == {"source": "z", "targets": ["w"]}
+
+    def test_update_hop_data_empty_route(self):
+        """Control: route=[] behaves like the absent-route case."""
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          route=[], source_peer="a", target_peers=["b"])
+        hm.update_hop_data()
+        assert hm._route == [{"source": "a", "targets": ["b"]}]
+
+    def test_update_hop_data_absent_route(self):
+        """Control: no route kwarg at all."""
+        hm = HiveMessage(HiveMessageType.PING, {},
+                          source_peer="a", target_peers=["b"])
+        hm.update_hop_data()
+        assert hm._route == [{"source": "a", "targets": ["b"]}]
+
 
 class TestDeserializePreservesFields:
     """Regression tests for deserialize() restoring serialized fields."""
