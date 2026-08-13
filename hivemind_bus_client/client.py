@@ -140,6 +140,7 @@ class HiveMessageBusClient(OVOSBusClient):
         self._name = useragent
         self._port = port
         self._host = host
+        self._site_id = None
         self.init_identity()
 
         self.crypto_key = crypto_key
@@ -187,70 +188,88 @@ class HiveMessageBusClient(OVOSBusClient):
         self._worker_thread: Thread | None = None
 
     def init_identity(self, site_id=None):
-        self.identity = self.identity or NodeIdentity()
-        self.identity.password = self._password or self.identity.password
-        self.identity.access_key = self._access_key or self.identity.access_key
-        self.identity.default_master = self._host = self._host or self.identity.default_master
-        self.identity.default_port = self._port = self._port or self.identity.default_port
-        self.identity.name = self._name or "HiveMessageBusClientV0.0.1"
-        self.identity.site_id = site_id or self.identity.site_id
+        """Resolve the credentials this client connects with.
 
-        if not self.identity.access_key or not self.identity.password:
+        A node has ONE identity: one keypair, one Noise static key, one set of
+        pinned peer keys, used in both directions. Credentials are not part of
+        it. They say how to reach one particular master, and a node that both
+        serves clients and connects upstream has its own access key and
+        password as well as its master's.
+
+        So they are read from the identity as a fallback and never written
+        back. Copying them in overwrote the node's own access key, password
+        and name with its master's on the first save — and the first Noise
+        handshake saves, because pinning a peer key persists the file. Every
+        downstream client then failed with "invalid api key" against
+        credentials the node no longer had.
+        """
+        self.identity = self.identity or NodeIdentity()
+        self._password = self._password or self.identity.password
+        self._access_key = self._access_key or self.identity.access_key
+        self._host = self._host or self.identity.default_master
+        self._port = self._port or self.identity.default_port
+        self._name = self._name or "HiveMessageBusClientV0.0.1"
+        self._site_id = site_id or self.identity.site_id
+
+        if not self._access_key or not self._password:
             raise RuntimeError("NodeIdentity not set, please pass key and password or "
                                "call 'hivemind-client set-identity'")
-        if not self.identity.default_master:
+        if not self._host:
             raise RuntimeError("host not set, please pass host and port or "
                                "call 'hivemind-client set-identity'")
 
     @property
     def useragent(self):
-        return self.identity.name
+        return self._name
 
     @useragent.setter
     def useragent(self, val):
-        self.identity.name = val
+        self._name = val
 
     @property
     def password(self):
-        return self.identity.password
+        return self._password
 
     @property
     def key(self):
-        return self.identity.access_key
+        return self._access_key
 
     @property
     def site_id(self):
-        return self.identity.site_id
+        return self._site_id
 
     @site_id.setter
     def site_id(self, val):
-        self.identity.site_id = val
+        self._site_id = val
 
     @password.setter
     def password(self, val):
-        self.identity.password = val
+        self._password = val
 
     @key.setter
     def key(self, val):
-        self.identity.access_key = val
+        self._access_key = val
 
     def connect(self, bus=FakeBus(), protocol=None, site_id=None,
                 handshake_max_retries=None):
         from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 
-        self.identity.site_id = site_id or self.identity.site_id
+        # The site this connection reports is the client's, not the identity's
+        # — writing it back would rewrite the node's own site, and reading it
+        # back would silently ignore `client.site_id = ...` set before connect.
+        self._site_id = site_id or self._site_id or self.identity.site_id
 
         if protocol is None:
             LOG.debug("Initializing HiveMindSlaveProtocol")
             self.protocol = HiveMindSlaveProtocol(self,
                                                   shared_bus=self.share_bus,
-                                                  site_id=self.identity.site_id or "unknown",
+                                                  site_id=self._site_id or "unknown",
                                                   identity=self.identity)
         else:
             self.protocol = protocol
             self.protocol.identity = self.identity
-            if self.identity.site_id is not None:
-                self.protocol.site_id = self.identity.site_id
+            if self._site_id is not None:
+                self.protocol.site_id = self._site_id
 
         LOG.info("Connecting to Hivemind")
         # bind BEFORE opening the websocket so the server's initial cleartext
