@@ -737,6 +737,72 @@ class TestEmitFraming(unittest.TestCase):
         self.assertIsInstance(sent.args[0], bytes)
 
 
+class TestEmitNotConnected(unittest.TestCase):
+    """emit() must fail fast when the transport is down, not block the
+    caller for seconds - a caller can be an event loop (eg. hivemind-core
+    forwarding a PROPAGATE from its Tornado ioloop) and blocking it stalls
+    the whole relay and, on the subsequent raise, disconnects the sender.
+    """
+
+    def test_emit_while_disconnected_fails_fast(self):
+        import time
+
+        client = _make_client()
+        client.started_running = True
+        client.connected_event = Event()  # never set -> stays disconnected
+
+        start = time.monotonic()
+        with self.assertRaises(RuntimeError):
+            client.emit(HiveMessage(HiveMessageType.INTERCOM,
+                                    payload={"ciphertext": "deadbeef"}))
+        elapsed = time.monotonic() - start
+
+        self.assertLess(elapsed, 0.5,
+                        "emit() blocked the caller instead of failing fast "
+                        "while the transport was down")
+
+    def test_emit_never_started_raises_value_error_immediately(self):
+        import time
+
+        client = _make_client()
+        client.started_running = False
+        client.connected_event = Event()
+
+        start = time.monotonic()
+        with self.assertRaises(ValueError):
+            client.emit(HiveMessage(HiveMessageType.INTERCOM,
+                                    payload={"ciphertext": "deadbeef"}))
+        elapsed = time.monotonic() - start
+
+        self.assertLess(elapsed, 0.5)
+
+    def test_emit_connects_within_grace_window_still_sent(self):
+        """A send that races the tail end of a handshake must still succeed
+        instead of being punished by the fail-fast path."""
+        from threading import Timer
+
+        client = self._client_with_binarize()
+        client.connected_event.clear()
+        # flips to connected shortly after emit() starts waiting - well
+        # inside the short grace window.
+        Timer(0.01, client.connected_event.set).start()
+
+        client.emit(HiveMessage(HiveMessageType.INTERCOM,
+                                payload={"ciphertext": "deadbeef"}))
+
+        client.client.send.assert_called_once()
+
+    def _client_with_binarize(self):
+        client = _make_client()
+        client.started_running = True
+        client.crypto_key = None
+        client.protocol = MagicMock(binarize=True)
+        client.binarize = True
+        client.handshake_event.set()
+        client.client = MagicMock()
+        return client
+
+
 class TestBuildUrl(unittest.TestCase):
     def test_ssl_url(self):
         url = HiveMessageBusClient.build_url("mykey", host="example.com", port=5678, ssl=True)
