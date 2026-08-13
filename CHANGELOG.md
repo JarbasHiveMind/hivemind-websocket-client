@@ -1,8 +1,20 @@
 # Changelog
 
+## [1.0.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.12a1) (2026-08-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.11a1...1.0.12a1)
+
+**Merged pull requests:**
+
+- fix: make peer-to-peer INTERCOM actually arrive [\#189](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/189) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.11a1) (2026-08-13)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.9a1...1.0.11a1)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.10a1...1.0.11a1)
+
+## [1.0.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.10a1) (2026-08-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.9a1...1.0.10a1)
 
 **Merged pull requests:**
 
@@ -576,10 +588,6 @@
 ## [0.1.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.4a1) (2024-12-30)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.3...0.1.4a1)
-
-**Merged pull requests:**
-
-- fix: deprecation warning, update poorman handshake [\#42](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/42) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.1.3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.3) (2024-12-23)
 
