@@ -1,24 +1,60 @@
 # Identity & Credentials
 
-Every HiveMind client node has a **NodeIdentity**, a persisted set of credentials and connection settings stored in:
+A HiveMind node has **one identity**: one keypair and one Noise static key,
+used in both directions — serving its own clients and dialling its master.
+The identity is persisted in:
 
 ```
 ~/.config/hivemind/_identity.json
 ```
 
+Credentials (`access_key`, `password`), `useragent` and `site_id` are not
+part of the identity. They say how to reach one particular master, and a
+node that both serves clients and connects upstream has its own access key
+and password as well as its master's. The client reads them from the
+identity file only as a fallback, and never writes them back — see
+[One identity, many masters](#one-identity-many-masters) below.
+
 ## Fields
 
 | Field | Description |
 |---|---|
-| `name` | Human-readable node label (not required to be unique) |
-| `access_key` | Access key issued by `hivemind-core add-client` |
-| `password` | Password used to derive the AES session key during handshake |
+| `name` | Human-readable node label (not required to be unique). Read as the client's `useragent` fallback |
+| `access_key` | Access key issued by `hivemind-core add-client`. Read as a fallback when the client is not given one directly |
+| `password` | Password used to derive the AES session key during handshake. Read as a fallback when the client is not given one directly |
 | `default_master` | Default hub URL (e.g. `ws://192.168.1.10`) |
 | `default_port` | Default hub port (e.g. `5678`) |
-| `site_id` | Location identifier injected into every OVOS message context |
+| `site_id` | Location identifier injected into every OVOS message context. Read as a fallback when the client is not given one directly |
 | `public_key` | RSA public key for this node |
 | `secret_key` | Path to the RSA private key PEM file |
 | `trusted_keys` | Dict of alias → public key for trusted peers (see below) |
+
+## One identity, many masters
+
+A node's identity is its keypair. Credentials are not stored *in* the
+identity in the sense of being owned by it — they are read from the
+identity file as a fallback, and a client given its own `key`/`password`
+(directly, or via `set-identity`) uses those instead.
+
+`connect()` resolves credentials this way:
+
+```python
+self._access_key = self._access_key or self.identity.access_key
+self._password   = self._password   or self.identity.password
+self._site_id    = site_id or self._site_id or self.identity.site_id
+```
+
+Nothing here is ever written back to the identity file. That distinction
+matters for a node that both serves its own downstream clients and connects
+to a master above it: it has its own access key and password, and its
+master's. Earlier, the client copied whatever credentials it was handed
+onto `self.identity` and the first successful Noise handshake persisted
+them (pinning a peer key writes the whole identity to disk) — so the node's
+own access key, password, and name were silently overwritten by its
+master's on first connect. Every downstream client of that node then failed
+its own handshake with "invalid api key" against credentials the node no
+longer had, and the node reported itself under the default useragent
+instead of its own name.
 
 ## Trusted Keys
 

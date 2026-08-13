@@ -45,14 +45,17 @@ def _bare_client(**overrides) -> AsyncHiveMessageBusClient:
     bus.share_bus = False
     # MagicMock(name=...) sets the mock's repr, NOT a .name attribute. Assign explicitly.
     ident = MagicMock()
-    ident.access_key = "k"
-    ident.password = "p"
-    ident.default_master = "ws://127.0.0.1"
-    ident.default_port = 5678
-    ident.name = "test-useragent"
-    ident.site_id = "testsite"
     ident.private_key = ""
     bus.identity = ident
+    # Credentials and useragent live on the client, not on the identity: a
+    # node keeps its own name and keys while dialling a master under
+    # master-issued ones. __init__ sets these, and this fake bypasses it.
+    bus._access_key = "k"
+    bus._password = "p"
+    bus._host = "ws://127.0.0.1"
+    bus._port = 5678
+    bus._name = "test-useragent"
+    bus._site_id = "testsite"
     bus.session_id = "test-session"
     bus.connected_event = asyncio.Event()
     bus.handshake_event = asyncio.Event()
