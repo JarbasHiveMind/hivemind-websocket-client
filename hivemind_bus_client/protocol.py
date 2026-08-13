@@ -1,4 +1,5 @@
 import asyncio
+import pybase64
 import json
 import os
 import random
@@ -25,13 +26,21 @@ from hivemind_bus_client.noise import (NOISE_PATTERN_KK, NOISE_SUPPORTED, PROTOC
                                        noise_protocol_name, select_noise_options,
                                        start_noise_handshake)
 from poorman_handshake import HandShake, PasswordHandShake
-from poorman_handshake.asymmetric.utils import load_RSA_key
+from poorman_handshake.asymmetric.utils import load_RSA_key, verify_RSA
 
 
 # QUERY/CASCADE answers stream as response chunks terminated by a response
 # wrapping this control message (protocol contract with hivemind-core; the
 # end-of-stream is content, not metadata).
 QUERY_STREAM_END = "hive.query.complete"
+
+# Context key an INTERCOM's verified signer is stamped under, on the inner
+# bus message actually handed to ``bus.emit``. Namespaced so it cannot
+# collide with ordinary bus context (``source``, ``destination``, session
+# fields, ...); a consumer that wants the *authenticated* origin of a
+# delivered INTERCOM, as opposed to the sender-supplied ``source_peer`` on
+# the (discarded) outer envelope, reads this key.
+VERIFIED_SOURCE_PEER_KEY = "hivemind_verified_source_peer"
 
 
 def _pw_min_bits() -> float:
@@ -734,13 +743,111 @@ class HiveMindSlaveProtocol:
                         return True
         return False
 
-    def handle_bus(self, message: HiveMessage):
-        """Dispatch event to the agent protocol bus"""
+    def _verified_origin(self, envelope: dict,
+                         message_source: Optional[str] = None) -> Optional[str]:
+        """Whether *envelope*'s signature verifies against a trusted key.
+
+        CRYPTO-1 §5 requires the origin signature on an INTERCOM to verify.
+        hivemind-core enforces this; this side generated the signature and
+        never checked one, so knowing a node's public key — which is the
+        addressing mechanism, published in every PING answer — was enough to
+        forge a message to it. The trust store's own contract already says
+        otherwise: "Only messages from peers whose public key is in this
+        mapping will be accepted for bus injection."
+
+        Being addressed to us is not evidence of origin: the sender chooses
+        the address. Only the signature is.
+        """
+        signature = envelope.get("signature")
+        ciphertext = envelope.get("ciphertext")
+        if not signature or not ciphertext:
+            LOG.warning("dropping INTERCOM with no origin signature")
+            return None
+        if not self.identity:
+            return None
+        try:
+            raw_sig = pybase64.b64decode(signature)
+            raw_ciphertext = pybase64.b64decode(ciphertext)
+        except Exception:
+            LOG.warning("dropping INTERCOM with an undecodable signature")
+            return None
+        # The master this node is attached to is an anchor by construction:
+        # the connection authenticated to it and it announced this key in
+        # HELLO. Without it, a default deployment — which has an empty
+        # trusted_keys — could not receive mail from its own master, and
+        # nothing in the library or the CLI populates that store.
+        candidates = dict(self.identity.trusted_keys)
+        if self.mpubkey:
+            candidates.setdefault("__master__", self.mpubkey)
+
+        # `source_peer` is deliberately NOT used to narrow this. Relays
+        # rewrite it hop by hop, so on arrival it names the last relay rather
+        # than the origin — binding to it rejects every relayed frame while
+        # proving nothing. What the claim cannot do is mislead: the key that
+        # actually verified is stamped into the delivered message's context
+        # (see ``_deliver_verified`` / ``VERIFIED_SOURCE_PEER_KEY``), so a
+        # consumer reading that field sees the authenticated origin, not the
+        # asserted one.
+
+        for pub in candidates.values():
+            try:
+                if verify_RSA(pub, raw_ciphertext, raw_sig):
+                    return pub
+            except Exception:
+                continue
+        LOG.warning("dropping INTERCOM whose signature matches no trusted key")
+        return None
+
+    def _deliver_verified(self, message: HiveMessage, verified_key: str) -> None:
+        """Inject the payload, recording who actually signed it.
+
+        The envelope binds no origin identity, so ``source_peer`` is whatever
+        the sender wrote — one trusted peer can put another's label on a frame
+        it signed itself. What actually reaches the consumer is not this
+        outer INTERCOM object (it is discarded once unwrapped) but the inner
+        BUS message's ``payload`` — a plain ``ovos_bus_client.Message`` handed
+        to ``bus.emit``. Stamping ``source_peer`` here, on the object nobody
+        reads, would be inert. The verified key is instead written into that
+        inner message's context under ``VERIFIED_SOURCE_PEER_KEY``, a name
+        chosen not to collide with ordinary bus context (``source``,
+        ``destination``, session fields, ...), so a consumer that wants the
+        authenticated origin has somewhere real to read it from.
+        """
+        message.update_source_peer(verified_key)
+        self.handle_bus(message.payload, verified_source=verified_key)
+
+    def handle_bus(self, message: HiveMessage, verified_source: Optional[str] = None):
+        """Dispatch event to the agent protocol bus.
+
+        Args:
+            message: The BUS HiveMessage to inject.
+            verified_source: The public key THIS node itself verified as the
+                signer of this delivery, if any. Only ``_deliver_verified``
+                (the INTERCOM path) passes this. Every other path into this
+                method — plain master BUS, PROPAGATE-wrapped BUS — leaves it
+                None, because nothing on those paths verifies a signature.
+
+        ``handle_bus`` is the common sink for every bus-injection path, not
+        just INTERCOM. ``VERIFIED_SOURCE_PEER_KEY`` in the outgoing context
+        is only meaningful if it is impossible to forge, so it is handled
+        here, once, for all callers: any inbound value is unconditionally
+        stripped first, then set — if and only if ``verified_source`` was
+        passed — from what THIS node verified this delivery. A sender that
+        pre-sets the key on a plain BUS or PROPAGATE frame (paths with no
+        signature check at all) must not be able to make it survive to the
+        consumer.
+        """
         assert message.msg_type == HiveMessageType.BUS
         assert isinstance(message.payload, MycroftMessage)
         LOG.info(f"BUS: {message.payload.msg_type}")
         # master wants to inject message into mycroft bus
         pload = message.payload
+
+        # No inbound frame, on any path, may carry a pre-set verified-origin
+        # claim - strip it unconditionally before possibly re-setting it below.
+        pload.context.pop(VERIFIED_SOURCE_PEER_KEY, None)
+        if verified_source is not None:
+            pload.context[VERIFIED_SOURCE_PEER_KEY] = verified_source
 
         # update session sent from hivemind-core
         sess = Session.from_message(pload)
@@ -982,7 +1089,14 @@ class HiveMindSlaveProtocol:
         """
         LOG.info(f"INTERCOM: {message.payload}")
         assert message.msg_type == HiveMessageType.INTERCOM
-        assert message.payload.msg_type == HiveMessageType.BUS
+        # NOT "assert message.payload.msg_type == BUS" here. The payload of an
+        # encrypted INTERCOM is the encryption envelope — a plain dict with no
+        # msg_type — and that is the normal case, the one INTERCOM exists for.
+        # Asserting the decrypted shape before decrypting raised
+        # AttributeError: 'dict' object has no attribute 'msg_type' and killed
+        # the handler on every encrypted frame. The inner type is checked below,
+        # after decryption, where the value actually exists. An assert would be
+        # the wrong tool anyway: it disappears under `python -O`.
 
         k = message.target_public_key
         if k and k != self.identity.public_key:
@@ -990,6 +1104,7 @@ class HiveMindSlaveProtocol:
             return False
 
         pload = message.payload
+        envelope = pload if isinstance(pload, dict) else {}
         if isinstance(pload, dict) and "encrypted_key" in pload:
             # hybrid encryption envelope (AES key RSA-encrypted)
             try:
@@ -1003,14 +1118,30 @@ class HiveMindSlaveProtocol:
                     LOG.debug("failed to decrypt INTERCOM, not for us")
                 return False
 
-        # explicitly targeted at us → always trust
-        if k and k == self.identity.public_key:
-            self.handle_bus(message)
+        # the check the premature assert was trying to make, now that the
+        # value exists: after decryption the inner payload must be a BUS
+        # envelope, because injecting anything else onto the internal bus is
+        # not something this handler knows how to do.
+        inner = getattr(message.payload, "msg_type", None)
+        if inner != HiveMessageType.BUS:
+            LOG.warning(f"dropping INTERCOM whose inner payload is {inner}, "
+                        f"expected {HiveMessageType.BUS}")
+            return False
+
+        # Deliver the DECRYPTED inner BUS envelope, not the outer INTERCOM.
+        # handle_bus asserts its argument is a BUS message, so passing the
+        # outer frame raised AssertionError from inside the handler — after a
+        # successful decrypt, on exactly the messages that were meant to work.
+        # Addressed to us, and the origin signature verifies against a key we
+        # trust. Both halves are required: the address is chosen by the sender.
+        verified = self._verified_origin(envelope, message.source_peer)
+        if k and k == self.identity.public_key and verified:
+            self._deliver_verified(message, verified)
             return True
 
         # not targeted — only inject if source is trusted
-        if self._is_source_trusted(message):
-            self.handle_bus(message)
+        if self._is_source_trusted(message) and verified:
+            self._deliver_verified(message, verified)
             return True
 
         LOG.warning(f"Dropping untrusted INTERCOM from {message.source_peer}")

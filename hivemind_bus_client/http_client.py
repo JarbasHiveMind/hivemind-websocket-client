@@ -14,7 +14,7 @@ from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import BinaryDataCallbacks
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers)
+                                            SupportedEncodings, SupportedCiphers, hybrid_encrypt)
 from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
@@ -22,7 +22,7 @@ from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
                                                get_bitstring, decode_bitstring)
 from hivemind_bus_client.util import serialize_message
-from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
+from poorman_handshake.asymmetric.utils import load_RSA_key
 
 
 class HiveMindHTTPClient(threading.Thread):
@@ -350,15 +350,25 @@ class HiveMindHTTPClient(threading.Thread):
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
                       pubkey: Union[str, bytes, RSA.RsaKey]):
+        """INTERCOM (hybrid-encrypted) send. Same shape as sync/async clients.
 
-        encrypted_message = encrypt_RSA(pubkey, message.serialize())
-
-        # sign message
+        This used to build its own envelope: plain ``encrypt_RSA`` + ``sign_RSA``
+        under keys ``{"ciphertext", "signature"}`` and no ``encrypted_key``.
+        The receiving protocol only recognises the hybrid-encryption envelope
+        (``hybrid_encrypt``'s ``"encrypted_key"`` shape) and drops anything
+        else at the inner-type check, so that frame could never be accepted.
+        Worse, ``pybase64.b64encode(...)`` returns ``bytes``, and a HiveMessage
+        payload containing raw bytes cannot be JSON-serialized, so the frame
+        raised before it could even be sent — this path was dead. Building the
+        same hybrid envelope as ``client.py`` / ``async_client.py``, addressed
+        via ``target_pubkey`` and wrapped in PROPAGATE, makes it match what the
+        receiver actually verifies and decrypts.
+        """
         private_key = load_RSA_key(self.identity.private_key)
-        signature = sign_RSA(private_key, encrypted_message)
-
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
-                                                                 "signature": pybase64.b64encode(signature)}))
+        envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
+        inner = HiveMessage(HiveMessageType.INTERCOM, payload=envelope,
+                            target_pubkey=pubkey if isinstance(pubkey, str) else None)
+        self.emit(HiveMessage(HiveMessageType.PROPAGATE, payload=inner))
 
     ###############
     # HiveMind HTTP Api

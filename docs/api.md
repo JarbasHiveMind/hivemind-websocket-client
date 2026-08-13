@@ -76,7 +76,7 @@ WebSocket client that extends `ovos_bus_client.MessageBusClient`.
 - `on_mycroft(mycroft_msg_type, func)` (`client.py`): Explicitly registers a handler for an OVOS internal bus message.
 - `remove(event_name, func)` (`client.py`): Removes a registered handler.
 - `wait_for_handshake(timeout=5, max_retries=None)` (`client.py`): Blocks until the cryptographic handshake with the hub is finished. By default it waits through reconnects forever. Pass `max_retries` for a hard timeout.
-- `emit_intercom(message, pubkey)` (`client.py`): Sends a hybrid-encrypted (AES-GCM + RSA) message targeted at a specific node's public key.
+- `emit_intercom(message, pubkey)` (`client.py`, `async_client.py`, `http_client.py`): Sends a hybrid-encrypted (AES-GCM + RSA) message targeted at a specific node's public key, signed with this node's private key so the receiver can verify origin. Travels wrapped as `PROPAGATE(INTERCOM)`, not bare — a bare `INTERCOM` is consumed and dropped at the first node it reaches, since only the `PROPAGATE` handler relays a frame that is not addressed to it. All three clients build the same envelope shape.
 
 ### Waiting for Messages
 
@@ -109,7 +109,7 @@ Manages the node's identity, including credentials and RSA keys.
 
 ### Trusted Keys
 
-Trusted keys are stored as an alias → public key mapping in the identity file. Used by protocol handlers to gate BUS injection from PROPAGATE and INTERCOM messages.
+Trusted keys are stored as an alias → public key mapping in the identity file. Used by protocol handlers to gate BUS injection from PROPAGATE messages, and to verify the origin signature on INTERCOM messages — the connected master's announced key is checked as well, so a default deployment (empty `trusted_keys`) can still receive mail from its own master. See [Message Types](message_types.md) for what a consumer can and cannot trust about a delivered INTERCOM's source.
 
 - `trusted_keys` (`identity.py`): `Dict[str, str]`, an alias-to-public-key mapping.
 - `add_trusted_key(alias, pubkey)` (`identity.py`): Add a peer. Returns `False` if alias already exists.
