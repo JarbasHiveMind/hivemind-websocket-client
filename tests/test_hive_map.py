@@ -166,6 +166,59 @@ class TestHiveMapperToAscii:
         assert "hub" in tree
         assert "nodeA" in tree
 
+    def test_without_root_peer_two_node_cycle_marked_not_raised(self):
+        # Two nodes relayed each other's PINGs: A -> B -> A. Flood routing
+        # produces exactly this shape, and the raw-edge renderer (no
+        # root_peer) must not recurse forever walking it.
+        mapper = HiveMapper()
+        mapper.edges = {"A": {"B"}, "B": {"A"}}
+        mapper.nodes = {"A": NodeInfo(peer="A"), "B": NodeInfo(peer="B")}
+        tree = mapper.to_ascii()
+        assert "(cycle)" in tree
+
+    def test_without_root_peer_self_loop_not_raised(self):
+        # A node whose edge points at itself is a degenerate one-node cycle.
+        mapper = HiveMapper()
+        mapper.edges = {"A": {"A"}}
+        mapper.nodes = {"A": NodeInfo(peer="A")}
+        tree = mapper.to_ascii()
+        assert "(cycle)" in tree
+
+    def test_without_root_peer_longer_cycle_not_raised(self):
+        # A -> B -> C -> A: a three-hop cycle, not just the two-node case.
+        mapper = HiveMapper()
+        mapper.edges = {"A": {"B"}, "B": {"C"}, "C": {"A"}}
+        mapper.nodes = {"A": NodeInfo(peer="A"), "B": NodeInfo(peer="B"),
+                         "C": NodeInfo(peer="C")}
+        tree = mapper.to_ascii()
+        assert "(cycle)" in tree
+
+    def test_without_root_peer_diamond_not_falsely_marked_cycle(self):
+        # CONTROL: "C" legitimately appears in two separate branches (under
+        # both A and B), which is not a cycle — only a repeat within one
+        # ancestor chain is. A naive *global* seen set would wrongly mark
+        # the second occurrence as "(cycle)"; the per-branch guard must not.
+        mapper = HiveMapper()
+        mapper.edges = {"root": {"A", "B"}, "A": {"C"}, "B": {"C"}}
+        mapper.nodes = {"root": NodeInfo(peer="root"), "A": NodeInfo(peer="A"),
+                         "B": NodeInfo(peer="B"), "C": NodeInfo(peer="C")}
+        tree = mapper.to_ascii()
+        assert "(cycle)" not in tree
+        assert tree.count("C") == 2
+
+    def test_without_root_peer_acyclic_map_unaffected(self):
+        # CONTROL: an ordinary acyclic map renders exactly as it does today.
+        mapper = HiveMapper()
+        mapper.start_ping("f1")
+        route = [{"source": "hub", "targets": ["relay1"]},
+                 {"source": "relay1", "targets": ["nodeA"]}]
+        mapper.on_ping(_make_ping("f1", "nodeA", route=route))
+        tree = mapper.to_ascii()
+        assert "(cycle)" not in tree
+        assert "hub" in tree
+        assert "relay1" in tree
+        assert "nodeA" in tree
+
 
 class TestCheckFloodId:
     def test_first_call_returns_false(self):

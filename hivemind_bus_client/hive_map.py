@@ -6,6 +6,7 @@ Every node responds to a PING by propagating its own PING (with the same
 """
 import json
 import threading
+import hashlib
 import time
 from collections import OrderedDict
 from collections.abc import MutableSet
@@ -133,6 +134,23 @@ class FloodIdCache(MutableSet):
                 self.max_size = max_size
             self._add(flood_id)
             return False
+
+
+def display_peer(peer: str) -> str:
+    """A peer id short enough to read in a tree.
+
+    A node identifies itself by its public key, so a peer id is often a full
+    PEM block — several lines of base64 that destroy the layout of any tree
+    drawn around it. The fingerprint is stable and long enough to tell two
+    nodes apart at a glance. Machine-readable output keeps the full key.
+    """
+    if not peer:
+        return str(peer)
+    if "BEGIN PUBLIC KEY" in peer:
+        digest = hashlib.sha256(peer.encode("utf-8")).hexdigest()
+        return f"key:{digest[:12]}"
+    return peer
+
 
 
 class HiveMapper:
@@ -339,22 +357,46 @@ class HiveMapper:
                     if src not in display_children[t]:
                         display_children[t].append(src)
 
-            def _render_inv(peer: str, prefix: str, is_last: bool) -> None:
+            def _render_inv(peer: str, prefix: str, is_last: bool,
+                            seen: frozenset = frozenset()) -> None:
                 connector = "└── " if is_last else "├── "
                 node = self.nodes.get(peer)
                 site = f"  site={node.site_id}" if node and node.site_id else ""
                 lat = (f"  latency={node.latency_ms:.0f}ms"
                        if node and node.latency_ms is not None else "")
-                lines.append(f"{prefix}{connector}{peer}{site}{lat}")
+                # Two nodes that relayed each other's PINGs produce a cycle in
+                # the display graph, and flood routing produces exactly that.
+                # Walking it recursively never terminates, so a peer already on
+                # this branch is drawn once and marked rather than descended
+                # into. `seen` is per-branch, not global: a node legitimately
+                # reachable by two paths must still appear under both.
+                if peer in seen:
+                    lines.append(f"{prefix}{connector}{display_peer(peer)} (cycle)")
+                    return
+                lines.append(f"{prefix}{connector}{display_peer(peer)}{site}{lat}")
                 kids = display_children.get(peer, [])
                 child_prefix = prefix + ("    " if is_last else "│   ")
                 for i, kid in enumerate(kids):
-                    _render_inv(kid, child_prefix, i == len(kids) - 1)
+                    _render_inv(kid, child_prefix, i == len(kids) - 1,
+                                seen | {peer})
 
             node = self.nodes.get(root_peer)
             site = f"  site={node.site_id}" if node and node.site_id else ""
-            lines.append(f"[self] {root_peer}{site}")
-            kids = display_children.get(root_peer, [])
+            lines.append(f"[self] {display_peer(root_peer)}{site}")
+            kids = list(display_children.get(root_peer, []))
+
+            # A node that answered the flood directly leaves no relayed hop
+            # behind, so it appears in `nodes` with no edge naming it. Rendering
+            # only the edge graph then drew a map with nothing on it but
+            # `[self]` while the answers were sitting in the node table — the
+            # map looked empty against a hive that had just replied.
+            has_parent = {child
+                          for children in display_children.values()
+                          for child in children}
+            for peer in self.nodes:
+                if peer != root_peer and peer not in has_parent and peer not in kids:
+                    kids.append(peer)
+
             for i, kid in enumerate(kids):
                 _render_inv(kid, "", i == len(kids) - 1)
 
@@ -370,23 +412,40 @@ class HiveMapper:
 
             candidate_roots = [p for p in self.edges if p not in all_targets]
             display_roots = candidate_roots or list(self.edges.keys())[:1]
+            # Nodes that answered directly have no edge at all. Without them a
+            # hive whose members all replied to the originator renders as
+            # "[No topology data]" — empty against a hive that just answered.
+            for peer in self.nodes:
+                if peer not in children and peer not in all_targets \
+                        and peer not in display_roots:
+                    display_roots.append(peer)
 
-            def _render(peer: str, prefix: str, is_last: bool) -> None:
+            def _render(peer: str, prefix: str, is_last: bool,
+                        seen: frozenset = frozenset()) -> None:
                 connector = "└── " if is_last else "├── "
                 node = self.nodes.get(peer)
                 site = f"  site={node.site_id}" if node and node.site_id else ""
                 lat = (f"  latency={node.latency_ms:.0f}ms"
                        if node and node.latency_ms is not None else "")
-                lines.append(f"{prefix}{connector}{peer}{site}{lat}")
+                # Same cycle hazard as `_render_inv` above: flood routing can
+                # make two nodes relay each other's PINGs, and the raw edge
+                # graph carries that cycle just as the inverted one does.
+                # `seen` is per-branch, not global, so a node reachable by two
+                # separate paths still renders under both.
+                if peer in seen:
+                    lines.append(f"{prefix}{connector}{display_peer(peer)} (cycle)")
+                    return
+                lines.append(f"{prefix}{connector}{display_peer(peer)}{site}{lat}")
                 kids = children.get(peer, [])
                 child_prefix = prefix + ("    " if is_last else "│   ")
                 for i, kid in enumerate(kids):
-                    _render(kid, child_prefix, i == len(kids) - 1)
+                    _render(kid, child_prefix, i == len(kids) - 1,
+                            seen | {peer})
 
             for root in display_roots:
                 node = self.nodes.get(root)
                 site = f"  site={node.site_id}" if node and node.site_id else ""
-                lines.append(f"{root}{site}")
+                lines.append(f"{display_peer(root)}{site}")
                 kids = children.get(root, [])
                 for i, kid in enumerate(kids):
                     _render(kid, "", i == len(kids) - 1)
