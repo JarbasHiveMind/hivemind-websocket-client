@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from ovos_bus_client.message import Message as MycroftMessage
 
+import hivemind_bus_client.async_client as _ac
 from hivemind_bus_client.async_client import (AsyncHiveMessageBusClient,
                                               AsyncHiveMessageWaiter,
                                               AsyncHivePayloadWaiter,
@@ -269,6 +270,19 @@ async def test_wait_for_handshake_raises_after_retries_exhausted():
     bus.handshake_event.clear()
     with pytest.raises(RuntimeError):
         await bus.wait_for_handshake(timeout=0.01, max_retries=1)
+
+
+@pytest.mark.asyncio
+async def test_connect_forwards_handshake_max_retries():
+    bus = _bare_client()
+    bus.wait_for_handshake = AsyncMock()
+
+    fake_ws = AsyncMock()
+    with patch.object(_ac, "websockets") as mock_ws:
+        mock_ws.connect = AsyncMock(return_value=fake_ws)
+        await bus.connect(handshake_max_retries=3)
+
+    bus.wait_for_handshake.assert_awaited_once_with(max_retries=3)
 
 
 def test_async_keepalive_options_default():

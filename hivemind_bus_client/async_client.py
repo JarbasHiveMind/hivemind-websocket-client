@@ -273,11 +273,14 @@ class AsyncHiveMessageBusClient:
     # connection lifecycle
     # ------------------------------------------------------------------
 
-    async def connect(self, bus=None, protocol=None, site_id: Optional[str] = None):
+    async def connect(self, bus=None, protocol=None, site_id: Optional[str] = None,
+                       handshake_max_retries: Optional[int] = None):
         """Open the WebSocket, bind the slave protocol, complete handshake.
 
         Blocks (awaits) until the HiveMind handshake completes successfully
         or raises if it times out.
+
+        None retries forever; pass a bound so a failed handshake fails fast.
         """
         from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 
@@ -326,7 +329,7 @@ class AsyncHiveMessageBusClient:
         # Bind protocol — its bind() registers handlers on the emitter and
         # may emit the handshake start.
         self.protocol.bind(bus)
-        await self.wait_for_handshake()
+        await self.wait_for_handshake(max_retries=handshake_max_retries)
 
     async def close_connection(self):
         """Close the current websocket, leaving the client reusable.
