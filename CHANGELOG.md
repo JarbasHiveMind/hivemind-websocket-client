@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.14a1) (2026-08-14)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.13a1...1.0.14a1)
+
+**Merged pull requests:**
+
+- fix: run\_forever\(\) blocks on an existing worker instead of raising [\#199](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/199) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.13a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.12a1...1.0.13a1)
@@ -583,7 +591,6 @@
 **Merged pull requests:**
 
 - Release 0.1.5a1 [\#45](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/45) ([github-actions[bot]](https://github.com/apps/github-actions))
-- fix: INTERCOM messages RSA [\#44](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/44) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.1.4](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.4) (2024-12-30)
 
