@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.15a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a2) (2026-08-15)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.15a1...1.0.15a2)
+
+**Merged pull requests:**
+
+- docs: add AGENTS.md with per-repo agent conventions [\#203](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/203) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a1) (2026-08-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.14a1...1.0.15a1)
@@ -485,10 +493,6 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.0...0.4.1a1)
 
-**Closed issues:**
-
-- Faster encodings [\#59](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/59)
-
 **Merged pull requests:**
 
 - Release 0.4.1a1 [\#63](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/63) ([github-actions[bot]](https://github.com/apps/github-actions))
@@ -506,91 +510,45 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.3.0a2...0.4.0a1)
 
-**Merged pull requests:**
-
-- feat:http client [\#60](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/60) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.3.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.3.0a2) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.3.0a1...0.3.0a2)
-
-**Merged pull requests:**
-
-- Release 0.3.0a2 [\#58](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/58) ([github-actions[bot]](https://github.com/apps/github-actions))
-- chore:benchmark [\#57](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/57) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.3.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.3.0a1) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.2.1...0.3.0a1)
 
-**Merged pull requests:**
-
-- Release 0.3.0a1 [\#56](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/56) ([github-actions[bot]](https://github.com/apps/github-actions))
-- feat:more encodings [\#55](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/55) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.2.1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.2.1) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.2.1a1...0.2.1)
-
-**Merged pull requests:**
-
-- Release 0.2.1a1 [\#54](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/54) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.2.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.2.1a1) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.2.0...0.2.1a1)
 
-**Merged pull requests:**
-
-- fix:binarization\_protocol [\#53](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/53) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.2.0](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.2.0) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.2.0a1...0.2.0)
-
-**Merged pull requests:**
-
-- Release 0.2.0a1 [\#52](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/52) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.2.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.2.0a1) (2025-01-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.6...0.2.0a1)
 
-**Merged pull requests:**
-
-- feat:add chacha20 cipher + z85 encoding [\#50](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/50) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.1.6](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.6) (2025-01-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.6a1...0.1.6)
-
-**Merged pull requests:**
-
-- Release 0.1.6a1 [\#49](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/49) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.1.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.6a1) (2025-01-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.5...0.1.6a1)
 
-**Merged pull requests:**
-
-- fix: dont leak session data / implement client HELLO [\#48](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/48) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.1.5](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.5) (2025-01-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.5a2...0.1.5)
 
-**Merged pull requests:**
-
-- Release 0.1.5a2 [\#47](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/47) ([github-actions[bot]](https://github.com/apps/github-actions))
-
 ## [0.1.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.5a2) (2025-01-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.1.5a1...0.1.5a2)
-
-**Merged pull requests:**
-
-- performance: reduce\_payload\_size [\#46](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/46) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.1.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.1.5a1) (2025-01-01)
 
