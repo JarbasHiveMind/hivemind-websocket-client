@@ -913,3 +913,47 @@ class TestEmitBinType:
         got = self._emitted_frame(
             m, binary_type=HiveMindBinaryPayloadType.FILE)
         assert got["binary_type"] == HiveMindBinaryPayloadType.FILE
+
+
+class TestEmitRespectsCallerSession:
+    """A telephony bridge mints its own per-call session_id and expects it
+    to reach the wire unchanged; the auto-inject block must fill in the
+    connection defaults only when the caller left them out."""
+
+    def _client(self):
+        client = _make_client()
+        client.crypto_key = None
+        client.protocol = MagicMock(binarize=True)
+        client.binarize = True
+        client.connected_event.set()
+        client.handshake_event.set()
+        client.client = MagicMock()
+        client.session_id = "conn-default-session"
+        client.site_id = "conn-default-site"
+        return client
+
+    def test_explicit_session_id_is_not_overwritten(self):
+        client = self._client()
+        message = Message("speak", {"utterance": "hi"},
+                          context={"session": {"session_id": "call-42"}})
+        client.emit(message)
+        assert message.context["session"]["session_id"] == "call-42"
+
+    def test_missing_session_id_falls_back_to_connection_default(self):
+        client = self._client()
+        message = Message("speak", {"utterance": "hi"})
+        client.emit(message)
+        assert message.context["session"]["session_id"] == "conn-default-session"
+
+    def test_explicit_site_id_is_not_overwritten(self):
+        client = self._client()
+        message = Message("speak", {"utterance": "hi"},
+                          context={"session": {"site_id": "remote-site"}})
+        client.emit(message)
+        assert message.context["session"]["site_id"] == "remote-site"
+
+    def test_missing_site_id_falls_back_to_connection_default(self):
+        client = self._client()
+        message = Message("speak", {"utterance": "hi"})
+        client.emit(message)
+        assert message.context["session"]["site_id"] == "conn-default-site"

@@ -121,6 +121,22 @@ class TestEmitRoutingContext(unittest.TestCase):
         self.assertEqual(payload.context["session"]["session_id"], "sess-1")
         self.assertEqual(payload.context["session"]["site_id"], "kitchen")
 
+    def test_emit_does_not_overwrite_caller_supplied_session(self):
+        """A caller that stamps its own per-call session_id/site_id must
+        see it survive emit() - only a missing value gets the fake bus's
+        own defaults filled in."""
+        bus = AsyncFakeHiveMessageBus(
+            session_id="sess-1", site_id="kitchen", useragent="bridge-X",
+        )
+        _run(bus.connect())
+        _run(bus.emit(MycroftMessage(
+            "speak", {"u": "hi"},
+            context={"session": {"session_id": "call-42",
+                                 "site_id": "remote-site"}})))
+        payload = bus.emitted[0].payload
+        self.assertEqual(payload.context["session"]["session_id"], "call-42")
+        self.assertEqual(payload.context["session"]["site_id"], "remote-site")
+
     def test_emit_records_in_emitted_list(self):
         bus = AsyncFakeHiveMessageBus()
         _run(bus.connect())

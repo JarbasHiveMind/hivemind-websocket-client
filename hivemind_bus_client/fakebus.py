@@ -194,8 +194,10 @@ class AsyncFakeHiveMessageBus:
             ctx.setdefault("platform", self._useragent)
             ctx.setdefault("destination", "HiveMind")
             ctx.setdefault("session", {})
-            ctx["session"]["session_id"] = self.session_id
-            ctx["session"]["site_id"] = self._site_id
+            if not ctx["session"].get("session_id"):
+                ctx["session"]["session_id"] = self.session_id
+            if not ctx["session"].get("site_id"):
+                ctx["session"]["site_id"] = self._site_id
             message.payload = payload
             # surface to internal-bus subscribers
             self.internal_bus.emit(message.payload)

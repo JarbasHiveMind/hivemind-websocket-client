@@ -789,8 +789,11 @@ class HiveMessageBusClient(OVOSBusClient):
                     updated_payload.context["destination"] = "HiveMind"
                 if "session" not in updated_payload.context:
                     updated_payload.context["session"] = {}
-                updated_payload.context["session"]["session_id"] = self.session_id
-                updated_payload.context["session"]["site_id"] = self.site_id
+                session = updated_payload.context["session"]
+                if not session.get("session_id"):
+                    session["session_id"] = self.session_id
+                if not session.get("site_id"):
+                    session["site_id"] = self.site_id
                 message.payload = updated_payload
 
                 # also send event to client registered handlers

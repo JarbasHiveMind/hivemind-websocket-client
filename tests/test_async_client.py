@@ -235,6 +235,29 @@ async def test_emit_injects_routing_context():
 
 
 @pytest.mark.asyncio
+async def test_emit_does_not_overwrite_caller_supplied_session():
+    """A caller (e.g. a telephony bridge) that stamps its own per-call
+    session_id/site_id onto the context must see it survive emit()."""
+    bus = _bare_client()
+    bus._ws = AsyncMock()
+    bus.connected_event.set()
+
+    sent_calls = []
+    async def _capture(payload):
+        sent_calls.append(payload)
+    bus._ws.send = _capture
+
+    msg = MycroftMessage("speak", {"utterance": "hi"},
+                         context={"session": {"session_id": "call-42",
+                                              "site_id": "remote-site"}})
+    await bus.emit(msg)
+    decoded = json.loads(sent_calls[0])
+    ctx = decoded["payload"]["context"]
+    assert ctx["session"]["session_id"] == "call-42"
+    assert ctx["session"]["site_id"] == "remote-site"
+
+
+@pytest.mark.asyncio
 async def test_emit_raises_when_disconnected_and_never_started():
     bus = _bare_client()
     bus._ws = AsyncMock()
