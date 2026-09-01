@@ -306,8 +306,10 @@ class HiveMindHTTPClient(threading.Thread):
                 ctxt["destination"] = "HiveMind"
             if "session" not in ctxt:
                 ctxt["session"] = {}
-            ctxt["session"]["session_id"] = self.session_id
-            ctxt["session"]["site_id"] = self.site_id
+            if not ctxt["session"].get("session_id"):
+                ctxt["session"]["session_id"] = self.session_id
+            if not ctxt["session"].get("site_id"):
+                ctxt["session"]["site_id"] = self.site_id
             message.payload.context = ctxt
 
         LOG.debug(f"sending to HiveMind: {message.msg_type}")

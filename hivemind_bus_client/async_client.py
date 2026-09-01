@@ -539,8 +539,10 @@ class AsyncHiveMessageBusClient:
                 ctx.setdefault("platform", self.useragent)
                 ctx.setdefault("destination", "HiveMind")
                 ctx.setdefault("session", {})
-                ctx["session"]["session_id"] = self.session_id
-                ctx["session"]["site_id"] = self.site_id
+                if not ctx["session"].get("session_id"):
+                    ctx["session"]["session_id"] = self.session_id
+                if not ctx["session"].get("site_id"):
+                    ctx["session"]["site_id"] = self.site_id
                 message.payload = payload
                 # also surface to internal-bus subscribers
                 self.internal_bus.emit(message.payload)
