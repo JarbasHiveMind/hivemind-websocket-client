@@ -450,9 +450,10 @@ class HiveMessageBusClient(OVOSBusClient):
     def close(self, timeout: float = WORKER_JOIN_TIMEOUT):
         """Permanently stop reconnecting and close the websocket.
 
-        Blocks until the reconnect worker thread has exited (bounded by
-        ``timeout``) so that callers can rely on there being no lingering
-        thread once this returns.
+        Blocks until the reconnect worker thread has exited, bounded by
+        ``timeout``. If the worker is still alive once the timeout elapses,
+        a warning is logged rather than a lingering thread being guaranteed
+        gone.
         """
         # Serialize the stop request with worker reservation. A worker that is
         # already shutting down retains ownership until its finally block, so
@@ -471,6 +472,9 @@ class HiveMessageBusClient(OVOSBusClient):
             # A callback invoked from the worker thread (e.g. on_message)
             # may call close(); joining ourselves would deadlock forever.
             thread.join(timeout=timeout)
+            if thread.is_alive():
+                LOG.warning("HiveMind reconnect worker did not exit within "
+                            "%.1fs of close(); thread still alive", timeout)
 
     def wait_for_handshake(self, timeout=5, max_retries=None):
         """
