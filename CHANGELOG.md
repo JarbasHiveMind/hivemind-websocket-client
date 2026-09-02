@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.18a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.18a1) (2026-09-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.17a1...1.0.18a1)
+
+**Merged pull requests:**
+
+- fix: warn when close\(\) worker join times out [\#210](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/210) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.17a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.17a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.16a1...1.0.17a1)
@@ -508,10 +516,6 @@
 ## [0.4.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a1) (2025-01-08)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.0...0.4.1a1)
-
-**Merged pull requests:**
-
-- Release 0.4.1a1 [\#63](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/63) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.4.0](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.0) (2025-01-08)
 
