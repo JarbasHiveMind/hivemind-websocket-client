@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.17a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.17a1) (2026-09-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.16a1...1.0.17a1)
+
+**Merged pull requests:**
+
+- fix: close\(\) joins its reconnect worker thread so callers get a clean stop [\#207](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/207) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.16a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.16a1) (2026-09-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.15a2...1.0.16a1)
@@ -504,7 +512,6 @@
 **Merged pull requests:**
 
 - Release 0.4.1a1 [\#63](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/63) ([github-actions[bot]](https://github.com/apps/github-actions))
-- refactor: move to z85base91 package [\#62](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/62) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.4.0](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.0) (2025-01-08)
 
