@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.20a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.20a1) (2026-09-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.19a1...1.0.20a1)
+
+**Merged pull requests:**
+
+- fix: harden async and http client transports [\#213](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/213) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.19a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.19a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.18a1...1.0.19a1)
@@ -515,10 +523,6 @@
 ## [0.4.1a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a2) (2025-01-08)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.1a1...0.4.1a2)
-
-**Merged pull requests:**
-
-- Release 0.4.1a2 [\#65](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/65) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.4.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a1) (2025-01-08)
 
