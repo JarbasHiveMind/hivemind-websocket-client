@@ -66,6 +66,9 @@ def _bare_client(**overrides) -> AsyncHiveMessageBusClient:
     bus.internal_bus = FakeBus()
     bus._ws = None
     bus._receive_task = None
+    bus._auth_rejected = None
+    bus._auth_rejected_event = asyncio.Event()
+    bus._lifecycle_lock = asyncio.Lock()
     bus.protocol = MagicMock(binarize=False, start_handshake=MagicMock())
     for k, v in overrides.items():
         setattr(bus, k, v)
@@ -334,11 +337,16 @@ async def test_close_cancels_receive_task_and_resets_state():
     bus = _bare_client()
 
     async def _idle():
-        await asyncio.sleep(10)
+        # Blocks forever on an Event that is never set and is not tied to
+        # ws.close, so the task can only end by being cancelled — this proves
+        # teardown cancels it rather than merely waiting for it to finish.
+        await asyncio.Event().wait()
 
-    bus._ws = AsyncMock()
-    bus._ws.close = AsyncMock()
-    bus._receive_task = asyncio.create_task(_idle())
+    ws = AsyncMock()
+    ws.close = AsyncMock()
+    bus._ws = ws
+    task = asyncio.create_task(_idle())
+    bus._receive_task = task
     bus.connected_event.set()
     bus.handshake_event.set()
     bus.crypto_key = "deadbeef"
@@ -347,7 +355,12 @@ async def test_close_cancels_receive_task_and_resets_state():
     assert not bus.connected_event.is_set()
     assert not bus.handshake_event.is_set()
     assert bus.crypto_key is None
-    bus._ws.close.assert_awaited_once()
+    ws.close.assert_awaited_once()
+    assert task.cancelled() is True, "receive task must be cancelled by close()"
+    assert task.done()
+    # close() nulls the transport so a later reconnect cannot orphan it
+    assert bus._ws is None
+    assert bus._receive_task is None
 
 
 # ---------------------------------------------------------------------------
@@ -406,3 +419,108 @@ class TestBuildUrl(unittest.TestCase):
             key="k", host="h", port=1, useragent="u", ssl=True,
         )
         self.assertTrue(url.startswith("wss://h:1?authorization="))
+
+
+# ---------------------------------------------------------------------------
+# transport hardening: auth-reject stop + double-connect teardown
+# ---------------------------------------------------------------------------
+
+class _RaisingWS:
+    """Async-iterable websocket that raises *exc* on the first frame read."""
+
+    def __init__(self, exc):
+        self._exc = exc
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise self._exc
+
+    async def close(self):
+        self.closed = True
+
+
+class _IdleWS:
+    """Async-iterable websocket whose frame read blocks forever.
+
+    The block is on an Event that close() does NOT set, so the receive task
+    driving it can only end by being cancelled — proving teardown cancels the
+    task rather than relying on the socket closing to unblock it.
+    """
+
+    def __init__(self):
+        self.closed = False
+        self._never = asyncio.Event()
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        await self._never.wait()
+        raise StopAsyncIteration
+
+    async def close(self):
+        self.closed = True
+
+
+async def test_auth_reject_1008_makes_wait_for_handshake_raise():
+    """A hub 1008 auth-close must make wait_for_handshake fail fast with
+    ConnectionRefusedError instead of blocking forever."""
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    bus = _bare_client()
+    exc = ConnectionClosedError(Close(1008, "invalid password"), None)
+    bus._ws = _RaisingWS(exc)
+    bus.connected_event.set()
+    seen = []
+    bus.emitter.on("auth_rejected", lambda reason: seen.append(reason))
+
+    recv = asyncio.create_task(bus._receive_loop())
+    with pytest.raises(ConnectionRefusedError):
+        # wrap so a regression (blocking) surfaces as a distinct TimeoutError
+        await asyncio.wait_for(bus.wait_for_handshake(timeout=5), timeout=3)
+    await recv
+    assert seen == ["invalid password"]
+
+
+async def test_non_auth_close_does_not_flag_auth_rejected():
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    bus = _bare_client()
+    bus._ws = _RaisingWS(ConnectionClosedError(Close(1006, "blip"), None))
+    bus.connected_event.set()
+    await bus._receive_loop()
+    assert bus._auth_rejected is None
+    assert not bus._auth_rejected_event.is_set()
+
+
+async def test_double_connect_tears_down_first_transport():
+    """A second connect must cancel the first receive task and close the
+    first websocket, not orphan them."""
+    bus = _bare_client()
+    ws1, ws2 = _IdleWS(), _IdleWS()
+    bus.wait_for_handshake = AsyncMock()
+    bus._websocket_keepalive_options = lambda: {}
+
+    with patch.object(_ac.websockets, "connect",
+                      AsyncMock(side_effect=[ws1, ws2])):
+        await bus.connect(protocol=bus.protocol)
+        first_task = bus._receive_task
+        await bus.connect(protocol=bus.protocol)
+
+    assert ws1.closed is True, "first websocket must be closed on reconnect"
+    assert first_task.cancelled() is True, \
+        "first receive task must be cancelled, not merely awaited"
+    assert first_task.done()
+    assert bus._ws is ws2
+    assert bus._receive_task is not first_task
+    second_task = bus._receive_task
+    await bus.close()
+    assert ws2.closed is True
+    assert second_task.cancelled() is True
+    assert bus._ws is None
+    assert bus._receive_task is None

@@ -25,6 +25,15 @@ from hivemind_bus_client.util import serialize_message
 from poorman_handshake.asymmetric.utils import load_RSA_key
 
 
+#: Default per-request timeout (seconds) for every HTTP call to the hub. A dead
+#: or slow hub without this hangs the receive loop forever.
+HTTP_TIMEOUT = 30
+
+#: Default bound on handshake retries in :meth:`HiveMindHTTPClient.connect`,
+#: so a hub that never completes the handshake fails instead of recursing.
+DEFAULT_HANDSHAKE_MAX_RETRIES = 5
+
+
 class HiveMindHTTPClient(threading.Thread):
     """
     A client for the HiveMind HTTP server protocol.
@@ -42,9 +51,13 @@ class HiveMindHTTPClient(threading.Thread):
                  binarize: bool = True,
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
-                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
+                 bin_callbacks: Optional[BinaryDataCallbacks] = None,
+                 http_timeout: float = HTTP_TIMEOUT):
         super().__init__(daemon=True)
-        self.bin_callbacks = bin_callbacks
+        # A mutable default is created once at import and shared across every
+        # instance; construct a fresh one per client instead.
+        self.bin_callbacks = bin_callbacks or BinaryDataCallbacks()
+        self.http_timeout = http_timeout
         self.json_encoding = SupportedEncodings.JSON_HEX  # server defaults before it was made configurable
         self.cipher = SupportedCiphers.AES_GCM  # server defaults before it was made configurable
         self.server_key: Optional[str] = None  # public RSA key
@@ -80,11 +93,23 @@ class HiveMindHTTPClient(threading.Thread):
         self.start()
 
 
-    def wait_for_handshake(self, timeout=5):
-        self.handshake_event.wait(timeout=timeout)
-        if not self.handshake_event.is_set():
+    def wait_for_handshake(self, timeout=5, max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
+        """Wait for the handshake, retrying up to ``max_retries`` times.
+
+        This used to recurse on every failed attempt, which turns a hub that
+        never handshakes into an unbounded recursion ending in RecursionError.
+        A bounded loop raises a clear error once the retries are exhausted.
+        """
+        attempts = 0
+        while not self.handshake_event.is_set():
+            self.handshake_event.wait(timeout=timeout)
+            if self.handshake_event.is_set():
+                break
+            if attempts >= max_retries:
+                raise ConnectionRefusedError(
+                    "timed out waiting for HiveMind handshake")
+            attempts += 1
             self.protocol.start_handshake()
-            self.wait_for_handshake()
         time.sleep(1) # let server process our "hello" response
 
     @property
@@ -256,7 +281,18 @@ class HiveMindHTTPClient(threading.Thread):
 
         # Retrieve messages until stop
         while not self.stopped.is_set():
-            for hm in self.get_messages() + self.get_binary_messages():
+            try:
+                messages = self.get_messages() + self.get_binary_messages()
+            except RuntimeError as e:
+                # A server-error payload used to propagate out of run(),
+                # killing this daemon thread while self.connected stayed set —
+                # callers then kept emit()-ing into a dead connection. Instead
+                # tear the connection down cleanly so the caller can see it.
+                LOG.warning(f"HiveMind server returned an error, "
+                            f"disconnecting: {e}")
+                self.disconnect()
+                break
+            for hm in messages:
                 self.on_message(hm)
 
             self.stopped.wait(1)
@@ -347,7 +383,9 @@ class HiveMindHTTPClient(threading.Thread):
                                           cipher=self.cipher, encoding=self.json_encoding)
 
         url = f"{self.base_url}/send_message"
-        return requests.post(url, data={"message": payload}, params={"authorization": self.auth})
+        return requests.post(url, data={"message": payload},
+                             params={"authorization": self.auth},
+                             timeout=self.http_timeout)
 
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
@@ -374,8 +412,13 @@ class HiveMindHTTPClient(threading.Thread):
 
     ###############
     # HiveMind HTTP Api
-    def connect(self, bus=FakeBus(), protocol=None, site_id=None):
+    def connect(self, bus=None, protocol=None, site_id=None,
+                handshake_max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
         LOG.info("Connecting...")
+        # A mutable default (FakeBus()) is created once at import and shared
+        # across every call; construct a fresh one here instead.
+        if bus is None:
+            bus = FakeBus()
         # The site this connection reports is the client's, not the identity's
         # — writing it back would rewrite the node's own site, and reading it
         # back would silently ignore `client.site_id = ...` set before connect.
@@ -395,16 +438,27 @@ class HiveMindHTTPClient(threading.Thread):
         LOG.info("Connecting to Hivemind")
         self.protocol.bind(bus)
         url = f"{self.base_url}/connect"
-        response = requests.post(url, params={"authorization": self.auth})
+        response = requests.post(url, params={"authorization": self.auth},
+                                 timeout=self.http_timeout)
+        # An HTTP-level auth failure must surface here, not silently fall into
+        # the handshake loop against a hub that already refused us.
+        if not response.ok:
+            raise ConnectionRefusedError(
+                f"HiveMind refused the connection: HTTP {response.status_code}")
+        payload = response.json()
+        if isinstance(payload, dict) and payload.get("error"):
+            raise ConnectionRefusedError(
+                f"HiveMind refused the connection: {payload['error']}")
         self.connected.set()
-        self.wait_for_handshake()
-        return response.json()
+        self.wait_for_handshake(max_retries=handshake_max_retries)
+        return payload
 
     def disconnect(self) -> dict:
         """Disconnect from the HiveMind server."""
         LOG.info("Disconnecting...")
         url = f"{self.base_url}/disconnect"
-        response = requests.post(url, params={"authorization": self.auth})
+        response = requests.post(url, params={"authorization": self.auth},
+                                 timeout=self.http_timeout)
         self.connected.clear()
         self.handshake_event.clear()
         return response.json()
@@ -414,7 +468,8 @@ class HiveMindHTTPClient(threading.Thread):
         if not self.connected.is_set():
             raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_messages"
-        response = requests.get(url, params={"authorization": self.auth}).json()
+        response = requests.get(url, params={"authorization": self.auth},
+                                timeout=self.http_timeout).json()
         if response.get("error"):
             raise RuntimeError(response["error"])
         return [m for m in response["messages"]]
@@ -424,7 +479,8 @@ class HiveMindHTTPClient(threading.Thread):
         if not self.connected.is_set():
             raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_binary_messages"
-        response = requests.get(url, params={"authorization": self.auth}).json()
+        response = requests.get(url, params={"authorization": self.auth},
+                                timeout=self.http_timeout).json()
         if response.get("error"):
             raise RuntimeError(response["error"])
         return [pybase64.b64decode(m) for m in response["b64_messages"]]

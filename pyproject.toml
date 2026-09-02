@@ -35,6 +35,12 @@ dependencies = [
 
 [project.optional-dependencies]
 async = ["websockets>=10.0"]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "websockets>=10.0",
+]
 test = [
     "pytest",
     "pytest-asyncio",
