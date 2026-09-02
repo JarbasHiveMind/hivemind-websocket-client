@@ -364,6 +364,62 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
         self.assertIsNone(client._worker_token)
         self.assertIsNone(client._worker_thread)
 
+    def test_close_joins_the_worker_thread(self):
+        """close() must not return while its reconnect worker is still alive.
+
+        A caller (e.g. an integration's unload handler) that calls close()
+        and returns needs a guarantee that the background thread is gone,
+        not that it will eventually notice _stop_event on its own.
+        """
+        client = _make_client()
+        worker_entered = Event()
+        release_worker = Event()
+
+        def _block_socket(**kwargs):
+            worker_entered.set()
+            release_worker.wait(timeout=1)
+
+        client.client.run_forever.side_effect = _block_socket
+        thread = client.run_in_thread()
+        self.assertTrue(worker_entered.wait(timeout=1))
+
+        # Let the worker notice the stop request as soon as close() sets it,
+        # so close()'s join has something to actually wait on and observe
+        # finishing rather than racing a timeout.
+        release_worker.set()
+
+        client.close()
+
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(
+            client._get_worker_thread() is None
+            or not client._get_worker_thread().is_alive()
+        )
+
+    def test_close_from_worker_thread_does_not_deadlock(self):
+        """close() called from within a bus callback on the worker thread
+        itself must not try to join that thread (it would deadlock forever
+        waiting for itself to finish).
+        """
+        client = _make_client()
+        worker_entered = Event()
+        closed_from_worker = Event()
+
+        def _block_socket(**kwargs):
+            worker_entered.set()
+            # Simulate a callback running on the worker thread that decides
+            # to permanently close the client.
+            client.close()
+            closed_from_worker.set()
+
+        client.client.run_forever.side_effect = _block_socket
+        thread = client.run_in_thread()
+
+        self.assertTrue(worker_entered.wait(timeout=1))
+        self.assertTrue(closed_from_worker.wait(timeout=1))
+        thread.join(timeout=1)
+        self.assertFalse(thread.is_alive())
+
     def test_live_worker_rejects_duplicate_start_until_exit(self):
         client = _make_client()
         worker_entered = Event()
