@@ -396,6 +396,37 @@ class TestHiveMessageBusClientOnError(unittest.TestCase):
             or not client._get_worker_thread().is_alive()
         )
 
+    def test_close_warns_when_worker_join_times_out(self):
+        """If the worker is still alive after the join timeout elapses,
+        close() must log a warning naming the still-alive thread rather
+        than returning silently as if the leak did not happen.
+        """
+        client = _make_client()
+        worker_entered = Event()
+        # client.client.close() is a no-op here, so the socket call never
+        # unblocks and the worker outlives the tiny join timeout below.
+        client.client.close = MagicMock()
+
+        def _block_socket(**kwargs):
+            worker_entered.set()
+            Event().wait(timeout=1)
+
+        client.client.run_forever.side_effect = _block_socket
+        thread = client.run_in_thread()
+        self.assertTrue(worker_entered.wait(timeout=1))
+
+        with patch("hivemind_bus_client.client.LOG") as mock_log:
+            client.close(timeout=0.05)
+
+        self.assertTrue(thread.is_alive())
+        self.assertTrue(mock_log.warning.called)
+        warning_msg = mock_log.warning.call_args[0][0]
+        self.assertIn("still alive", warning_msg)
+
+        # Cleanup: let the still-running worker actually stop so it doesn't
+        # leak into other tests.
+        thread.join(timeout=2)
+
     def test_close_from_worker_thread_does_not_deadlock(self):
         """close() called from within a bus callback on the worker thread
         itself must not try to join that thread (it would deadlock forever
