@@ -204,6 +204,20 @@ class AsyncHiveMessageBusClient:
         self._receive_task: Optional[asyncio.Task] = None
         self.protocol = None  # bound in connect()
 
+        # Reconnecting cannot fix a wrong key or password: the credentials do
+        # not change between attempts. When the hub closes with the auth-reject
+        # code we record the reason here and stop waiting, mirroring the sync
+        # client's ``_auth_rejected``.
+        self._auth_rejected: Optional[str] = None
+        self._auth_rejected_event = asyncio.Event()
+        # Serializes connect/close so a re-connect cannot orphan the previous
+        # websocket and receive task.
+        self._lifecycle_lock = asyncio.Lock()
+
+    #: WebSocket close code the hub sends when it refuses the credentials
+    #: (mirrors :attr:`HiveMessageBusClient.AUTH_REJECTED_CLOSE_CODE`).
+    AUTH_REJECTED_CLOSE_CODE = 1008
+
     # ------------------------------------------------------------------
     # identity / config — copied from sync client (CPU-only, no I/O)
     # ------------------------------------------------------------------
@@ -319,17 +333,46 @@ class AsyncHiveMessageBusClient:
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
 
-        self._ws = await websockets.connect(
-            url, ssl=ssl_ctx, **self._websocket_keepalive_options()
-        )
-        self.connected_event.set()
-        self.emitter.emit("open")
-        self._receive_task = asyncio.create_task(self._receive_loop())
+        async with self._lifecycle_lock:
+            # A re-connect (or a connect after an unclosed drop) must not leave
+            # the previous websocket and receive task running: tear them down
+            # first, otherwise both orphaned objects keep consuming the socket.
+            await self._teardown_transport()
+            self._auth_rejected = None
+            self._auth_rejected_event.clear()
+            self._ws = await websockets.connect(
+                url, ssl=ssl_ctx, **self._websocket_keepalive_options()
+            )
+            self.connected_event.set()
+            self.emitter.emit("open")
+            self._receive_task = asyncio.create_task(self._receive_loop())
 
         # Bind protocol — its bind() registers handlers on the emitter and
         # may emit the handshake start.
         self.protocol.bind(bus)
         await self.wait_for_handshake(max_retries=handshake_max_retries)
+
+    async def _teardown_transport(self):
+        """Cancel the receive task and close the websocket, nulling both.
+
+        Idempotent, so connect() can call it to reclaim a prior session and
+        close() can call it to shut down for good.
+        """
+        task = self._receive_task
+        self._receive_task = None
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        ws = self._ws
+        self._ws = None
+        if ws is not None:
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
     async def close_connection(self):
         """Close the current websocket, leaving the client reusable.
@@ -342,21 +385,12 @@ class AsyncHiveMessageBusClient:
 
     async def close(self):
         """Cleanly close the WebSocket and stop the receive loop."""
-        self.handshake_event.clear()
-        self.crypto_key = None
-        self.noise_transport = None
-        self.connected_event.clear()
-        if self._ws is not None:
-            try:
-                await self._ws.close()
-            except Exception:
-                pass
-        if self._receive_task is not None:
-            self._receive_task.cancel()
-            try:
-                await self._receive_task
-            except (asyncio.CancelledError, Exception):
-                pass
+        async with self._lifecycle_lock:
+            self.handshake_event.clear()
+            self.crypto_key = None
+            self.noise_transport = None
+            self.connected_event.clear()
+            await self._teardown_transport()
         self.emitter.emit("close")
 
     async def wait_for_handshake(self, timeout: float = 5.0, max_retries: Optional[int] = None):
@@ -367,10 +401,22 @@ class AsyncHiveMessageBusClient:
         """
         attempts = 0
         while not self.handshake_event.is_set():
+            handshake_wait = asyncio.ensure_future(self.handshake_event.wait())
+            auth_wait = asyncio.ensure_future(self._auth_rejected_event.wait())
             try:
-                await asyncio.wait_for(self.handshake_event.wait(), timeout=timeout)
-            except asyncio.TimeoutError:
-                pass
+                await asyncio.wait(
+                    {handshake_wait, auth_wait},
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                for pending in (handshake_wait, auth_wait):
+                    pending.cancel()
+            if self._auth_rejected:
+                # no number of retries fixes a wrong key or password
+                raise ConnectionRefusedError(
+                    f"HiveMind refused this identity: {self._auth_rejected}"
+                )
             if self.handshake_event.is_set():
                 return
             if max_retries is not None and attempts >= max_retries:
@@ -411,6 +457,28 @@ class AsyncHiveMessageBusClient:
             self.crypto_key = None
             self.noise_transport = None
             self.connected_event.clear()
+            rcvd = getattr(e, "rcvd", None)
+            close_code = getattr(rcvd, "code", None)
+            if close_code is None:
+                close_code = getattr(e, "code", None)
+            if close_code == self.AUTH_REJECTED_CLOSE_CODE:
+                # Reconnecting cannot help: the credentials are identical on
+                # every attempt. Record the reason, wake wait_for_handshake so
+                # it fails fast instead of blocking forever, and stop.
+                reason = getattr(rcvd, "reason", None) or getattr(e, "reason", None)
+                self._auth_rejected = reason or "the server refused these credentials"
+                LOG.error(
+                    f"HiveMind refused this identity: {self._auth_rejected}. "
+                    f"Check the access key and password "
+                    f"(hivemind-client set-identity), and that the client is "
+                    f"registered on the server (hivemind-core list-clients). "
+                    f"Not reconnecting."
+                )
+                self._auth_rejected_event.set()
+                try:
+                    self.emitter.emit("auth_rejected", self._auth_rejected)
+                except Exception:  # noqa: BLE001
+                    LOG.exception("failed to emit auth_rejected")
             self.emitter.emit("close")
         except asyncio.CancelledError:
             raise
