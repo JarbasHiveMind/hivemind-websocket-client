@@ -94,7 +94,7 @@ class HiveMessage:
             payload = payload.as_dict
         elif isinstance(payload, str):
             payload = json.loads(payload)
-        self._payload = payload or {}
+        self._payload = payload if payload is not None else {}
         # BUS/wrapper payloads are rebuilt into Message/HiveMessage objects on
         # access; without this cache every read returned a different object and
         # mutating one of them was silently lost. See the payload property.
