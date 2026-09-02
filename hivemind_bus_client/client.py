@@ -39,6 +39,9 @@ from hivemind_bus_client.serialization import (
 from hivemind_bus_client.util import serialize_message
 
 
+WORKER_JOIN_TIMEOUT = 5  # seconds to wait for the reconnect worker to stop in close()
+
+
 class BinaryDataCallbacks:
     def handle_receive_tts(self, bin_data: bytes,
                            utterance: str,
@@ -444,8 +447,13 @@ class HiveMessageBusClient(OVOSBusClient):
         """
         self.client.close()
 
-    def close(self):
-        """Permanently stop reconnecting and close the websocket."""
+    def close(self, timeout: float = WORKER_JOIN_TIMEOUT):
+        """Permanently stop reconnecting and close the websocket.
+
+        Blocks until the reconnect worker thread has exited (bounded by
+        ``timeout``) so that callers can rely on there being no lingering
+        thread once this returns.
+        """
         # Serialize the stop request with worker reservation. A worker that is
         # already shutting down retains ownership until its finally block, so
         # a second starter cannot clear this event and revive it.
@@ -455,6 +463,14 @@ class HiveMessageBusClient(OVOSBusClient):
             self.client.close()
         finally:
             self._clear_connection_state()
+        # Read the thread handle without holding _worker_lock across the
+        # join: the worker's own finally block takes that lock to release
+        # itself, so joining while holding it would deadlock.
+        thread = self._get_worker_thread()
+        if thread is not None and thread is not current_thread():
+            # A callback invoked from the worker thread (e.g. on_message)
+            # may call close(); joining ourselves would deadlock forever.
+            thread.join(timeout=timeout)
 
     def wait_for_handshake(self, timeout=5, max_retries=None):
         """
