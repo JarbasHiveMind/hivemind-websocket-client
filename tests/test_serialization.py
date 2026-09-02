@@ -525,6 +525,38 @@ class TestUnencodableTypes(unittest.TestCase):
                 self.assertEqual(decode_bitstring(bs.bytes).msg_type, msg_type)
 
 
+class TestEmptyBinaryPayload(unittest.TestCase):
+    """A zero-length BINARY payload (e.g. an end-of-stream RAW_AUDIO marker)
+    is a valid, falsy `bytes` value. HiveMessage.__init__ used to coerce any
+    falsy payload to `{}`, silently turning `b''` into an empty dict and
+    breaking any `bytes`-consuming sink."""
+
+    def test_empty_binary_payload_roundtrips_as_bytes(self):
+        bs = get_bitstring(HiveMessageType.BINARY, payload=b'',
+                           binary_type=HiveMindBinaryPayloadType.RAW_AUDIO,
+                           compressed=False)
+        decoded = decode_bitstring(bs)
+        self.assertEqual(decoded.msg_type, HiveMessageType.BINARY)
+        self.assertIsInstance(decoded.payload, bytes)
+        self.assertEqual(decoded.payload, b'')
+
+    def test_nonempty_binary_payload_still_roundtrips(self):
+        bs = get_bitstring(HiveMessageType.BINARY, payload=b'\x00',
+                           binary_type=HiveMindBinaryPayloadType.RAW_AUDIO,
+                           compressed=False)
+        decoded = decode_bitstring(bs)
+        self.assertIsInstance(decoded.payload, bytes)
+        self.assertEqual(decoded.payload, b'\x00')
+
+    def test_none_payload_still_becomes_empty_dict(self):
+        msg = HiveMessage(HiveMessageType.HANDSHAKE, payload=None)
+        self.assertEqual(msg.payload, {})
+
+    def test_empty_dict_payload_stays_empty_dict(self):
+        msg = HiveMessage(HiveMessageType.HANDSHAKE, payload={})
+        self.assertEqual(msg.payload, {})
+
+
 class TestBinaryFrameRoute(unittest.TestCase):
     """HIVEMIND-MSG-1 §5: a relayed wrapper envelope must keep its ``route``
     across the binary framing, or the receiving node cannot see the relay in
