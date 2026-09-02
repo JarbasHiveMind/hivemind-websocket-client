@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.19a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.19a1) (2026-09-02)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.18a1...1.0.19a1)
+
+**Merged pull requests:**
+
+- fix: preserve empty-bytes payload instead of coercing to empty dict [\#212](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/212) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.18a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.18a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.17a1...1.0.18a1)
@@ -511,7 +519,6 @@
 **Merged pull requests:**
 
 - Release 0.4.1a2 [\#65](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/65) ([github-actions[bot]](https://github.com/apps/github-actions))
-- bring http client closes to websocket client [\#64](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/64) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.4.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a1) (2025-01-08)
 
