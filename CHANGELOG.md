@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.1a1) (2026-09-04)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.0a1...1.1.1a1)
+
+**Merged pull requests:**
+
+- fix: use SessionManager.get\_default\_session\(\) [\#218](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/218) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.0a1) (2026-09-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.20a1...1.1.0a1)
@@ -515,10 +523,6 @@
 ## [0.4.2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.2) (2025-01-08)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.2a1...0.4.2)
-
-**Merged pull requests:**
-
-- Release 0.4.2a1 [\#67](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/67) ([github-actions[bot]](https://github.com/apps/github-actions))
 
 ## [0.4.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.2a1) (2025-01-08)
 
