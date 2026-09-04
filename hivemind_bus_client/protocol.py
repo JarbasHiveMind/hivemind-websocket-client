@@ -958,7 +958,7 @@ class HiveMindSlaveProtocol:
         # relying on the per-connection label.
         peer = f"{self.identity.name or 'satellite'}::{self.hm.session_id}"
         # announce lang from active session if available
-        sess = SessionManager.default_session
+        sess = SessionManager.get_default_session()
         lang = getattr(sess, "lang", None) if sess else None
 
         own_ping_payload = {
