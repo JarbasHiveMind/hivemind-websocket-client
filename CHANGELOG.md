@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.0a1) (2026-09-04)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.20a1...1.1.0a1)
+
+**Merged pull requests:**
+
+- feat: transparent multi-frame chunking for the v3 Noise transport [\#216](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/216) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.20a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.20a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.19a1...1.0.20a1)
@@ -515,10 +523,6 @@
 ## [0.4.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.2a1) (2025-01-08)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.4.1a2...0.4.2a1)
-
-**Merged pull requests:**
-
-- fix: no auto connect [\#66](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/66) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.4.1a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.4.1a2) (2025-01-08)
 
