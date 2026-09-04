@@ -14,13 +14,24 @@ from ovos_utils.log import LOG
 
 from hivemind_bus_client.client import BinaryDataCallbacks
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
-                                            SupportedEncodings, SupportedCiphers)
+                                            SupportedEncodings, SupportedCiphers, hybrid_encrypt)
+from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
-from hivemind_bus_client.serialization import get_bitstring, decode_bitstring
+from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
+                                               get_bitstring, decode_bitstring)
 from hivemind_bus_client.util import serialize_message
-from poorman_handshake.asymmetric.utils import encrypt_RSA, load_RSA_key, sign_RSA
+from poorman_handshake.asymmetric.utils import load_RSA_key
+
+
+#: Default per-request timeout (seconds) for every HTTP call to the hub. A dead
+#: or slow hub without this hangs the receive loop forever.
+HTTP_TIMEOUT = 30
+
+#: Default bound on handshake retries in :meth:`HiveMindHTTPClient.connect`,
+#: so a hub that never completes the handshake fails instead of recursing.
+DEFAULT_HANDSHAKE_MAX_RETRIES = 5
 
 
 class HiveMindHTTPClient(threading.Thread):
@@ -40,9 +51,13 @@ class HiveMindHTTPClient(threading.Thread):
                  binarize: bool = True,
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
-                 bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks()):
+                 bin_callbacks: Optional[BinaryDataCallbacks] = None,
+                 http_timeout: float = HTTP_TIMEOUT):
         super().__init__(daemon=True)
-        self.bin_callbacks = bin_callbacks
+        # A mutable default is created once at import and shared across every
+        # instance; construct a fresh one per client instead.
+        self.bin_callbacks = bin_callbacks or BinaryDataCallbacks()
+        self.http_timeout = http_timeout
         self.json_encoding = SupportedEncodings.JSON_HEX  # server defaults before it was made configurable
         self.cipher = SupportedCiphers.AES_GCM  # server defaults before it was made configurable
         self.server_key: Optional[str] = None  # public RSA key
@@ -78,11 +93,23 @@ class HiveMindHTTPClient(threading.Thread):
         self.start()
 
 
-    def wait_for_handshake(self, timeout=5):
-        self.handshake_event.wait(timeout=timeout)
-        if not self.handshake_event.is_set():
+    def wait_for_handshake(self, timeout=5, max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
+        """Wait for the handshake, retrying up to ``max_retries`` times.
+
+        This used to recurse on every failed attempt, which turns a hub that
+        never handshakes into an unbounded recursion ending in RecursionError.
+        A bounded loop raises a clear error once the retries are exhausted.
+        """
+        attempts = 0
+        while not self.handshake_event.is_set():
+            self.handshake_event.wait(timeout=timeout)
+            if self.handshake_event.is_set():
+                break
+            if attempts >= max_retries:
+                raise ConnectionRefusedError(
+                    "timed out waiting for HiveMind handshake")
+            attempts += 1
             self.protocol.start_handshake()
-            self.wait_for_handshake()
         time.sleep(1) # let server process our "hello" response
 
     @property
@@ -100,49 +127,52 @@ class HiveMindHTTPClient(threading.Thread):
 
     @property
     def useragent(self) -> str:
-        return self.identity.name
+        return self._name
 
     @useragent.setter
     def useragent(self, val):
-        self.identity.name = val
+        self._name = val
 
     @property
     def password(self) -> str:
-        return self.identity.password
+        return self._password
 
     @property
     def key(self) -> str:
-        return self.identity.access_key
+        return self._access_key
 
     @property
     def site_id(self) -> str:
-        return self.identity.site_id
+        return self._site_id
 
     @site_id.setter
     def site_id(self, val):
-        self.identity.site_id = val
+        self._site_id = val
 
     @password.setter
     def password(self, val):
-        self.identity.password = val
+        self._password = val
 
     @key.setter
     def key(self, val):
-        self.identity.access_key = val
+        self._access_key = val
 
     def init_identity(self, site_id=None):
         self.identity = self.identity or NodeIdentity()
-        self.identity.password = self._password or self.identity.password
-        self.identity.access_key = self._access_key or self.identity.access_key
-        self.identity.default_master = self._host = self._host or self.identity.default_master
-        self.identity.default_port = self._port = self._port or self.identity.default_port
-        self.identity.name = self._name or "HiveMessageBusClientV0.0.1"
-        self.identity.site_id = site_id or self.identity.site_id
+        # Credentials say how to reach one master; they are not the node's
+        # identity. Writing them back overwrote the node's own access key,
+        # password and name on the first save — and pinning a peer key saves.
+        self._password = self._password or self.identity.password
+        self._access_key = self._access_key or self.identity.access_key
+        self._host = self._host or self.identity.default_master
+        self._port = self._port or self.identity.default_port
+        self._name = self._name or "HiveMessageBusClientV0.0.1"
+        self._site_id = site_id or self.identity.site_id
 
-        if not self.identity.access_key or not self.identity.password:
+        if not self._access_key or not self._password:
             raise RuntimeError("NodeIdentity not set, please pass key and password or "
                                "call 'hivemind-client set-identity'")
-        if not self.identity.default_master:
+        if not self._host:
             raise RuntimeError("host not set, please pass host and port or "
                                "call 'hivemind-client set-identity'")
 
@@ -160,7 +190,14 @@ class HiveMindHTTPClient(threading.Thread):
                 LOG.debug("Message was unencrypted")
 
         if isinstance(message, bytes):
-            message = decode_bitstring(message)
+            try:
+                message = decode_bitstring(message)
+            except Exception:
+                # WIRE-1 §4.2: reject a malformed binary frame (e.g. an
+                # unassigned/reserved message-type code) instead of
+                # crashing the receive loop.
+                LOG.exception("dropping malformed binary frame")
+                return
         elif isinstance(message, str):
             message = json.loads(message)
         if isinstance(message, dict) and "ciphertext" in message:
@@ -244,7 +281,18 @@ class HiveMindHTTPClient(threading.Thread):
 
         # Retrieve messages until stop
         while not self.stopped.is_set():
-            for hm in self.get_messages() + self.get_binary_messages():
+            try:
+                messages = self.get_messages() + self.get_binary_messages()
+            except RuntimeError as e:
+                # A server-error payload used to propagate out of run(),
+                # killing this daemon thread while self.connected stayed set —
+                # callers then kept emit()-ing into a dead connection. Instead
+                # tear the connection down cleanly so the caller can see it.
+                LOG.warning(f"HiveMind server returned an error, "
+                            f"disconnecting: {e}")
+                self.disconnect()
+                break
+            for hm in messages:
                 self.on_message(hm)
 
             self.stopped.wait(1)
@@ -294,23 +342,36 @@ class HiveMindHTTPClient(threading.Thread):
                 ctxt["destination"] = "HiveMind"
             if "session" not in ctxt:
                 ctxt["session"] = {}
-            ctxt["session"]["session_id"] = self.session_id
-            ctxt["session"]["site_id"] = self.site_id
+            if not ctxt["session"].get("session_id"):
+                ctxt["session"]["session_id"] = self.session_id
+            if not ctxt["session"].get("site_id"):
+                ctxt["session"]["site_id"] = self.site_id
             message.payload.context = ctxt
 
         LOG.debug(f"sending to HiveMind: {message.msg_type}")
         binarize = False
         if message.msg_type == HiveMessageType.BINARY:
             binarize = True
-        elif message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]:
+        elif (message.msg_type in BINARY_ENCODABLE_TYPES
+              and message.msg_type not in [HiveMessageType.HELLO, HiveMessageType.HANDSHAKE]):
             binarize = self.protocol.binarize and self.binarize
 
+        bitstr = None
         if binarize:
-            bitstr = get_bitstring(hive_type=message.msg_type,
-                                   payload=message.payload,
-                                   compressed=self.compress,
-                                   binary_type=binary_type,
-                                   hivemeta=message.metadata)
+            try:
+                bitstr = get_bitstring(hive_type=message.msg_type,
+                                       payload=message.payload,
+                                       compressed=self.compress,
+                                       binary_type=binary_type,
+                                       hivemeta=message.metadata)
+            except MetadataTooLarge as e:
+                # WIRE-1 §4.1: fall back to a text frame. A BINARY payload has
+                # no text form, so that one has to be refused.
+                if message.msg_type == HiveMessageType.BINARY:
+                    raise
+                LOG.warning(f"sending {message.msg_type} as a text frame: {e}")
+
+        if bitstr is not None:
             if self.crypto_key:
                 payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.cipher)
             else:
@@ -322,51 +383,82 @@ class HiveMindHTTPClient(threading.Thread):
                                           cipher=self.cipher, encoding=self.json_encoding)
 
         url = f"{self.base_url}/send_message"
-        return requests.post(url, data={"message": payload}, params={"authorization": self.auth})
+        return requests.post(url, data={"message": payload},
+                             params={"authorization": self.auth},
+                             timeout=self.http_timeout)
 
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
                       pubkey: Union[str, bytes, RSA.RsaKey]):
+        """INTERCOM (hybrid-encrypted) send. Same shape as sync/async clients.
 
-        encrypted_message = encrypt_RSA(pubkey, message.serialize())
-
-        # sign message
+        This used to build its own envelope: plain ``encrypt_RSA`` + ``sign_RSA``
+        under keys ``{"ciphertext", "signature"}`` and no ``encrypted_key``.
+        The receiving protocol only recognises the hybrid-encryption envelope
+        (``hybrid_encrypt``'s ``"encrypted_key"`` shape) and drops anything
+        else at the inner-type check, so that frame could never be accepted.
+        Worse, ``pybase64.b64encode(...)`` returns ``bytes``, and a HiveMessage
+        payload containing raw bytes cannot be JSON-serialized, so the frame
+        raised before it could even be sent — this path was dead. Building the
+        same hybrid envelope as ``client.py`` / ``async_client.py``, addressed
+        via ``target_pubkey`` and wrapped in PROPAGATE, makes it match what the
+        receiver actually verifies and decrypts.
+        """
         private_key = load_RSA_key(self.identity.private_key)
-        signature = sign_RSA(private_key, encrypted_message)
-
-        self.emit(HiveMessage(HiveMessageType.INTERCOM, payload={"ciphertext": pybase64.b64encode(encrypted_message),
-                                                                 "signature": pybase64.b64encode(signature)}))
+        envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
+        inner = HiveMessage(HiveMessageType.INTERCOM, payload=envelope,
+                            target_pubkey=pubkey if isinstance(pubkey, str) else None)
+        self.emit(HiveMessage(HiveMessageType.PROPAGATE, payload=inner))
 
     ###############
     # HiveMind HTTP Api
-    def connect(self, bus=FakeBus(), protocol=None, site_id=None):
+    def connect(self, bus=None, protocol=None, site_id=None,
+                handshake_max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
         LOG.info("Connecting...")
-        self.identity.site_id = site_id or self.identity.site_id
+        # A mutable default (FakeBus()) is created once at import and shared
+        # across every call; construct a fresh one here instead.
+        if bus is None:
+            bus = FakeBus()
+        # The site this connection reports is the client's, not the identity's
+        # — writing it back would rewrite the node's own site, and reading it
+        # back would silently ignore `client.site_id = ...` set before connect.
+        self._site_id = site_id or self._site_id or self.identity.site_id
         if protocol is None:
             LOG.debug("Initializing HiveMindSlaveProtocol")
             self.protocol = HiveMindSlaveProtocol(self,
                                                   shared_bus=self.share_bus,
-                                                  site_id=self.identity.site_id or "unknown",
+                                                  site_id=self._site_id or "unknown",
                                                   identity=self.identity)
         else:
             self.protocol = protocol
             self.protocol.identity = self.identity
-            if self.identity.site_id is not None:
-                self.protocol.site_id = self.identity.site_id
+            if self._site_id is not None:
+                self.protocol.site_id = self._site_id
 
         LOG.info("Connecting to Hivemind")
         self.protocol.bind(bus)
         url = f"{self.base_url}/connect"
-        response = requests.post(url, params={"authorization": self.auth})
+        response = requests.post(url, params={"authorization": self.auth},
+                                 timeout=self.http_timeout)
+        # An HTTP-level auth failure must surface here, not silently fall into
+        # the handshake loop against a hub that already refused us.
+        if not response.ok:
+            raise ConnectionRefusedError(
+                f"HiveMind refused the connection: HTTP {response.status_code}")
+        payload = response.json()
+        if isinstance(payload, dict) and payload.get("error"):
+            raise ConnectionRefusedError(
+                f"HiveMind refused the connection: {payload['error']}")
         self.connected.set()
-        self.wait_for_handshake()
-        return response.json()
+        self.wait_for_handshake(max_retries=handshake_max_retries)
+        return payload
 
     def disconnect(self) -> dict:
         """Disconnect from the HiveMind server."""
         LOG.info("Disconnecting...")
         url = f"{self.base_url}/disconnect"
-        response = requests.post(url, params={"authorization": self.auth})
+        response = requests.post(url, params={"authorization": self.auth},
+                                 timeout=self.http_timeout)
         self.connected.clear()
         self.handshake_event.clear()
         return response.json()
@@ -376,7 +468,8 @@ class HiveMindHTTPClient(threading.Thread):
         if not self.connected.is_set():
             raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_messages"
-        response = requests.get(url, params={"authorization": self.auth}).json()
+        response = requests.get(url, params={"authorization": self.auth},
+                                timeout=self.http_timeout).json()
         if response.get("error"):
             raise RuntimeError(response["error"])
         return [m for m in response["messages"]]
@@ -386,7 +479,8 @@ class HiveMindHTTPClient(threading.Thread):
         if not self.connected.is_set():
             raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_binary_messages"
-        response = requests.get(url, params={"authorization": self.auth}).json()
+        response = requests.get(url, params={"authorization": self.auth},
+                                timeout=self.http_timeout).json()
         if response.get("error"):
             raise RuntimeError(response["error"])
         return [pybase64.b64decode(m) for m in response["b64_messages"]]

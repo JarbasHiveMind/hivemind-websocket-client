@@ -25,7 +25,6 @@ class HiveMessageType(str, Enum):
     # all nodes in the hive (responses optional)
     PING = "ping"  # like cascade, but used to map the network
     RENDEZVOUS = "rendezvous"  # reserved for rendezvous-nodes
-    THIRDPRTY = "3rdparty"  # user land message, do whatever you want
     BINARY = "bin"  # binary data container, payload for something else
 
 
@@ -39,6 +38,19 @@ class HiveMindBinaryPayloadType(IntEnum):
     STT_AUDIO_TRANSCRIBE = 4  # full audio sentence to perform STT and return transcripts
     STT_AUDIO_HANDLE = 5  # full audio sentence to perform STT and handle transcription immediately
     TTS_AUDIO = 6  # synthesized TTS audio to be played
+
+
+class _Unset:
+    """Sentinel telling forward() apart from an explicit None.
+
+    ``forward(target_site_id=None)`` must be able to DROP the site id, so
+    ``None`` cannot double as "not given"."""
+
+    def __repr__(self):
+        return "<unset>"
+
+
+_UNSET = _Unset()
 
 
 class HiveMessage:
@@ -55,7 +67,9 @@ class HiveMessage:
         #  except for the hivemind node classes receiving the message and
         #  creating the object nothing should be able to change these values
         #  node classes might change them a runtime by the private attribute
-        #  but end-users should consider them read_only
+        #  but end-users should consider them read_only.
+        #  To send this message on to the next hop, use forward() - it derives
+        #  a new envelope and keeps the fields you did not name.
         if msg_type not in [m.value for m in HiveMessageType]:
             raise ValueError("Unknown HiveMessage.msg_type")
         if msg_type != HiveMessageType.BINARY and bin_type != HiveMindBinaryPayloadType.UNDEFINED:
@@ -76,9 +90,15 @@ class HiveMessage:
             payload = {"type": payload.msg_type,
                        "data": payload.data,
                        "context": payload.context}
+        elif isinstance(payload, HiveMessage):
+            payload = payload.as_dict
         elif isinstance(payload, str):
             payload = json.loads(payload)
-        self._payload = payload or {}
+        self._payload = payload if payload is not None else {}
+        # BUS/wrapper payloads are rebuilt into Message/HiveMessage objects on
+        # access; without this cache every read returned a different object and
+        # mutating one of them was silently lost. See the payload property.
+        self._payload_view = None
 
         self._site_id = target_site_id
         self._target_pubkey = target_pubkey
@@ -119,7 +139,12 @@ class HiveMessage:
 
     @property
     def route(self) -> List[str]:
-        return [r for r in self._route if r.get("targets") and r.get("source")]
+        # HIVEMIND-MSG-1 §5: a hop records AT LEAST the forwarding node in
+        # `source`. `targets` is optional provenance that no consumer reads,
+        # so requiring it here silently dropped spec-minimal hops -- and
+        # because relaying copies this filtered view back over the route,
+        # dropped hops were erased from the message for every later node.
+        return [r for r in self._route if isinstance(r, dict) and r.get("source")]
 
     @property
     def payload(self) -> Union['HiveMessage', Message, dict, bytes]:
@@ -127,20 +152,31 @@ class HiveMessage:
         Return the public payload converted to the most appropriate message representation for this HiveMessage.
         
         Depending on this message's msg_type, the payload is returned as a reconstructed `Message`, a reconstructed `HiveMessage`, or the raw stored payload.
-        
+
+        The reconstructed object is built once and reused, so reading the
+        payload twice gives you the SAME object and a mutation made through it
+        is still there on the next read. It is invalidated when the payload is
+        replaced or an item is assigned.
+
         Returns:
-            Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, or ESCALATE; otherwise the raw payload (typically a `dict` or `bytes`).
+            Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, ESCALATE, or QUERY; otherwise the raw payload (typically a `dict` or `bytes`).
         """
+        if self._payload_view is not None:
+            return self._payload_view
+
         if self.msg_type in [HiveMessageType.BUS, HiveMessageType.SHARED_BUS]:
-            return Message(self._payload["type"],
-                           data=self._payload.get("data"),
-                           context=self._payload.get("context"))
-        if self.msg_type in [HiveMessageType.BROADCAST,
-                             HiveMessageType.PROPAGATE,
-                             HiveMessageType.CASCADE,
-                             HiveMessageType.ESCALATE]:
-            return HiveMessage(**self._payload)
-        return self._payload
+            self._payload_view = Message(self._payload["type"],
+                                         data=self._payload.get("data"),
+                                         context=self._payload.get("context"))
+        elif self.msg_type in [HiveMessageType.BROADCAST,
+                               HiveMessageType.PROPAGATE,
+                               HiveMessageType.CASCADE,
+                               HiveMessageType.ESCALATE,
+                               HiveMessageType.QUERY]:
+            self._payload_view = HiveMessage(**self._payload)
+        else:
+            return self._payload
+        return self._payload_view
 
     @payload.setter
     def payload(self, payload: Union['HiveMessage', Message, dict, bytes]):
@@ -156,6 +192,7 @@ class HiveMessage:
             self._payload = payload.as_dict
         else:
             self._payload = payload
+        self._payload_view = None
 
     @property
     def bin_type(self) -> HiveMindBinaryPayloadType:
@@ -188,7 +225,54 @@ class HiveMessage:
                 "node": self.node_id,
                 "target_site_id": self.target_site_id,
                 "target_pubkey": self.target_public_key,
+                # NOTE: target_peers is deliberately NOT here, and no new key
+                # may be added without measuring. hivemind-core encrypts an
+                # INTERCOM inner body with raw RSA (PKCS1-OAEP), so a
+                # serialized envelope must fit one RSA block - about 214 bytes
+                # with 2048-bit keys. The smallest possible BUS envelope is
+                # already 207 bytes, so the whole format has ~7 bytes of
+                # headroom. Adding "target_peers": [] costs 20 and breaks real
+                # INTERCOM traffic. Next-hop targets travel via forward(),
+                # which is in-process and free.
+                # See tests/test_message.py::TestWireSizeCeiling.
                 "source_peer": self.source_peer}
+
+    def forward(self,
+                payload=_UNSET,
+                msg_type=_UNSET,
+                metadata=_UNSET,
+                route=_UNSET,
+                source_peer=_UNSET,
+                target_peers=_UNSET,
+                target_site_id=_UNSET,
+                target_pubkey=_UNSET,
+                node=_UNSET,
+                bin_type=_UNSET) -> 'HiveMessage':
+        """Derive the envelope to send on to the next hop.
+
+        Every field of this message is carried over unless you name it here,
+        including the ones that only the constructor can set (metadata,
+        target_site_id, target_pubkey, node, bin_type). Relays that rebuild
+        envelopes by hand keep forgetting one of those, and the message then
+        arrives stripped with nothing to show what was lost: a flood that dies
+        after one hop, a site-targeted message that no longer knows its site.
+        Preserving is the default; dropping a field is an explicit
+        ``forward(target_site_id=None)``.
+        """
+        def kept(given, current):
+            return current if given is _UNSET else given
+
+        return HiveMessage(
+            msg_type=kept(msg_type, self._msg_type),
+            payload=kept(payload, self._payload),
+            node=kept(node, self._node),
+            source_peer=kept(source_peer, self._source_peer),
+            route=kept(route, list(self._route)),
+            target_peers=kept(target_peers, list(self._targets)),
+            target_site_id=kept(target_site_id, self._site_id),
+            target_pubkey=kept(target_pubkey, self._target_pubkey),
+            bin_type=kept(bin_type, self._bin_type),
+            metadata=kept(metadata, dict(self._meta)))
 
     @property
     def as_json(self) -> str:
@@ -206,26 +290,29 @@ class HiveMessage:
             try:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
+                                   route=payload.get("route"),
+                                   # NOTE: node, source_peer and target_peers
+                                   # are not restored here - they are per-hop.
+                                   # The receiving node sets node/source_peer
+                                   # from the connection, and it decides its
+                                   # own next-hop targets.
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
-            except:
+            except Exception:
                 pass  # not a hivemind message
 
         if "type" in payload:
             try:
-                # NOTE: technically could also be SHARED_BUS or THIRDPRTY
+                # NOTE: technically could also be SHARED_BUS
                 return HiveMessage(HiveMessageType.BUS,
                                    payload=Message.deserialize(payload),
                                    metadata=payload.get("metadata", {}),
                                    target_site_id=payload.get("target_site_id"),
                                    target_pubkey=payload.get("target_pubkey"))
-            except:
+            except Exception:
                 pass  # not a mycroft message
 
-        return HiveMessage(HiveMessageType.THIRDPRTY, payload,
-                           metadata=payload.get("metadata", {}),
-                           target_site_id=payload.get("target_site_id"),
-                           target_pubkey=payload.get("target_pubkey"))
+        raise ValueError(f"not a HiveMind message: {payload}")
 
     def __getitem__(self, item):
         if not isinstance(self._payload, dict):
@@ -235,6 +322,7 @@ class HiveMessage:
     def __setitem__(self, key, value):
         if isinstance(self._payload, dict):
             self._payload[key] = value
+            self._payload_view = None
         else:
             raise TypeError(f"Item assignment not supported for payload type {type(self._payload)}")
 
@@ -244,10 +332,24 @@ class HiveMessage:
         return self.as_json
 
     def update_hop_data(self, data=None, **kwargs):
-        if not self._route or self._route[-1]["source"] != self.source_peer:
+        """
+        Append/refresh this node's hop entry at the end of `route`.
+
+        A route entry is only trusted when it is a dict exposing a `source`
+        (same shape check as the `route` property, HIVEMIND-MSG-1 §5). An
+        inbound frame is attacker-controlled and may carry a malformed last
+        entry (e.g. `{}` or a bare string) -- rather than raising on that
+        (pre-auth DoS), we treat a malformed last entry the same as a
+        missing one and APPEND a fresh, well-formed hop for this node. The
+        malformed entry is left in place earlier in the list (not dropped),
+        it is just never indexed into or merged with.
+        """
+        last = self._route[-1] if self._route else None
+        last_source = last.get("source") if isinstance(last, dict) else None
+        if not self._route or last_source != self.source_peer:
             self._route += [{"source": self.source_peer,
                              "targets": self.target_peers}]
-        if self._route and data:
+        if self._route and data and isinstance(self._route[-1], dict):
             self._route[-1] = merge_dict(self._route[-1], data, **kwargs)
 
     def replace_route(self, route):

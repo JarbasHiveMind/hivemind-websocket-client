@@ -1,7 +1,9 @@
-from os.path import basename, dirname
+import json
+from os.path import basename, dirname, isfile
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
-from typing import Optional
+from hivemind_bus_client.exceptions import IdentityFileCorrupted
+from typing import Dict, List, Optional
 
 
 class NodeIdentity:
@@ -19,7 +21,44 @@ class NodeIdentity:
         Args:
             identity_file (Optional[str]): Path to a custom identity file (default: None, uses default configuration).
         """
-        self.IDENTITY_FILE = identity_file or JsonConfigXDG("_identity", subfolder="hivemind")
+        # an empty store is falsy, so test explicitly: a caller that passes
+        # its own (still empty) file must not silently get the default one
+        if identity_file is None:
+            identity_file = JsonConfigXDG("_identity", subfolder="hivemind")
+        self.IDENTITY_FILE = identity_file
+        self._assert_identity_readable()
+
+    def _assert_identity_readable(self):
+        """Refuse to start with an identity file that exists but did not load.
+
+        JsonStorage fails open: if the file is truncated or otherwise
+        unparseable it logs the error and leaves the dict empty. Every
+        property below would then fall back to a default, the node would
+        call itself "unnamed-node", and because the Noise static key path
+        is derived from the name it would generate a brand new static key.
+        To every peer that pinned the old key the node then looks like an
+        impostor. A node that cannot read its own identity must stop, not
+        come up as a different node.
+        """
+        path = self.IDENTITY_FILE.path
+        if not path or not isfile(path) or self.IDENTITY_FILE:
+            return
+        # ask json itself, not a string comparison: a zero byte file is the
+        # likeliest corruption of all (a non atomic write truncates first,
+        # then a power cut lands there) and an empty string would pass any
+        # "looks like {}" test, while a hand written or templated "{ }" is
+        # perfectly valid and must boot
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            raise IdentityFileCorrupted(
+                f"identity file {path} exists but could not be parsed. "
+                "Refusing to mint a new identity — restore it from a backup "
+                "or delete it to start over as a new node.")
 
     @property
     def name(self) -> str:
@@ -149,6 +188,155 @@ class NodeIdentity:
     def default_port(self, val: int):
         """Set the default port for the node."""
         self.IDENTITY_FILE["default_port"] = val
+
+    @property
+    def noise_key(self) -> str:
+        """
+        Get or set the path to the static X25519 private key used by the
+        protocol-v3 Noise handshake (HIVEMIND-CRYPTO-1 §2/§3.4).
+
+        The key is generated and persisted on first use; it must survive
+        restarts so key pinning survives reconnection.
+
+        Returns:
+            str: The path to the Noise static key file.
+        """
+        return self.IDENTITY_FILE.get("noise_key") or \
+            f"{dirname(self.IDENTITY_FILE.path)}/{self.name}_noise.key"
+
+    @noise_key.setter
+    def noise_key(self, val: str):
+        """Set the path to the Noise static X25519 private key file."""
+        self.IDENTITY_FILE["noise_key"] = val
+
+    @property
+    def pinned_noise_keys(self) -> Dict[str, str]:
+        """TOFU-pinned Noise static public keys, node_id → hex pubkey.
+
+        On the first completed XXpsk2 handshake with a peer the learned
+        static key is pinned against the peer's node id; on every later
+        handshake a mismatch is a fatal authentication failure
+        (HIVEMIND-CRYPTO-1 §3.4.5).
+        """
+        return self.IDENTITY_FILE.get("pinned_noise_keys") or {}
+
+    def get_pinned_noise_key(self, node_id: str) -> Optional[str]:
+        """Return the pinned Noise static public key for a node id, if any."""
+        return self.pinned_noise_keys.get(node_id)
+
+    def pin_noise_key(self, node_id: str, pubkey: str) -> None:
+        """Pin (or re-assert) a peer's Noise static public key.
+
+        Args:
+            node_id: The peer's node identifier.
+            pubkey: Hex-encoded X25519 static public key.
+        """
+        keys = self.pinned_noise_keys
+        keys[node_id] = pubkey
+        self.IDENTITY_FILE["pinned_noise_keys"] = keys
+        self.save()
+
+    def forget_noise_key(self, node_id: str) -> bool:
+        """Drop the pinned Noise static key for a node id.
+
+        Needed when the peer legitimately changed its static key, which
+        happens whenever a master is reinstalled or restored from a backup.
+        Without this the node refuses every later handshake with that peer.
+
+        Args:
+            node_id: The peer's node identifier.
+
+        Returns:
+            bool: True if a pin was removed, False if there was none.
+        """
+        keys = self.pinned_noise_keys
+        if node_id not in keys:
+            return False
+        keys.pop(node_id)
+        self.IDENTITY_FILE["pinned_noise_keys"] = keys
+        self.save()
+        return True
+
+    @property
+    def trusted_keys(self) -> Dict[str, str]:
+        """Get the trusted keys mapping (alias → public key).
+
+        Trusted keys are used to verify the identity of peers in
+        PROPAGATE, CASCADE, and INTERCOM message handling.  Only
+        messages from peers whose public key is in this mapping will
+        be accepted for bus injection.
+
+        Returns:
+            Dict[str, str]: Mapping of human-friendly alias to public key string.
+        """
+        return self.IDENTITY_FILE.get("trusted_keys") or {}
+
+    @trusted_keys.setter
+    def trusted_keys(self, val: Dict[str, str]) -> None:
+        """Replace the entire trusted keys mapping.
+
+        Args:
+            val: New alias → public key mapping.
+        """
+        self.IDENTITY_FILE["trusted_keys"] = dict(val)
+
+    def add_trusted_key(self, alias: str, pubkey: str) -> bool:
+        """Add a public key to the trusted keys mapping.
+
+        Args:
+            alias: Human-friendly name for the peer (e.g. "living-room-hub").
+            pubkey: The public key string to trust.
+
+        Returns:
+            True if the key was added, False if the alias already exists.
+        """
+        keys = self.trusted_keys
+        if alias in keys:
+            return False
+        keys[alias] = pubkey
+        self.IDENTITY_FILE["trusted_keys"] = keys
+        return True
+
+    def remove_trusted_key(self, alias: str) -> bool:
+        """Remove a trusted key by its alias.
+
+        Args:
+            alias: The alias to remove.
+
+        Returns:
+            True if the key was removed, False if the alias was not found.
+        """
+        keys = self.trusted_keys
+        if alias not in keys:
+            return False
+        del keys[alias]
+        self.IDENTITY_FILE["trusted_keys"] = keys
+        return True
+
+    def is_trusted_key(self, pubkey: str) -> bool:
+        """Check whether a public key is in the trusted keys mapping.
+
+        Args:
+            pubkey: The public key string to check.
+
+        Returns:
+            True if the key is trusted.
+        """
+        return pubkey in self.trusted_keys.values()
+
+    def get_trusted_alias(self, pubkey: str) -> Optional[str]:
+        """Look up the alias for a trusted public key.
+
+        Args:
+            pubkey: The public key string to look up.
+
+        Returns:
+            The alias if found, None otherwise.
+        """
+        for alias, key in self.trusted_keys.items():
+            if key == pubkey:
+                return alias
+        return None
 
     def save(self) -> None:
         """
