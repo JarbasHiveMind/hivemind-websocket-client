@@ -20,10 +20,13 @@ Protocol version 2 and below are untouched: this module is only entered when
 both peers negotiate version 3.
 """
 import json
+import logging
 import os
 import threading
 from binascii import hexlify
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+LOG = logging.getLogger("hivemind_bus_client.noise")
 
 
 try:
@@ -49,9 +52,32 @@ NOISE_SUITE_AESGCM = "25519_AESGCM_SHA256"  # MAY support (Web Crypto peers)
 NOISE_SUITES: List[str] = [NOISE_SUITE_CHACHA, NOISE_SUITE_AESGCM]
 
 # transport frame markers: the first plaintext byte tags the inner framing so
-# the receiver knows how to parse the decrypted bytes
-_FRAME_JSON = b"\x00"  # utf-8 JSON HiveMessage
-_FRAME_BINARY = b"\x01"  # HIVEMIND-WIRE-1 binary frame (bitstring)
+# the receiver knows how to parse the decrypted bytes.
+#
+# A single Noise transport message caps at 65535 bytes (poorman-handshake /
+# the Noise spec), so a HiveMessage whose marked plaintext exceeds that limit
+# is split across several consecutive Noise transport messages and reassembled
+# by the receiver (HIVEMIND-WIRE-1 multi-frame transport). The SINGLE markers
+# are unchanged so any message that fits in one Noise message stays byte
+# identical on the wire.
+_FRAME_JSON = b"\x00"  # single-frame utf-8 JSON HiveMessage
+_FRAME_BINARY = b"\x01"  # single-frame HIVEMIND-WIRE-1 binary frame (bitstring)
+_FRAME_FIRST_JSON = b"\x02"  # first chunk of a multi-frame JSON message
+_FRAME_FIRST_BINARY = b"\x03"  # first chunk of a multi-frame binary message
+_FRAME_MORE = b"\x04"  # a middle chunk of a multi-frame message
+_FRAME_LAST = b"\x05"  # the final chunk of a multi-frame message
+
+# Maximum plaintext a single Noise transport message can carry is
+# 65535 - 16 (Poly1305/GCM AEAD tag) - 1 (frame marker) = 65518 bytes. A
+# conservative chunk size keeps well under that and leaves room for any
+# implementation overhead.
+CHUNK_SIZE = 65000
+
+# Bounded reassembly budget: a multi-frame message may not accumulate more
+# than this many bytes before the whole buffer is dropped. This caps the
+# memory a peer can force us to allocate from a single message (DoS/OOM
+# guard); 32 MiB comfortably covers audio-sized bus messages.
+MAX_REASSEMBLY_BYTES = 32 * 1024 * 1024
 
 
 class NoiseHandshakeFailed(Exception):
@@ -129,19 +155,29 @@ class NoiseTransport:
     decryption.
     """
 
-    def __init__(self, handshake: "NoiseHandShake"):
+    def __init__(self, handshake: "NoiseHandShake",
+                 max_reassembly_bytes: int = MAX_REASSEMBLY_BYTES):
         if not handshake.handshake_finished:
             raise NoiseHandshakeFailed("handshake not finished")
         self._hs = handshake
         self._send_lock = threading.Lock()
         self._recv_lock = threading.Lock()
+        self._max_reassembly = max_reassembly_bytes
+        # open multi-frame reassembly (None when no message is in progress)
+        self._reasm: Optional[bytearray] = None
+        self._reasm_is_json: bool = False
         self.remote_static_key: Optional[str] = (
             hexlify(handshake.remote_pubkey).decode("utf-8")
             if handshake.remote_pubkey else None)
         self.handshake_hash: Optional[bytes] = handshake.handshake_hash
 
     def encrypt_frame(self, payload: Union[str, bytes]) -> bytes:
-        """Encrypt one outgoing message as a Noise transport message.
+        """Encrypt one outgoing message as a single Noise transport message.
+
+        This only ever produces a SINGLE frame and raises on an oversize
+        payload. Prefer :meth:`send_message`, which chunks transparently;
+        this method is retained for callers that already guarantee the
+        payload fits in one Noise transport message.
 
         Args:
             payload: a serialized JSON HiveMessage (str) or a WIRE-1 binary
@@ -157,14 +193,82 @@ class NoiseTransport:
         with self._send_lock:
             return self._hs.encrypt(plaintext)
 
-    def decrypt_frame(self, data: bytes) -> Union[str, bytes]:
+    def send_message(self, payload: Union[str, bytes],
+                     raw_send: Callable[[bytes], None]) -> None:
+        """Encrypt and send one message, chunking it if it is oversize.
+
+        A message whose marked plaintext fits in one Noise transport message
+        is sent as a SINGLE frame, byte identical to :meth:`encrypt_frame`.
+        A larger message is split into FIRST / MORE* / LAST chunks, each its
+        own Noise transport message. ``raw_send`` puts one binary websocket
+        message on the wire.
+
+        The whole send holds ``_send_lock`` so every chunk of one message is
+        encrypted and placed on the wire contiguously and in order: the Noise
+        CipherState nonce counter is strictly sequential, so interleaving the
+        chunks of two messages would break AEAD ordering at the receiver.
+
+        Args:
+            payload: a serialized JSON HiveMessage (str) or a WIRE-1 binary
+                frame (bytes).
+            raw_send: callback that transmits one binary websocket message.
+        """
+        if isinstance(payload, str):
+            body = payload.encode("utf-8")
+            single, first = _FRAME_JSON, _FRAME_FIRST_JSON
+        else:
+            body = bytes(payload)
+            single, first = _FRAME_BINARY, _FRAME_FIRST_BINARY
+
+        with self._send_lock:
+            if len(body) <= CHUNK_SIZE:
+                raw_send(self._hs.encrypt(single + body))
+                return
+            last = len(body) - CHUNK_SIZE  # start offset of the final chunk
+            offset = 0
+            while offset < len(body):
+                chunk = body[offset:offset + CHUNK_SIZE]
+                if offset == 0:
+                    marker = first
+                elif offset >= last:
+                    marker = _FRAME_LAST
+                else:
+                    marker = _FRAME_MORE
+                raw_send(self._hs.encrypt(marker + chunk))
+                offset += CHUNK_SIZE
+
+    def _reset_reassembly(self) -> None:
+        self._reasm = None
+        self._reasm_is_json = False
+
+    def _guard_cap(self) -> None:
+        if self._reasm is not None and len(self._reasm) > self._max_reassembly:
+            size = len(self._reasm)
+            self._reset_reassembly()
+            msg = (f"multi-frame reassembly exceeded the {self._max_reassembly} "
+                   f"byte cap ({size} bytes buffered); dropping the message")
+            LOG.error(msg)
+            raise NoiseTransportFailed(msg)
+
+    def decrypt_frame(self, data: bytes) -> Optional[Union[str, bytes]]:
         """Decrypt one incoming Noise transport message.
+
+        A SINGLE frame is decoded and returned immediately. A multi-frame
+        message is reassembled across calls: FIRST/MORE chunks buffer and
+        return ``None`` ("no complete message yet"); the LAST chunk decodes
+        the whole buffer and returns it. Callers must treat a ``None`` return
+        as "keep receiving" and not dispatch it.
+
+        Returns:
+            The decoded message (str for JSON, bytes for binary), or ``None``
+            when this frame only advanced an in-progress reassembly.
 
         Raises:
             NoiseTransportFailed: on any AEAD failure — tampering, replay, or
-                out-of-order delivery. Per HIVEMIND-CRYPTO-1 §3.4.5 the
-                message MUST be rejected and never retried under another
-                nonce; callers should treat this as fatal for the session.
+                out-of-order delivery (per HIVEMIND-CRYPTO-1 §3.4.5, fatal for
+                the session) — or on a malformed multi-frame sequence (a
+                MORE/LAST chunk with no open buffer, a new message starting
+                while one is still open, or the reassembly cap exceeded).
         """
         with self._recv_lock:
             try:
@@ -173,12 +277,57 @@ class NoiseTransport:
                 raise NoiseTransportFailed(
                     f"Noise transport message rejected (tampered, replayed "
                     f"or out-of-order): {e}") from e
-        marker, body = plaintext[:1], plaintext[1:]
-        if marker == _FRAME_JSON:
-            return body.decode("utf-8")
-        if marker == _FRAME_BINARY:
-            return body
-        raise NoiseTransportFailed(f"unknown v3 frame marker: {marker!r}")
+
+            marker, body = plaintext[:1], plaintext[1:]
+
+            if marker in (_FRAME_JSON, _FRAME_BINARY):
+                if self._reasm is not None:
+                    size = len(self._reasm)
+                    self._reset_reassembly()
+                    msg = (f"single frame arrived while {size} bytes of a "
+                           f"multi-frame message were still buffered")
+                    LOG.error(msg)
+                    raise NoiseTransportFailed(msg)
+                if marker == _FRAME_JSON:
+                    return body.decode("utf-8")
+                return body
+
+            if marker in (_FRAME_FIRST_JSON, _FRAME_FIRST_BINARY):
+                if self._reasm is not None:
+                    size = len(self._reasm)
+                    self._reset_reassembly()
+                    msg = (f"a new multi-frame message started while {size} "
+                           f"bytes of a previous one were still buffered")
+                    LOG.error(msg)
+                    raise NoiseTransportFailed(msg)
+                self._reasm = bytearray(body)
+                self._reasm_is_json = (marker == _FRAME_FIRST_JSON)
+                self._guard_cap()
+                return None
+
+            if marker == _FRAME_MORE:
+                if self._reasm is None:
+                    msg = "MORE chunk arrived with no multi-frame message open"
+                    LOG.error(msg)
+                    raise NoiseTransportFailed(msg)
+                self._reasm += body
+                self._guard_cap()
+                return None
+
+            if marker == _FRAME_LAST:
+                if self._reasm is None:
+                    msg = "LAST chunk arrived with no multi-frame message open"
+                    LOG.error(msg)
+                    raise NoiseTransportFailed(msg)
+                self._reasm += body
+                self._guard_cap()
+                buf, is_json = self._reasm, self._reasm_is_json
+                self._reset_reassembly()
+                if is_json:
+                    return bytes(buf).decode("utf-8")
+                return bytes(buf)
+
+            raise NoiseTransportFailed(f"unknown v3 frame marker: {marker!r}")
 
 
 def start_noise_handshake(initiator: bool,

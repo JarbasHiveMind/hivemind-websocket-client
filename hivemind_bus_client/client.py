@@ -678,11 +678,16 @@ class HiveMessageBusClient(OVOSBusClient):
             try:
                 message = self.noise_transport.decrypt_frame(message)
             except NoiseTransportFailed:
-                # tampered / replayed / out-of-order — MUST reject; the
-                # receive counter is now out of sync so the session is dead
+                # tampered / replayed / out-of-order, or a malformed
+                # multi-frame sequence — MUST reject; the receive counter is
+                # now out of sync so the session is dead
                 LOG.exception("rejecting invalid Noise transport message, "
                               "closing connection")
                 self.close_connection()
+                return
+            if message is None:
+                # an in-progress multi-frame message: this chunk was buffered
+                # for reassembly, there is nothing to dispatch yet
                 return
         elif self.crypto_key:
             # handle binary encryption
@@ -857,8 +862,12 @@ class HiveMessageBusClient(OVOSBusClient):
             if bitstr is not None:
                 if self.noise_transport is not None:
                     # protocol v3: Noise transport CipherState (replay
-                    # resistant sequential nonces) replaces the v2 AEAD
-                    ws_payload = self.noise_transport.encrypt_frame(bitstr.bytes)
+                    # resistant sequential nonces) replaces the v2 AEAD;
+                    # send_message chunks an oversize payload transparently
+                    self.noise_transport.send_message(
+                        bitstr.bytes,
+                        lambda b: self.client.send(b, ABNF.OPCODE_BINARY))
+                    return
                 elif self.crypto_key:
                     ws_payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.cipher)
                 else:
@@ -868,8 +877,9 @@ class HiveMessageBusClient(OVOSBusClient):
                 ws_payload = serialize_message(message)
                 if self.noise_transport is not None:
                     # v3 sessions are always encrypted, HELLO included
-                    ws_payload = self.noise_transport.encrypt_frame(ws_payload)
-                    self.client.send(ws_payload, ABNF.OPCODE_BINARY)
+                    self.noise_transport.send_message(
+                        ws_payload,
+                        lambda b: self.client.send(b, ABNF.OPCODE_BINARY))
                     return
                 if self.crypto_key:
                     ws_payload = encrypt_as_json(self.crypto_key, ws_payload,
