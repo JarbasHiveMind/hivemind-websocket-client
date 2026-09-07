@@ -52,8 +52,13 @@ class HiveMindHTTPClient(threading.Thread):
                  identity: NodeIdentity = None,
                  internal_bus: Optional[OVOSBusClient] = None,
                  bin_callbacks: Optional[BinaryDataCallbacks] = None,
-                 http_timeout: float = HTTP_TIMEOUT):
+                 http_timeout: float = HTTP_TIMEOUT,
+                 max_protocol_version: int = 3):
         super().__init__(daemon=True)
+        # HiveMindSlaveProtocol._should_use_noise() reads this off the client;
+        # without it the getattr default of 2 made every HTTP client decline
+        # the v3 Noise handshake. Set to 2 to force the legacy handshake.
+        self.max_protocol_version = max_protocol_version
         # A mutable default is created once at import and shared across every
         # instance; construct a fresh one per client instead.
         self.bin_callbacks = bin_callbacks or BinaryDataCallbacks()
