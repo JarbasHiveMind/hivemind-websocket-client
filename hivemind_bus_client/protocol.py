@@ -644,6 +644,11 @@ class HiveMindSlaveProtocol:
             self.hm.crypto_key = self.pswd_handshake.secret  # update to new crypto key
         else:
             LOG.info("Received pubkey envelope")
+            if self.handshake.secret is None:
+                # This side never generated its own envelope, so the server's
+                # secret is taken as-is: poorman_handshake XORs the received
+                # secret into the existing one, and that one starts empty.
+                self.handshake.secret = bytes(32)
             # if we have a pubkey let's verify the master node is who it claims to be
             # currently this is sent in HELLO, but advance use cases can read it from somewhere else
             if self.mpubkey:
