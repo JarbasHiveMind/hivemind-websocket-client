@@ -6,8 +6,7 @@ websocket against a REAL hivemind-core master (via hivescope's
 
 - v3 async client ↔ v3 server: Noise session established, BUS messages
   round-trip both ways over the Noise transport.
-- v3 async client ↔ v2 server (Noise disabled): negotiates down to the
-  legacy AES handshake, BUS messages round-trip.
+- v3 async client ↔ server without Noise: refused, no legacy fallback.
 
 These reproduce the two shipped bugs that made the ``[async]`` extra
 unusable against a protocol-v3 hub:
@@ -117,8 +116,11 @@ async def test_async_v3_client_v3_server_noise_session_round_trip():
 
 
 @pytest.mark.asyncio
-async def test_async_v3_client_v2_server_negotiates_down_to_legacy(monkeypatch):
-    # a pre-v3 server never advertises Noise support
+async def test_async_v3_client_is_refused_by_a_server_without_noise(monkeypatch):
+    """HIVEMIND-CRYPTO-1 §3: "A server MUST reject a peer that cannot complete the
+    Noise handshake ... rather than fall back to any unencrypted or legacy
+    exchange."
+    """
     monkeypatch.setattr(server_protocol, "NOISE_SUPPORTED", False)
     b, m = _master()
     try:
@@ -126,11 +128,10 @@ async def test_async_v3_client_v2_server_negotiates_down_to_legacy(monkeypatch):
         client = _make_async_client(m.network_protocol.url,
                                     "async-matrix-key",
                                     ASYNC_MATRIX_PASSWORD)
-        await asyncio.wait_for(client.connect(site_id="matrix-site"), timeout=15)
-        # legacy (v2) handshake: AES session key, no Noise transport
-        assert client.crypto_key is not None
+        with pytest.raises(ConnectionRefusedError, match="requires protocol v3"):
+            await asyncio.wait_for(client.connect(site_id="matrix-site"), timeout=15)
+        assert client.crypto_key is None
         assert client.noise_transport is None
-        await _assert_round_trip(client, m)
         await client.close()
     finally:
         b.stop_all()

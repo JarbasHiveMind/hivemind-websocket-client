@@ -3,8 +3,8 @@
 End-to-end over a real websocket, real master + real client:
 
 - v3 client ↔ v3 server: Noise session established, messages round-trip both ways
-- v3 client ↔ v2 server: negotiates down to the legacy handshake, works
-- v2 client ↔ v3 server: server accepts the legacy handshake, works
+- v3 client ↔ server without Noise: refused, no legacy fallback
+- v2 client ↔ v3 server: refused, no legacy fallback
 - wrong password: the v3 handshake fails fast, no session, no fallback
 - tampered negotiation (downgrade attempt): prologue mismatch aborts the handshake
 - replayed v3 transport message: rejected, session torn down
@@ -112,37 +112,42 @@ def test_v3_client_v3_server_noise_session_round_trip():
 # ─────────────────────────────────────────────── v3 ↔ v2 ──
 
 
-def test_v3_client_v2_server_negotiates_down_to_legacy(monkeypatch):
-    # a pre-v3 server never advertises Noise support
+def test_v3_client_is_refused_by_a_server_without_noise(monkeypatch):
+    """HIVEMIND-CRYPTO-1 §3: "A server MUST reject a peer that cannot complete the
+    Noise handshake ... rather than fall back to any unencrypted or legacy
+    exchange."
+    """
     monkeypatch.setattr(server_protocol, "NOISE_SUPPORTED", False)
     b, m = _master()
     try:
         b.start_all()
         client = _make_client(m.network_protocol.url, "matrix-key",
                               MATRIX_PASSWORD)
-        client.connect(site_id="matrix-site")
-        client.wait_for_handshake(timeout=10)
-        # legacy (v2) handshake: AES session key, no Noise transport
-        assert client.crypto_key is not None
+        with pytest.raises(ConnectionRefusedError, match="requires protocol v3"):
+            client.connect(site_id="matrix-site")
+        assert client.crypto_key is None
         assert client.noise_transport is None
-        _assert_round_trip(client, m)
         client.close()
     finally:
         b.stop_all()
 
 
-def test_v2_client_v3_server_uses_legacy_handshake():
+def test_v2_client_is_refused_by_a_v3_server():
+    """HIVEMIND-CRYPTO-1 §3: "A server MUST reject a peer that cannot complete the
+    Noise handshake ... rather than fall back to any unencrypted or legacy
+    exchange."
+    """
     b, m = _master()
     try:
         b.start_all()
         client = _make_client(m.network_protocol.url, "matrix-key",
                               MATRIX_PASSWORD,
                               max_protocol_version=2)
-        client.connect(site_id="matrix-site")
-        client.wait_for_handshake(timeout=10)
-        assert client.crypto_key is not None
+        with pytest.raises(ConnectionRefusedError,
+                           match="requires the v3 Noise handshake"):
+            client.connect(site_id="matrix-site")
+        assert client.crypto_key is None
         assert client.noise_transport is None
-        _assert_round_trip(client, m)
         client.close()
     finally:
         b.stop_all()
@@ -239,15 +244,17 @@ def test_replayed_v3_transport_message_is_rejected():
         m.agent_protocol.bus.on("recognizer_loop:utterance", seen.append)
 
         # capture the exact ciphertext of one legitimate transport message
+        # as the transport hands it to the websocket
         captured = []
-        original_encrypt = client.noise_transport.encrypt_frame
+        original_send = client.noise_transport.send_message
 
-        def capturing_encrypt(payload):
-            ct = original_encrypt(payload)
-            captured.append(ct)
-            return ct
+        def capturing_send(payload, raw_send):
+            def capturing_raw_send(ciphertext):
+                captured.append(ciphertext)
+                raw_send(ciphertext)
+            original_send(payload, capturing_raw_send)
 
-        client.noise_transport.encrypt_frame = capturing_encrypt
+        client.noise_transport.send_message = capturing_send
         client.emit(HiveMessage(
             HiveMessageType.BUS,
             payload=Message("recognizer_loop:utterance",
