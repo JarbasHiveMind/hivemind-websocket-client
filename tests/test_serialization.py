@@ -1,11 +1,13 @@
 import json
 import os
+import random
 import unittest
 
 from bitstring import BitArray, BitStream
 
 from ovos_bus_client import Message
 
+from hivemind_bus_client.exceptions import MalformedBinaryFrame, UnsupportedProtocolVersion
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.serialization import (
     BINARY_ENCODABLE_TYPES, get_bitstring, decode_bitstring, PROTOCOL_VERSION,
@@ -589,3 +591,79 @@ class TestBinaryFrameRoute(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMalformedFrames(unittest.TestCase):
+    """WIRE-1 §4.1/§4.2: a frame the layout cannot account for is rejected
+    with MalformedBinaryFrame, never with a library-internal error."""
+
+    @staticmethod
+    def _frame(metalen, meta=b"", payload=b'{"type":"t","data":{},"context":{}}',
+               compressed=False, versioned=False, version=1, code=1):
+        s = BitArray()
+        s.append('uint:1=1')
+        s.append(f'uint:1={int(versioned)}')
+        if versioned:
+            s.append(f'uint:8={version}')
+        s.append(f'uint:5={code}')
+        s.append(f'uint:1={int(compressed)}')
+        s.append(f'uint:8={metalen}')
+        s.append(meta)
+        s.append(payload)
+        while len(s) % 8 != 0:
+            s.insert('uint:1=0', 0)
+        return s.bytes
+
+    def test_metadata_len_past_end_of_frame(self):
+        with self.assertRaises(MalformedBinaryFrame) as ctx:
+            decode_bitstring(self._frame(200))
+        self.assertIn("metadata_len claims 200 bytes", str(ctx.exception))
+
+    def test_truncated_header(self):
+        for raw in (b"", b"\x80", b"\x80\x00", b"\x80\x00\x00"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(MalformedBinaryFrame):
+                    decode_bitstring(raw)
+
+    def test_metadata_not_json(self):
+        with self.assertRaises(MalformedBinaryFrame):
+            decode_bitstring(self._frame(2, meta=b"xx"))
+
+    def test_payload_not_utf8(self):
+        with self.assertRaises(MalformedBinaryFrame):
+            decode_bitstring(self._frame(2, meta=b"{}", payload=b"\xff\xfe"))
+
+    def test_compression_flag_on_uncompressed_bytes(self):
+        with self.assertRaises(MalformedBinaryFrame):
+            decode_bitstring(self._frame(2, meta=b"{}", compressed=True))
+
+    def test_unassigned_code_is_a_malformed_frame(self):
+        with self.assertRaises(MalformedBinaryFrame):
+            decode_bitstring(self._frame(2, meta=b"{}", code=13))
+
+    def test_malformed_frame_is_a_value_error(self):
+        self.assertTrue(issubclass(MalformedBinaryFrame, ValueError))
+
+    def test_unimplemented_frame_format_version(self):
+        with self.assertRaises(UnsupportedProtocolVersion):
+            decode_bitstring(self._frame(2, meta=b"{}", versioned=True, version=7))
+
+    def test_versioned_v1_frame_decodes(self):
+        decoded = decode_bitstring(self._frame(2, meta=b"{}", versioned=True, version=1))
+        self.assertEqual(decoded.msg_type, HiveMessageType.BUS)
+        self.assertEqual(decoded.payload.msg_type, "t")
+
+    def test_random_bytes_never_leak_internal_errors(self):
+        rng = random.Random(1234)
+        outcomes = {"ok": 0, "malformed": 0, "version": 0}
+        for _ in range(10000):
+            raw = bytes(rng.getrandbits(8) for _ in range(rng.randint(0, 64)))
+            try:
+                decode_bitstring(raw)
+                outcomes["ok"] += 1
+            except MalformedBinaryFrame:
+                outcomes["malformed"] += 1
+            except UnsupportedProtocolVersion:
+                outcomes["version"] += 1
+        self.assertEqual(sum(outcomes.values()), 10000)
+        self.assertGreater(outcomes["malformed"], 0)

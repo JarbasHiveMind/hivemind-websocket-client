@@ -55,6 +55,12 @@ class DecodingError(HiveMindException):
     """Exception raised for errors in decoding"""
 
 
+class MalformedBinaryFrame(DecodingError, ValueError):
+    """A WIRE-1 §4 binary frame that cannot be decoded: truncated, a
+    metadata length past the end of the frame, an unassigned message-type
+    code, or a metadata or payload block that is not what the header says."""
+
+
 class Z85DecodeError(DecodingError):
     """Exception raised for errors in decoding Z85b."""
 
