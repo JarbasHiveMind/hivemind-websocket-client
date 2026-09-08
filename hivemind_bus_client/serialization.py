@@ -157,8 +157,12 @@ def _decode_bitstring_v1(s):
     metalen = s.read(8).uint * 8
     meta = s.read(metalen)
 
-    # TODO standardize hivemind meta
-    meta = json.loads(bytes2str(meta.bytes, compressed))
+    # WIRE-1 §4.1: senders emit the canonical ``{}``, but a zero-length
+    # metadata block MUST decode as the empty object.
+    if metalen:
+        meta = json.loads(bytes2str(meta.bytes, compressed))
+    else:
+        meta = {}
 
     is_bin = hive_type == HiveMessageType.BINARY
     bin_type = HiveMindBinaryPayloadType.UNDEFINED

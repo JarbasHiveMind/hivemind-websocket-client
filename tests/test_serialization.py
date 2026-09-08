@@ -190,6 +190,23 @@ class TestDecodeBitstring(unittest.TestCase):
                                   payload='{"type":"test"}', hivemeta={})
         self.assertEqual(decoded.metadata, {})
 
+    def test_zero_length_metadata_block_decodes_as_empty(self):
+        """WIRE-1 §4.1: a decoder MUST accept a zero-length metadata block
+        as the empty object, even though senders emit the canonical ``{}``."""
+        s = BitArray()
+        s.append('uint:1=1')                              # start marker
+        s.append('uint:1=0')                              # versioned=False
+        s.append(f'uint:5={_TYPE2INT[HiveMessageType.BUS]}')
+        s.append('uint:1=0')                              # compression flag=0
+        s.append('uint:8=0')                              # metadata_len = 0
+        s.append(b'{"type":"test","data":{},"context":{}}')
+        while len(s) % 8 != 0:
+            s.insert('uint:1=0', 0)
+        decoded = decode_bitstring(s.bytes)
+        self.assertEqual(decoded.metadata, {})
+        self.assertEqual(decoded.msg_type, HiveMessageType.BUS)
+        self.assertEqual(decoded.payload.msg_type, "test")
+
     def test_nonempty_metadata(self):
         meta = {"key": "val", "num": 42}
         decoded = self._roundtrip(HiveMessageType.BUS,
