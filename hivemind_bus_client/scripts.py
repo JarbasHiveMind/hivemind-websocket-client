@@ -7,6 +7,7 @@ from ovos_bus_client import Message
 from ovos_utils.log import LOG
 from ovos_utils.fakebus import FakeBus
 from hivemind_bus_client.hive_map import HiveMapper
+from hivemind_bus_client.noise import clear_cached_psks
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.identity import NodeIdentity
@@ -28,6 +29,9 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not key and not password and not siteid:
         raise ValueError("please set at least one of key/password/siteid/host")
     identity = NodeIdentity()
+    if password and password != identity.password:
+        # every cached Noise PSK was derived from the old password
+        clear_cached_psks(identity.noise_key)
     identity.password = password or identity.password
     identity.access_key = key or identity.access_key
     identity.site_id = siteid or identity.site_id
