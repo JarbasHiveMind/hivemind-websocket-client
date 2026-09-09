@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.3a1) (2026-09-09)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.2a1...1.1.3a1)
+
+**Merged pull requests:**
+
+- fix: reject a malformed binary frame with one typed error [\#223](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/223) ([JarbasAl](https://github.com/JarbasAl))
+- fix: decode a zero-length metadata block as the empty object [\#222](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/222) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.2a1) (2026-09-09)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.1a1...1.1.2a1)
@@ -362,10 +371,6 @@
 ## [0.9.0a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a3) (2026-06-05)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.0a2...0.9.0a3)
-
-**Merged pull requests:**
-
-- ci: fix broken coverage job \(async tests need pytest-asyncio\) [\#122](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/122) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.9.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a2) (2026-06-05)
 
