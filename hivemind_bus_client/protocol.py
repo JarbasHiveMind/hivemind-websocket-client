@@ -614,6 +614,8 @@ class HiveMindSlaveProtocol:
     def start_handshake(self):
         # negotiated protocol v3 -> the Noise handshake replaces the legacy
         # password/pubkey handshake
+        if self._noise_established:
+            return  # Noise session already established, nothing to start
         if self.noise_handshake is not None:
             return  # Noise handshake already in flight, keep waiting
         if self._server_handshake_payload and self._should_use_noise(self._server_handshake_payload):
@@ -665,6 +667,13 @@ class HiveMindSlaveProtocol:
     def handle_handshake(self, message: HiveMessage):
         LOG.info(f"HANDSHAKE: {message.payload}")
         assert message.msg_type == HiveMessageType.HANDSHAKE
+        # a HANDSHAKE frame arriving after the Noise session is already
+        # established is a stray retry/offer from the peer, not a new
+        # negotiation - starting a fresh handshake here would restart a
+        # live session and get the connection closed by the other side
+        if self._noise_established:
+            LOG.debug("ignoring HANDSHAKE frame, Noise session already established")
+            return
         # protocol v3: server's Noise handshake message
         if "noise" in message.payload and self.noise_handshake is not None:
             self.receive_noise_handshake(message.payload)

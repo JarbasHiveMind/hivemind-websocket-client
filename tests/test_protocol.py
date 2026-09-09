@@ -86,6 +86,66 @@ class TestConnectionState:
         assert proto.internal_protocol.node_id == ""
 
 
+class TestHandshakeAfterNoiseEstablished:
+    """Addresses #231 — a HANDSHAKE frame or a handshake retry arriving after
+    the Noise session is already established must not restart it: the peer
+    treats the fresh Noise message 1 as unexpected and closes the socket."""
+
+    def test_handshake_offer_after_established_is_ignored(self):
+        proto = _make_protocol()
+        proto._noise_established = True
+        proto.noise_handshake = None
+        message = HiveMessage(HiveMessageType.HANDSHAKE,
+                              {"noise": {"patterns": ["XXpsk2"]}})
+
+        with patch.object(proto, "start_noise_handshake") as start:
+            with patch.object(proto, "receive_noise_handshake") as receive:
+                with patch.object(proto, "_emit") as emit:
+                    proto.handle_handshake(message)
+
+        start.assert_not_called()
+        receive.assert_not_called()
+        emit.assert_not_called()
+
+    def test_start_handshake_after_established_is_a_noop(self):
+        proto = _make_protocol()
+        proto._noise_established = True
+        proto.noise_handshake = None
+
+        with patch.object(proto, "start_noise_handshake") as start:
+            with patch.object(proto, "_legacy_start_handshake") as legacy:
+                with patch.object(proto, "_emit") as emit:
+                    proto.start_handshake()
+
+        start.assert_not_called()
+        legacy.assert_not_called()
+        emit.assert_not_called()
+
+
+
+class TestAsyncCloseResetsHandshakeState:
+    """A protocol passed to connect() is reused across connections, so close()
+    must clear the established flag or the next connection ignores the peer's
+    handshake offer and never completes."""
+
+    def test_close_clears_the_established_flag_on_a_reused_protocol(self):
+        import asyncio
+        from hivemind_bus_client.async_client import AsyncHiveMessageBusClient
+
+        client = AsyncHiveMessageBusClient(key="key", password="pw",
+                                           host="ws://127.0.0.1", port=5678)
+        protocol = _make_protocol()
+        protocol._noise_established = True
+        client.protocol = protocol
+
+        # the real reset regenerates the RSA handshake from the identity's
+        # key file, which a mocked identity has no path for
+        with patch("hivemind_bus_client.protocol.HandShake"):
+            asyncio.run(client.close())
+
+        assert protocol._noise_established is False
+
+
 class TestNoiseHandshakePinning:
     """CRYPTO-1 §3.4.5 — a completed XX-path handshake against a static key
     that contradicts a pinned key must abort; a matching or TOFU-absent pin
