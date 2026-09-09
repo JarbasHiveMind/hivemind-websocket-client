@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.3a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.3a2) (2026-09-09)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.3a1...1.1.3a2)
+
+**Merged pull requests:**
+
+- chore: replace stale TODO markers with the clauses that settled them [\#228](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/228) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.3a1) (2026-09-09)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.2a1...1.1.3a1)
@@ -356,17 +364,9 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.0a4...0.9.1a1)
 
-**Merged pull requests:**
-
-- fix: QUERY/CASCADE response companion [\#124](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/124) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.9.0a4](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a4) (2026-06-05)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.0a3...0.9.0a4)
-
-**Merged pull requests:**
-
-- docs: zero-to-hero README + library guide [\#125](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/125) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.9.0a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.0a3) (2026-06-05)
 
