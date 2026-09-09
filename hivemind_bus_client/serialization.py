@@ -1,10 +1,14 @@
 import json
 import sys
+import zlib
 from inspect import signature
 
 from bitstring import BitArray, BitStream
 
-from hivemind_bus_client.exceptions import MetadataTooLarge, UnsupportedProtocolVersion
+from bitstring import ReadError
+
+from hivemind_bus_client.exceptions import (MalformedBinaryFrame, MetadataTooLarge,
+                                            UnsupportedProtocolVersion)
 from ovos_bus_client.message import Message
 from hivemind_bus_client.message import HiveMessageType, HiveMessage, HiveMindBinaryPayloadType
 from hivemind_bus_client.util import compress_payload, decompress_payload, cast2bytes, bytes2str
@@ -123,17 +127,28 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
 
 
 def decode_bitstring(bitstr):
+    """Decode a WIRE-1 §4 binary frame into a HiveMessage.
+
+    Raises MalformedBinaryFrame for any frame the layout cannot account for
+    and UnsupportedProtocolVersion for a frame-format version this decoder
+    does not implement; nothing else escapes for a bad frame.
+    """
     s = BitStream(bitstr)
-    pad = False
-    while not pad:
-        pad = s.read(1).bool
-    versioned = s.read(1).bool
-    if versioned:
-        proto_version = s.read(8).uint
-    else:
-        proto_version = PROTOCOL_VERSION
-    if proto_version <= 1:
-        return _decode_bitstring_v1(s)
+    try:
+        pad = False
+        while not pad:
+            pad = s.read(1).bool
+        versioned = s.read(1).bool
+        if versioned:
+            proto_version = s.read(8).uint
+        else:
+            proto_version = PROTOCOL_VERSION
+        if proto_version <= 1:
+            return _decode_bitstring_v1(s)
+    except (ReadError, ValueError, UnicodeDecodeError, zlib.error) as e:
+        if isinstance(e, (MalformedBinaryFrame, UnsupportedProtocolVersion)):
+            raise
+        raise MalformedBinaryFrame(f"malformed binary frame: {e}") from e
     raise UnsupportedProtocolVersion(f"Max Supported Version: {PROTOCOL_VERSION}")
 
 
@@ -146,7 +161,7 @@ def _decode_bitstring_v1(s):
         # unassigned or reserved value as malformed." Previously any
         # unknown code was silently coerced to a default type, which
         # masked corrupt/forged frames.
-        raise ValueError(
+        raise MalformedBinaryFrame(
             f"malformed binary frame: unassigned WIRE-1 message-type "
             f"code {type_code} (assigned codes: "
             f"{sorted(_INT2TYPE)})"
@@ -155,6 +170,10 @@ def _decode_bitstring_v1(s):
     compressed = s.read(1).bool  # note: bool(BitStream) checks length (always True), .bool reads the actual bit
 
     metalen = s.read(8).uint * 8
+    if metalen > len(s) - s.pos:
+        raise MalformedBinaryFrame(
+            f"malformed binary frame: metadata_len claims {metalen // 8} bytes "
+            f"but only {(len(s) - s.pos) // 8} remain")
     meta = s.read(metalen)
 
     # WIRE-1 §4.1: senders emit the canonical ``{}``, but a zero-length
