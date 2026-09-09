@@ -1,7 +1,9 @@
 import json
-from os.path import basename, dirname, isfile
+import os
+from os.path import basename, dirname, isabs, isdir, isfile, join
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
+from ovos_utils.log import LOG
 from hivemind_bus_client.exceptions import IdentityFileCorrupted
 from typing import Dict, List, Optional
 
@@ -94,6 +96,53 @@ class NodeIdentity:
         """Set the public RSA key for the node."""
         self.IDENTITY_FILE["public_key"] = val
 
+    def _resolve_key_path(self, stored: Optional[str], default_name: str) -> str:
+        """
+        Resolve a key file path recorded in the identity file.
+
+        Key paths are kept next to the identity file so that an identity stays
+        usable when the same file is read under a different HOME. An identity
+        generated in one container records an absolute path; copied into another
+        image whose user differs, that path points into a home the process
+        cannot write, and the key is silently regenerated there - surfacing as a
+        bare ``PermissionError`` from ``os.makedirs`` rather than anything about
+        identities.
+
+        Absolute paths already in existing identity files are still honoured
+        whenever they can actually be used, so nothing that works today changes.
+
+        Args:
+            stored: The path recorded in the identity file, if any.
+            default_name: File name to use when nothing is recorded.
+
+        Returns:
+            str: An absolute path to the key file.
+        """
+        base = dirname(self.IDENTITY_FILE.path)
+        if not stored:
+            return join(base, default_name)
+        if not isabs(stored):
+            return join(base, stored)
+        if isfile(stored):
+            return stored
+        # honour it when it could still be created: walk up to the nearest
+        # directory that exists and ask whether we may write there, so a
+        # deliberate custom location is not second-guessed just because its
+        # parent has not been made yet
+        probe = dirname(stored) or base
+        while probe and not isdir(probe):
+            parent = dirname(probe)
+            if parent == probe:
+                break
+            probe = parent
+        if isdir(probe) and os.access(probe, os.W_OK):
+            return stored
+        resolved = join(base, basename(stored))
+        LOG.warning(f"identity records a key path that cannot be used here: "
+                    f"{stored} - falling back to {resolved}. This usually means "
+                    f"the identity file was generated under a different user.")
+        return resolved
+
     @property
     def private_key(self) -> str:
         """
@@ -104,8 +153,8 @@ class NodeIdentity:
         Returns:
             str: The path to the private key file.
         """
-        return self.IDENTITY_FILE.get("secret_key") or \
-            f"{dirname(self.IDENTITY_FILE.path)}/{self.name}.pem"
+        return self._resolve_key_path(self.IDENTITY_FILE.get("secret_key"),
+                                      f"{self.name}.pem")
 
     @private_key.setter
     def private_key(self, val: str):
@@ -201,8 +250,8 @@ class NodeIdentity:
         Returns:
             str: The path to the Noise static key file.
         """
-        return self.IDENTITY_FILE.get("noise_key") or \
-            f"{dirname(self.IDENTITY_FILE.path)}/{self.name}_noise.key"
+        return self._resolve_key_path(self.IDENTITY_FILE.get("noise_key"),
+                                      f"{self.name}_noise.key")
 
     @noise_key.setter
     def noise_key(self, val: str):
@@ -358,7 +407,9 @@ class NodeIdentity:
         in the identity file.
         """
         pub, secret = create_RSA_key()
-        priv = f"{dirname(self.IDENTITY_FILE.path)}/HiveMindComs.pem"
-        export_RSA_key(secret, priv)
-        self.private_key = priv
+        key_name = "HiveMindComs.pem"
+        export_RSA_key(secret, join(dirname(self.IDENTITY_FILE.path), key_name))
+        # recorded relative to the identity file: an absolute path here is what
+        # makes an identity unusable once the file moves to another user's home
+        self.private_key = key_name
         self.public_key = pub

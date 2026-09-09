@@ -119,8 +119,12 @@ class TestNodeIdentityProperties(unittest.TestCase):
         self.assertIn(".pem", identity.private_key)
 
     def test_private_key_explicit(self):
-        identity, store = self._make_identity({"secret_key": "/my/key.pem"})
-        self.assertEqual(identity.private_key, "/my/key.pem")
+        # a recorded absolute path is honoured as long as it could be created;
+        # /tmp/keys need not exist yet, /tmp is writable. A path that could not
+        # be written - another user's home - falls back, see
+        # TestKeyPathPortability.
+        identity, store = self._make_identity({"secret_key": "/tmp/keys/key.pem"})
+        self.assertEqual(identity.private_key, "/tmp/keys/key.pem")
 
     def test_private_key_setter(self):
         identity, store = self._make_identity({})
@@ -382,3 +386,116 @@ class TestCorruptIdentityFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _FakeIdentityFile(dict):
+    """Minimal stand-in for JsonConfigXDG: a dict that also has a path."""
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def store(self):
+        pass
+
+
+def _identity_with(path, **fields):
+    from hivemind_bus_client.identity import NodeIdentity
+    identity = NodeIdentity.__new__(NodeIdentity)
+    identity.IDENTITY_FILE = _FakeIdentityFile(path)
+    identity.IDENTITY_FILE.update(fields)
+    return identity
+
+
+class TestKeyPathPortability(unittest.TestCase):
+    """Key paths must survive an identity file moving between users.
+
+    An identity generated in one container records where its key lives. Read
+    back under a different HOME - the case that matters is a file generated as
+    `ovos` and used by an image running as `hivemind` - an absolute path points
+    into a home the process cannot write, so the key is regenerated there and
+    os.makedirs fails with a bare PermissionError.
+    """
+
+    def test_missing_path_uses_identity_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                      name="node")
+            self.assertEqual(identity.private_key,
+                             os.path.join(tmpdir, "node.pem"))
+            self.assertEqual(identity.noise_key,
+                             os.path.join(tmpdir, "node_noise.key"))
+
+    def test_relative_path_resolves_against_identity_file(self):
+        """A recorded relative name is what makes an identity portable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                      name="node",
+                                      secret_key="HiveMindComs.pem",
+                                      noise_key="node_noise.key")
+            self.assertEqual(identity.private_key,
+                             os.path.join(tmpdir, "HiveMindComs.pem"))
+            self.assertEqual(identity.noise_key,
+                             os.path.join(tmpdir, "node_noise.key"))
+
+    def test_existing_absolute_path_is_honoured(self):
+        """Identity files already in the wild keep working unchanged."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key = os.path.join(tmpdir, "elsewhere.pem")
+            with open(key, "w") as f:
+                f.write("key")
+            identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                      name="node", secret_key=key)
+            self.assertEqual(identity.private_key, key)
+
+    def test_absolute_path_into_a_writable_directory_is_honoured(self):
+        """A deliberate custom location is not second-guessed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            keydir = os.path.join(tmpdir, "keys")
+            os.makedirs(keydir)
+            key = os.path.join(keydir, "custom.pem")  # does not exist yet
+            identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                      name="node", secret_key=key)
+            self.assertEqual(identity.private_key, key)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root ignores directory write permissions")
+    def test_absolute_path_in_another_users_home_falls_back(self):
+        """The reported bug: identity made as `ovos`, read as `hivemind`."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                      name="node",
+                                      secret_key="/home/ovos/.config/hivemind/HiveMindComs.pem")
+            resolved = identity.private_key
+            self.assertEqual(resolved,
+                             os.path.join(tmpdir, "HiveMindComs.pem"))
+            # the point of the fix: nothing under another home is ever created
+            self.assertFalse(resolved.startswith("/home/ovos"))
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root ignores directory write permissions")
+    def test_unwritable_directory_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            locked = os.path.join(tmpdir, "locked")
+            os.makedirs(locked, mode=0o500)
+            try:
+                identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                          name="node",
+                                          secret_key=os.path.join(locked, "k.pem"))
+                self.assertEqual(identity.private_key,
+                                 os.path.join(tmpdir, "k.pem"))
+            finally:
+                os.chmod(locked, 0o700)
+
+    def test_create_keys_records_a_relative_path(self):
+        """New identities must not bake in an absolute path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = _identity_with(os.path.join(tmpdir, "_identity.json"),
+                                      name="node")
+            identity.create_keys()
+            self.assertEqual(identity.IDENTITY_FILE["secret_key"],
+                             "HiveMindComs.pem")
+            self.assertFalse(os.path.isabs(identity.IDENTITY_FILE["secret_key"]))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "HiveMindComs.pem")))
+            self.assertEqual(identity.private_key,
+                             os.path.join(tmpdir, "HiveMindComs.pem"))
