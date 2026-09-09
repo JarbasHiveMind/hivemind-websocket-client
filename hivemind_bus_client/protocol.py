@@ -363,9 +363,9 @@ class HiveMindSlaveProtocol:
 
     # hivemind events
     def handle_illegal_msg(self, message: HiveMessage):
-        # this should not happen,
-        # only sent from client -> server NOT server -> client
-        # TODO log, kill connection (?)
+        # Only ever sent from client to server. HIVEMIND-MSG-1 §3: a node
+        # forwards or ignores a payload it does not understand and never
+        # rejects the connection over it, so this is logged and dropped.
         LOG.warning(f"illegal message {message}")
 
     def handle_hello(self, message: HiveMessage):
@@ -691,11 +691,6 @@ class HiveMindSlaveProtocol:
             ciphers = message.payload.get("ciphers") or [SupportedCiphers.AES_GCM]
             LOG.debug(f"Server supported encodings: {encodings}")
             LOG.debug(f"Server supported ciphers: {ciphers}")
-            if message.payload.get("crypto_key") and self.hm.crypto_key:
-                pass
-                # we can use the pre-shared key instead of handshake
-                # TODO - flag to give preference to pre-shared key over handshake
-
             self.binarize = message.payload.get("binarize", False)
 
             # retained for the Noise prologue + handshake retries
@@ -708,8 +703,9 @@ class HiveMindSlaveProtocol:
                 self.start_noise_handshake(self._server_handshake_payload)
                 return
 
-            # TODO - flag to give preference to / require password or use RSA handshake
-            # currently if password is set then it is always used
+            # Legacy v2 path, reached only against a pre-v3 server; the
+            # password handshake wins whenever a password is set. Kept for
+            # one stable cycle after the v3 flag-day, then removed.
             if message.payload.get("password") and self.hm.password:
                 self.pswd_handshake = PasswordHandShake(self.hm.password,
                                                         min_bits=_pw_min_bits())

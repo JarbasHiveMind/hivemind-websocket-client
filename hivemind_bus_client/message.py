@@ -32,7 +32,7 @@ class HiveMindBinaryPayloadType(IntEnum):
     """ Pseudo extension type for binary payloads
     it doesnt describe the payload but rather provides instruction to hivemind about how to handle it"""
     UNDEFINED = 0  # no info provided about binary contents
-    RAW_AUDIO = 1  # binary content is raw audio  (TODO spec exactly what "raw audio" means)
+    RAW_AUDIO = 1  # uncompressed PCM, HIVEMIND-AUDIO-1 §2: signed 16-bit little-endian, 16 kHz, mono unless metadata overrides
     NUMPY_IMAGE = 2  # binary content is an image as a numpy array, eg. webcam picture
     FILE = 3  # binary is a file to be saved, additional metadata provided elsewhere
     STT_AUDIO_TRANSCRIBE = 4  # full audio sentence to perform STT and return transcripts
