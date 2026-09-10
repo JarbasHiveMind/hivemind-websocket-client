@@ -244,19 +244,10 @@ class HiveMindHTTPClient(threading.Thread):
 
     def _handle_hive_protocol(self, message: HiveMessage):
         LOG.debug(f"received HiveMind message: {message}")
-        if message.msg_type == HiveMessageType.HELLO:
-            self.protocol.handle_hello(message)
-        if message.msg_type == HiveMessageType.HANDSHAKE:
-            self.protocol.handle_handshake(message)
-        if message.msg_type == HiveMessageType.BUS:
-            self.protocol.handle_bus(message)
-        if message.msg_type == HiveMessageType.BROADCAST:
-            self.protocol.handle_broadcast(message)
-        if message.msg_type == HiveMessageType.PROPAGATE:
-            self.protocol.handle_propagate(message)
-        if message.msg_type == HiveMessageType.INTERCOM:
-            self.protocol.handle_intercom(message)
-
+        # HiveMindSlaveProtocol.bind() registers its handlers through on(),
+        # so they run from _handlers below; calling them here as well handled
+        # every frame twice, and a second handle_handshake re-entered the
+        # Noise exchange with the capability payload and aborted the session.
         if message.msg_type in self._handlers:
             for handler in self._handlers[message.msg_type]:
                 try:
@@ -270,11 +261,6 @@ class HiveMindHTTPClient(threading.Thread):
                 except Exception as e:
                     LOG.error(f"Error in agent message handler: {handler} - {e}")
 
-        # these are not supposed to come from server -> client
-        if message.msg_type == HiveMessageType.ESCALATE:
-            self.protocol.handle_illegal_msg(message)
-        if message.msg_type == HiveMessageType.SHARED_BUS:
-            self.protocol.handle_illegal_msg(message)
 
     ###########
     # main loop

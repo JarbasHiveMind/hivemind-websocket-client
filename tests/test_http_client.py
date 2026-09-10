@@ -198,3 +198,43 @@ class TestNoMutableDefaults:
     def test_connect_bus_default_is_none(self):
         sig = inspect.signature(_hc.HiveMindHTTPClient.connect)
         assert sig.parameters["bus"].default is None
+
+
+class TestProtocolHandlersRunOnce:
+    """bind() registers the protocol's handlers through on(); the dispatcher
+    must not call them a second time by name. Over HTTP a second
+    handle_handshake re-entered the Noise exchange and aborted the session."""
+
+    @pytest.mark.parametrize("msg_type, handler", [
+        (HiveMessageType.HANDSHAKE, "handle_handshake"),
+        (HiveMessageType.HELLO, "handle_hello"),
+        (HiveMessageType.BUS, "handle_bus"),
+        (HiveMessageType.BROADCAST, "handle_broadcast"),
+        (HiveMessageType.PROPAGATE, "handle_propagate"),
+        (HiveMessageType.INTERCOM, "handle_intercom"),
+        (HiveMessageType.ESCALATE, "handle_illegal_msg"),
+        (HiveMessageType.SHARED_BUS, "handle_illegal_msg"),
+    ])
+    def test_each_protocol_handler_runs_exactly_once(self, msg_type, handler):
+        from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+        client = _client()
+        client._handlers = {}
+        client._agent_handlers = {}
+        proto = MagicMock(spec=HiveMindSlaveProtocol)
+        client.protocol = proto
+        # what HiveMindSlaveProtocol.bind() does with the client
+        for t, name in [(HiveMessageType.HELLO, "handle_hello"),
+                        (HiveMessageType.BROADCAST, "handle_broadcast"),
+                        (HiveMessageType.PROPAGATE, "handle_propagate"),
+                        (HiveMessageType.INTERCOM, "handle_intercom"),
+                        (HiveMessageType.ESCALATE, "handle_illegal_msg"),
+                        (HiveMessageType.SHARED_BUS, "handle_illegal_msg"),
+                        (HiveMessageType.QUERY, "handle_query"),
+                        (HiveMessageType.CASCADE, "handle_cascade"),
+                        (HiveMessageType.BUS, "handle_bus"),
+                        (HiveMessageType.HANDSHAKE, "handle_handshake")]:
+            client.on(t, getattr(proto, name))
+        payload = MycroftMessage("speak", {"utterance": "hi"}) \
+            if msg_type == HiveMessageType.BUS else {"pubkey": "x"}
+        client._handle_hive_protocol(HiveMessage(msg_type, payload))
+        assert getattr(proto, handler).call_count == 1
