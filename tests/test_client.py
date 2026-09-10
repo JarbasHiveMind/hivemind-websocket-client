@@ -6,7 +6,8 @@ from threading import Event, Thread
 from unittest.mock import MagicMock, patch
 
 from ovos_bus_client.message import Message
-from websocket import WebSocketConnectionClosedException
+from pyee import EventEmitter
+from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException
 
 from hivemind_bus_client.client import (
     BinaryDataCallbacks,
@@ -168,6 +169,24 @@ class TestHiveMessageBusClientProperties(unittest.TestCase):
 
 
 class TestHiveMessageBusClientOnError(unittest.TestCase):
+    def test_heartbeat_timeout_without_error_listener_still_reconnects(self):
+        client = _make_client()
+        client.emitter = EventEmitter()
+        client.connected_event.set()
+        client.handshake_event.set()
+        client.crypto_key = "old-session"
+        client.noise_transport = MagicMock()
+        with patch("hivemind_bus_client.client.LOG") as log:
+            client.on_error(WebSocketTimeoutException("ping/pong timed out"))
+        log.exception.assert_not_called()
+        self.assertFalse(client.connected_event.is_set())
+        self.assertFalse(client.handshake_event.is_set())
+        self.assertIsNone(client.crypto_key)
+        self.assertIsNone(client.noise_transport)
+        client.client.close.assert_called_once_with()
+        self.assertFalse(client._stop_event.is_set())
+        log.warning.assert_called_once_with("HiveMind websocket heartbeat timed out")
+
     @patch("ovos_bus_client.client.client.MessageBusClient.on_error")
     def test_on_error_clears_handshake(self, mock_super_error):
         client = _make_client()

@@ -14,7 +14,12 @@ from ovos_utils.fakebus import FakeBus
 from ovos_utils.log import LOG
 from poorman_handshake.asymmetric.utils import load_RSA_key
 from pyee import EventEmitter
-from websocket import ABNF, WebSocketApp, WebSocketConnectionClosedException
+from websocket import (
+    ABNF,
+    WebSocketApp,
+    WebSocketConnectionClosedException,
+    WebSocketTimeoutException,
+)
 
 from hivemind_bus_client.encryption import (
     SupportedCiphers,
@@ -329,7 +334,7 @@ class HiveMessageBusClient(OVOSBusClient):
             return
 
         self._clear_connection_state()
-        # Closed/refused/reset are expected reconnect triggers. Log them
+        # Closed/refused/reset/timeout are expected reconnect triggers. Log them
         # without emitting pyee's special "error" event, which raises when no
         # application listener is registered. Unclassified failures remain
         # observable to application error listeners below.
@@ -339,6 +344,8 @@ class HiveMessageBusClient(OVOSBusClient):
             LOG.warning("HiveMind websocket connection refused")
         elif isinstance(error, ConnectionResetError):
             LOG.warning("HiveMind websocket connection reset")
+        elif isinstance(error, WebSocketTimeoutException):
+            LOG.warning("HiveMind websocket heartbeat timed out")
         else:
             LOG.warning("HiveMind websocket error: %r", error)
             # Event handlers are application callbacks; one faulty listener
