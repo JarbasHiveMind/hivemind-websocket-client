@@ -390,6 +390,11 @@ class AsyncHiveMessageBusClient:
             self.crypto_key = None
             self.noise_transport = None
             self.connected_event.clear()
+            if self.protocol is not None:
+                # the sync client does this in _clear_connection_state: a
+                # protocol reused across connections must not carry the
+                # previous session's handshake state into the next one
+                self.protocol.reset_connection_state()
             await self._teardown_transport()
         self.emitter.emit("close")
 
