@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.8a1) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.7a1...1.1.8a1)
+
+**Merged pull requests:**
+
+- fix\(http\): speak the protocol v3 Noise transport in both directions [\#242](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/242) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.7a1) (2026-09-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.6a3...1.1.7a1)
@@ -333,10 +341,6 @@
 ## [0.10.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.4a1...0.10.5a1)
-
-**Merged pull requests:**
-
-- fix: keep synchronous client reconnecting after websocket closes [\#141](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/141) ([goldyfruit](https://github.com/goldyfruit))
 
 ## [0.10.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.4a1) (2026-08-02)
 
