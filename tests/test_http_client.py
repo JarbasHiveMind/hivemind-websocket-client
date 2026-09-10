@@ -172,7 +172,9 @@ class TestRequestsCarryTimeout:
 
 class TestReceiveThreadSurvivesServerError:
     """A server-error payload must not kill the daemon receive thread while
-    leaving connected set — the caller would keep emitting into a dead link."""
+    leaving connected set — the caller would keep emitting into a dead link.
+    The loop ends the session and goes back to waiting for connect(); it
+    returns once the caller shuts the client down."""
 
     def test_run_disconnects_on_server_error(self):
         client = _client()
@@ -181,8 +183,12 @@ class TestReceiveThreadSurvivesServerError:
         client.stopped = threading.Event()
         client.get_messages = MagicMock(side_effect=RuntimeError("boom"))
         client.get_binary_messages = MagicMock(return_value=[])
-        client.disconnect = MagicMock(
-            side_effect=lambda: client.connected.clear())
+
+        def disconnect():
+            client.connected.clear()
+            client.stopped.set()  # the caller shuts down after the error
+
+        client.disconnect = MagicMock(side_effect=disconnect)
 
         client.run()  # must return cleanly, not raise out of the thread
 

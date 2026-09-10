@@ -679,8 +679,19 @@ class HiveMindSlaveProtocol:
         if self._noise_established:
             LOG.debug("ignoring HANDSHAKE frame, Noise session already established")
             return
-        # protocol v3: server's Noise handshake message
-        if "noise" in message.payload and self.noise_handshake is not None:
+        # protocol v3: server's Noise handshake message. Only a handshake
+        # MESSAGE carries noise.msg; the server's OFFER carries
+        # noise.patterns/noise.suites, and a transport may redeliver it (the
+        # HTTP protocol queues per access key and re-sends HELLO + offer
+        # whenever /connect finds no cached connection). Feeding a repeated
+        # offer to receive_noise_handshake would abort the handshake as a
+        # malformed envelope and discard the genuine reply behind it.
+        noise = message.payload.get("noise")
+        if isinstance(noise, dict) and self.noise_handshake is not None:
+            if "msg" not in noise:
+                LOG.debug("ignoring a repeated HANDSHAKE offer received "
+                          "while the Noise handshake is in flight")
+                return
             self.receive_noise_handshake(message.payload)
             return
         # master is performing the handshake

@@ -16,6 +16,7 @@ from hivemind_bus_client.client import BinaryDataCallbacks
 from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, encrypt_bin, decrypt_bin,
                                             SupportedEncodings, SupportedCiphers, hybrid_encrypt)
 from hivemind_bus_client.exceptions import MetadataTooLarge
+from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.identity import NodeIdentity
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
@@ -74,6 +75,10 @@ class HiveMindHTTPClient(threading.Thread):
         self._host = host
         self.init_identity()
         self.crypto_key = crypto_key
+        # protocol v3: set by HiveMindSlaveProtocol.receive_noise_handshake()
+        # once the Noise session is up, cleared by _abort_noise(); every
+        # message after that point goes through it in both directions
+        self.noise_transport = None
         self.allow_self_signed = self_signed
         self.share_bus = share_bus
         self.handshake_event = threading.Event()
@@ -92,6 +97,7 @@ class HiveMindHTTPClient(threading.Thread):
         LOG.info(f"Session ID: {sess.session_id}")
         self.session_id = sess.session_id
         self.stopped = threading.Event()
+        self._session_lock_ = threading.RLock()
         self.connected = threading.Event()
         self._handlers: Dict[str, List[Callable[[HiveMessage], None]]] = {}
         self._agent_handlers: Dict[str, List[Callable[[MycroftMessage], None]]] = {}
@@ -110,6 +116,12 @@ class HiveMindHTTPClient(threading.Thread):
             self.handshake_event.wait(timeout=timeout)
             if self.handshake_event.is_set():
                 break
+            if not self.connected.is_set():
+                # the hub ended the session during the handshake (rejected
+                # credentials, a tampered exchange): restarting the handshake
+                # on a reset protocol would only report "not connected"
+                raise ConnectionRefusedError(
+                    "HiveMind closed the session during the handshake")
             if attempts >= max_retries:
                 raise ConnectionRefusedError(
                     "timed out waiting for HiveMind handshake")
@@ -181,8 +193,60 @@ class HiveMindHTTPClient(threading.Thread):
             raise RuntimeError("host not set, please pass host and port or "
                                "call 'hivemind-client set-identity'")
 
+    _session_lock_factory = threading.Lock()
+
+    def _session_lock(self) -> threading.RLock:
+        """Serialises session teardown against frame processing.
+
+        A send failure invalidates the session from the caller's thread while
+        the receive thread may be inside a Noise handshake step; without the
+        lock the handshake would find its state reset from under it and
+        misreport a wrong password. ``__init__`` creates it; the lazy path
+        is for subclasses and tests that build clients without ``__init__``.
+        """
+        lock = self.__dict__.get("_session_lock_")
+        if lock is None:
+            # two threads may take this branch at once on an instance built
+            # without __init__; they must end up sharing one lock
+            with HiveMindHTTPClient._session_lock_factory:
+                lock = self.__dict__.get("_session_lock_")
+                if lock is None:
+                    lock = self.__dict__["_session_lock_"] = threading.RLock()
+        return lock
+
     def on_message(self, message: Union[bytes, str]):
-        if self.crypto_key:
+        with self._session_lock():
+            self._on_message_locked(message)
+
+    def _on_message_locked(self, message: Union[bytes, str]):
+        # A Noise failure can invalidate the session while the run() loop is
+        # still iterating the frames it already drained; a frame that follows
+        # must not be processed as cleartext on what was a v3 session.
+        if not self.connected.is_set():
+            return
+        # getattr: subclasses and tests build clients without __init__
+        noise_transport = getattr(self, "noise_transport", None)
+        if noise_transport is not None:
+            # protocol v3: every post-handshake message is a Noise transport
+            # frame -- over HTTP it arrives through the binary queue as
+            # bytes; there is no cleartext v3 session (CRYPTO-1 §3.4.5)
+            if not isinstance(message, bytes):
+                LOG.error("dropping non-Noise message received on a "
+                          "protocol v3 session")
+                return
+            try:
+                message = noise_transport.decrypt_frame(message)
+            except NoiseTransportFailed:
+                # tampered / replayed / out-of-order: the receive counter
+                # is out of sync, so the session is dead
+                LOG.exception("rejecting invalid Noise transport message, "
+                              "disconnecting")
+                self.close_connection()
+                return
+            if message is None:
+                # a chunk of a multi-frame message, buffered for reassembly
+                return
+        elif self.crypto_key:
             # handle binary encryption
             if isinstance(message, bytes):
                 message = decrypt_bin(self.crypto_key, message, cipher=self.cipher)
@@ -265,31 +329,53 @@ class HiveMindHTTPClient(threading.Thread):
     ###########
     # main loop
     def run(self):
-        self.stopped.clear()
+        """Poll the hub for messages while a session is live.
 
-        # Connect to the server
-        self.connected.wait()
-
-        # Retrieve messages until stop
+        The thread outlives the session: it waits for ``connect()`` to mark a
+        session live, polls until that session ends (a server error, a Noise
+        failure that invalidated it, a ``disconnect()``), then waits for the
+        next ``connect()``. A ``Thread`` cannot be started twice, so this is
+        what lets a client reconnect. ``stopped`` is the worker's lifetime
+        signal and is never re-armed here: a ``shutdown()`` that lands before
+        the thread gets going must still win.
+        """
         while not self.stopped.is_set():
+            if not self.connected.wait(timeout=1):
+                continue
             try:
                 messages = self.get_messages() + self.get_binary_messages()
-            except RuntimeError as e:
-                # A server-error payload used to propagate out of run(),
-                # killing this daemon thread while self.connected stayed set —
-                # callers then kept emit()-ing into a dead connection. Instead
-                # tear the connection down cleanly so the caller can see it.
-                LOG.warning(f"HiveMind server returned an error, "
-                            f"disconnecting: {e}")
-                self.disconnect()
-                break
+            except (RuntimeError, ConnectionError) as e:
+                # a server error payload, or a session invalidated between
+                # two polls: end this session cleanly so callers see it
+                if self.connected.is_set():
+                    LOG.warning(f"HiveMind server returned an error, "
+                                f"disconnecting: {e}")
+                    self.close_connection()
+                continue
+            except requests.RequestException as e:
+                # the hub is unreachable for the moment; the session state is
+                # untouched, the next poll will find out
+                LOG.warning(f"HiveMind poll failed: {e}")
+                self.stopped.wait(1)
+                continue
             for hm in messages:
-                self.on_message(hm)
+                if not self.connected.is_set():
+                    break  # the session ended under this batch
+                try:
+                    self.on_message(hm)
+                except Exception:
+                    # a handler that raised through the dispatch (a reply the
+                    # hub refused mid-handshake) has already been logged where
+                    # it happened; the session is unusable, the loop is not
+                    LOG.exception("HiveMind message handling failed, "
+                                  "disconnecting")
+                    self._invalidate_local_session()
+                    break
 
             self.stopped.wait(1)
 
-        # Disconnect from the server
-        self.disconnect()
+        if self.connected.is_set():
+            self.disconnect()
 
     def shutdown(self):
         self.stopped.set()
@@ -362,6 +448,23 @@ class HiveMindHTTPClient(threading.Thread):
                     raise
                 LOG.warning(f"sending {message.msg_type} as a text frame: {e}")
 
+        with self._session_lock():
+            noise_transport = getattr(self, "noise_transport", None)
+        if noise_transport is not None:
+            # protocol v3: the Noise transport CipherState replaces the v2
+            # AEAD, HELLO included; send_message chunks an oversize payload
+            # transparently, one POST per frame. There is no response to
+            # return: each frame's POST is checked as it goes. The transport
+            # is captured under the session lock so a concurrent
+            # disconnect()+connect() cannot swap it out from under this send;
+            # _send_noise_frame is bound to this transport so a stale send
+            # that outlives it never invalidates the session connect() has
+            # since installed.
+            noise_transport.send_message(
+                bitstr.bytes if bitstr is not None else serialize_message(message),
+                lambda frame: self._send_noise_frame(frame, noise_transport))
+            return
+
         if bitstr is not None:
             if self.crypto_key:
                 payload = encrypt_bin(self.crypto_key, bitstr.bytes, cipher=self.cipher)
@@ -377,6 +480,69 @@ class HiveMindHTTPClient(threading.Thread):
         return requests.post(url, data={"message": payload},
                              params={"authorization": self.auth},
                              timeout=self.http_timeout)
+
+    def _send_noise_frame(self, frame: bytes, transport) -> None:
+        """POST one Noise transport frame.
+
+        HTTP has no binary opcode, so the frame travels base64-encoded and
+        flagged ``binary=1``; the listener decodes it back to the bytes that
+        ``HiveMindClientConnection.decode`` requires on a v3 session.
+
+        ``transport`` is the ``noise_transport`` this frame was encrypted
+        against, captured by the caller before the POST. A failure only
+        invalidates the session if that transport is still the live one: a
+        stale transport that a later ``connect()`` has already replaced must
+        not tear down the new session it never touched.
+        """
+        def _invalidate_if_current():
+            if self.noise_transport is transport:
+                self._invalidate_local_session()
+            else:
+                LOG.warning("a Noise transport frame failed for a session "
+                            "connect() has already replaced; leaving the "
+                            "current session untouched")
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/send_message",
+                data={"message": pybase64.b64encode(frame).decode("utf-8"),
+                      "binary": "1"},
+                params={"authorization": self.auth},
+                timeout=self.http_timeout)
+        except Exception:
+            # the send counter has advanced for this frame; a caught error
+            # would otherwise let the next emit() reuse a counter the server
+            # rejects, so tear the session down before propagating
+            _invalidate_if_current()
+            raise
+        if not response.ok:
+            _invalidate_if_current()
+            raise ConnectionError(
+                f"HiveMind rejected a Noise transport frame: HTTP {response.status_code}")
+        # The listener answers some rejections with HTTP 200 and an error
+        # body ("Client is not connected" once it dropped the session), the
+        # same convention get_messages() already follows.
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        error = body.get("error") if isinstance(body, dict) else None
+        if error:
+            _invalidate_if_current()
+            raise ConnectionError(f"HiveMind rejected a Noise transport frame: {error}")
+
+    def close_connection(self):
+        """Release a session that has become unusable.
+
+        ``HiveMindSlaveProtocol._abort_noise`` calls this on the bound client
+        after a failed or tampered Noise exchange. The websocket client
+        closes its socket; here the session is released locally and on the
+        hub, and the receive loop goes back to waiting for ``connect()``.
+        """
+        try:
+            self.disconnect()
+        except Exception:
+            LOG.exception("failed to release the aborted HTTP session")
 
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
@@ -444,15 +610,33 @@ class HiveMindHTTPClient(threading.Thread):
         self.wait_for_handshake(max_retries=handshake_max_retries)
         return payload
 
+    def _invalidate_local_session(self) -> None:
+        """Drop every piece of local session state.
+
+        Called on disconnect and on any send/receive failure. It never depends
+        on a successful ``/disconnect``: a stale ``noise_transport`` would
+        encrypt the next HELLO against a CipherState the server has dropped,
+        and advance a send counter the server rejects.
+        """
+        with self._session_lock():
+            self.connected.clear()
+            self.handshake_event.clear()
+            self.noise_transport = None
+            protocol = getattr(self, "protocol", None)
+            if protocol is not None and hasattr(protocol, "reset_connection_state"):
+                protocol.reset_connection_state()
+
     def disconnect(self) -> dict:
         """Disconnect from the HiveMind server."""
         LOG.info("Disconnecting...")
         url = f"{self.base_url}/disconnect"
-        response = requests.post(url, params={"authorization": self.auth},
-                                 timeout=self.http_timeout)
-        self.connected.clear()
-        self.handshake_event.clear()
-        return response.json()
+        try:
+            response = requests.post(url, params={"authorization": self.auth},
+                                     timeout=self.http_timeout)
+            return response.json()
+        finally:
+            # even if the POST times out, the local session must not survive
+            self._invalidate_local_session()
 
     def get_messages(self) -> List[str]:
         """Retrieve messages from the HiveMind server."""
