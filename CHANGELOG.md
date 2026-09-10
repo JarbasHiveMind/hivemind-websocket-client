@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.6a2) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.6a1...1.1.6a2)
+
+**Merged pull requests:**
+
+- ci: run tests/e2e against the published hivemind-core [\#230](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/230) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.6a1) (2026-09-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.5a1...1.1.6a1)
@@ -357,10 +365,6 @@
 ## [0.10.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a1) (2026-07-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.1a1...0.10.2a1)
-
-**Merged pull requests:**
-
-- fix: async client negotiates v3 Noise + awaits handshake emit [\#136](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/136) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.10.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.1a1) (2026-07-04)
 
