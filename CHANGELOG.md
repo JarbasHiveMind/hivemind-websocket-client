@@ -10,6 +10,7 @@
 
 **Merged pull requests:**
 
+- fix: don't restart the Noise handshake after establishment [\#232](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/232) ([JarbasAl](https://github.com/JarbasAl))
 - fix: take the server's secret in the one-way legacy RSA handshake [\#225](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/225) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.1.3a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.3a2) (2026-09-09)
@@ -32,10 +33,6 @@
 ## [1.1.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.2a1) (2026-09-09)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.1a1...1.1.2a1)
-
-**Closed issues:**
-
-- HiveMindSlaveProtocol.handle\_intercom crashes on a non-HiveMessage payload [\#130](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/130)
 
 **Merged pull requests:**
 
