@@ -49,12 +49,7 @@ test = [
 ]
 e2e = [
     "hivescope>=0.5.0a2",
-    # the protocol v3 e2e matrix additionally needs a v3-capable (Noise)
-    # hivemind-core on the master side. It is installed by the build-tests
-    # workflow via pre_install_pip (a git ref), NOT declared here — PyPI
-    # rejects packages whose metadata carries a direct URL dependency.
-    # TODO: replace with a prerelease floor pin once hivemind-core protocol
-    # v3 is released, then add it back here.
+    "hivemind-core>=5.1.0a2,<6.0.0",
 ]
 benchmark = [
     "websockets>=10.0",
