@@ -23,7 +23,8 @@ from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.noise import (NOISE_PATTERN_KK, NOISE_SUPPORTED, PROTOCOL_V3,
                                        NoiseTransport, NoiseHandshakeFailed,
                                        build_prologue, canonical_json,
-                                       noise_protocol_name, select_noise_options,
+                                       forget_cached_psk, noise_protocol_name,
+                                       select_noise_options,
                                        start_noise_handshake)
 from poorman_handshake import HandShake, PasswordHandShake
 from poorman_handshake.asymmetric.utils import load_RSA_key, verify_RSA
@@ -345,6 +346,13 @@ class HiveMindSlaveProtocol:
         # most failures are observable.
         if not self._noise_established:
             self._drop_stale_pin_after_kk_failure()
+            if self.noise_handshake is not None:
+                # A handshake was in flight and the socket closed under it.
+                # For KKpsk0 that is how a rejected PSK looks from here (the
+                # server closes rather than answering), so the cached key
+                # may be the stale one. Forgetting a good key on a network
+                # drop costs one derivation.
+                self._forget_cached_psk()
         self._noise_established = False
         self.handshake = HandShake(self.identity.private_key)
         self.pswd_handshake = None
@@ -470,7 +478,7 @@ class HiveMindSlaveProtocol:
                 initiator=True, pattern=pattern, suite=suite,
                 password=self.hm.password, node_id=node_id,
                 prologue=prologue, key_path=self.identity.noise_key,
-                remote_pubkey=pinned)
+                remote_pubkey=pinned, cache_scope=self.hm.key)
             self._noise_pattern = pattern
             noise_payload = canonical_json({
                 "binarize": self.binarize,
@@ -501,6 +509,20 @@ class HiveMindSlaveProtocol:
             return
         try:
             noise_payload = self.noise_handshake.read_message(msg)
+        except Exception:
+            # wrong password / tampered prologue / bad static key -> fatal,
+            # fails cryptographically at handshake time (§3.4.3)
+            LOG.exception("protocol v3 Noise handshake FAILED "
+                          "(wrong password or tampered negotiation)")
+            self._drop_stale_pin_after_kk_failure()
+            # The PSK is one of the things this message authenticates, so the
+            # rejection may mean the cached key was derived from a password
+            # that has since been rotated. Drop it, so the next attempt
+            # derives from the current one instead of failing the same way.
+            self._forget_cached_psk()
+            self._abort_noise("Noise handshake authentication failure")
+            return
+        try:
             if not self.noise_handshake.handshake_finished:
                 # XXpsk2 message 3: our (encrypted) static key + final DH mix
                 msg3 = self.noise_handshake.write_message(b"")
@@ -508,12 +530,10 @@ class HiveMindSlaveProtocol:
                                          {"noise": {"msg": msg3.hex()}}))
             transport = NoiseTransport(self.noise_handshake)
         except Exception:
-            # wrong password / tampered prologue / bad static key -> fatal,
-            # fails cryptographically at handshake time (§3.4.3)
-            LOG.exception("protocol v3 Noise handshake FAILED "
-                          "(wrong password or tampered negotiation)")
-            self._drop_stale_pin_after_kk_failure()
-            self._abort_noise("Noise handshake authentication failure")
+            # the key was right (message 2 verified); the socket or the
+            # transport failed us, which is no reason to forget anything
+            LOG.exception("protocol v3 Noise handshake could not complete")
+            self._abort_noise("Noise handshake failure")
             return
 
         # TOFU-then-pin the server's static key (§3.4.5)
@@ -552,6 +572,22 @@ class HiveMindSlaveProtocol:
                                   "session": sess.serialize(),
                                   "site_id": self.site_id}))
         self.hm.handshake_event.set()
+
+    def _forget_cached_psk(self) -> None:
+        """Drop the cached PSK for the hub this connection was talking to.
+
+        Cleanup on an already-failed handshake: it must never raise and mask
+        the real error, and it is a no-op before the hub said HELLO (no node
+        id to key the cache on).
+        """
+        internal = self.internal_protocol
+        node_id = internal.node_id if internal is not None else None
+        if not node_id:
+            return
+        try:
+            forget_cached_psk(self.identity.noise_key, node_id, self.hm.key)
+        except Exception:
+            LOG.debug("could not drop the cached Noise PSK", exc_info=True)
 
     def _drop_stale_pin_after_kk_failure(self) -> None:
         """Forget the pinned server key when a ``KKpsk0`` handshake fails.

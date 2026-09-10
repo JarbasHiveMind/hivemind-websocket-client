@@ -19,9 +19,12 @@ the ``poorman_handshake.noise`` primitive:
 Protocol version 2 and below are untouched: this module is only entered when
 both peers negotiate version 3.
 """
+import hashlib
 import json
 import logging
 import os
+import stat
+import tempfile
 import threading
 from binascii import hexlify
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -330,6 +333,206 @@ class NoiseTransport:
             raise NoiseTransportFailed(f"unknown v3 frame marker: {marker!r}")
 
 
+#: Cached pre-shared keys, beside the static key.
+#:
+#: Only the key is stored. A fingerprint of the password would make rotation
+#: cheap to detect, but it would also put a fast hash of the password in the
+#: same file as the key it protects -- and a fast hash is exactly the offline
+#: oracle argon2id exists to deny. A rotated password is noticed when the hub
+#: rejects the stale key.
+#:
+#: The cache belongs to one static key and is named after it
+#: (``<key>_psks.json`` beside ``<key>.key``): two identities in one directory
+#: keep separate caches. Within one file, entries are partitioned by the
+#: client's access key as well as the hub's node id, so two clients that share
+#: a key file but present different credentials to the same hub keep separate
+#: entries instead of loading, failing on and evicting each other's key.
+NOISE_PSK_CACHE_SUFFIX = "_psks.json"
+#: A Noise PSK is exactly this long; anything else is not a key.
+_PSK_LENGTH = 32
+#: The node id comes from the peer's cleartext HELLO, before anything is
+#: authenticated, so bound what one can make us keep: a sane id length, the
+#: last few hubs this identity spoke to, and a file that is not worth parsing
+#: past a size no honest cache reaches.
+_MAX_NODE_ID_LENGTH = 512
+_MAX_CACHE_ENTRIES = 32
+_MAX_CACHE_BYTES = 1 << 20
+
+
+def _psk_cache_path(key_path: Optional[str]) -> Optional[str]:
+    """The PSK cache for the static key at ``key_path``, beside it."""
+    if not key_path:
+        return None
+    base, _extension = os.path.splitext(key_path)
+    return f"{base}{NOISE_PSK_CACHE_SUFFIX}"
+
+
+def _readable_by_others(path: str) -> bool:
+    """Whether a POSIX file is readable by group or world (never on Windows)."""
+    if os.name != "posix":
+        return False
+    try:
+        return bool(stat.S_IMODE(os.stat(path).st_mode) & 0o077)
+    except OSError:
+        return False
+
+
+def _read_psk_cache(path: str) -> Dict[str, Any]:
+    """The cache file's contents, or an empty cache for anything unusable.
+
+    Derivable state: a damaged, oversized or too-permissive cache costs one
+    derivation, never a failed connection. A file others can read is refused
+    rather than repaired -- the key in it must be treated as exposed, and a
+    fresh derivation replaces it under owner-only permissions.
+    """
+    try:
+        if os.path.getsize(path) > _MAX_CACHE_BYTES or _readable_by_others(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as handle:
+            cache = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, RecursionError):
+        return {}
+    return cache if isinstance(cache, dict) else {}
+
+
+def _write_private_json(path: str, payload: dict) -> None:
+    """Write key material so it is never readable by anyone else, even briefly.
+
+    ``open(path, "w")`` followed by ``chmod`` leaves a window in which the file
+    exists with umask permissions and already holds the key. Create it
+    owner-only from the start (``mkstemp`` opens with mode 0600 and a name no
+    other writer in this or another process can collide with), then rename it
+    into place so a failed write cannot leave a truncated cache behind. Two
+    writers racing on the same cache are last-writer-wins; the loser's entry
+    is re-derived next time.
+    """
+    directory = os.path.dirname(path) or "."
+    fd, temporary = tempfile.mkstemp(
+        dir=directory, prefix=f".{os.path.basename(path)}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _cacheable_node_id(node_id: Any) -> bool:
+    return isinstance(node_id, str) and 0 < len(node_id) <= _MAX_NODE_ID_LENGTH
+
+
+def _cache_entry(node_id: str, scope: Optional[str]) -> str:
+    """The cache entry name for ``node_id`` under ``scope``.
+
+    ``scope`` is the client's access key when the caller has one. It is
+    stored as a truncated digest so the file never carries the credential
+    itself, and it discriminates clients, not passwords: the access key is a
+    random token that already sits in the clear in the identity file beside
+    this cache, not the low-entropy secret argon2id protects, so its digest
+    is no oracle for anything.
+    """
+    if not scope:
+        return node_id
+    tag = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:16]
+    return f"{tag}@{node_id}"
+
+
+def load_cached_psk(key_path: Optional[str], node_id: str,
+                    scope: Optional[str] = None) -> Optional[bytes]:
+    """The stored PSK for ``node_id`` (under ``scope``), or None when none."""
+    path = _psk_cache_path(key_path)
+    if not path or not _cacheable_node_id(node_id):
+        return None
+    encoded = _read_psk_cache(path).get(_cache_entry(node_id, scope))
+    if not isinstance(encoded, str):
+        return None
+    try:
+        psk = bytes.fromhex(encoded)
+    except ValueError:
+        return None
+    # bytes.fromhex accepts any even-length value; "00" would come back as a
+    # one-byte "hit" and hand invalid key material to the handshake.
+    if len(psk) != _PSK_LENGTH:
+        return None
+    return psk
+
+
+def save_cached_psk(key_path: Optional[str], node_id: str,
+                    psk: bytes, scope: Optional[str] = None) -> None:
+    """Persist a derived PSK so the next connection skips argon2id.
+
+    Best effort: the cache is an optimisation, so failing to write it must
+    never fail a connection. The key is stored before the handshake confirms
+    it, which is safe because derivation is deterministic: a key derived from
+    a wrong password is simply the wrong password's key, the handshake fails
+    the same way next time, and the failure forgets it.
+    """
+    path = _psk_cache_path(key_path)
+    if not path or not _cacheable_node_id(node_id) or len(psk) != _PSK_LENGTH:
+        return
+    try:
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        cache = _read_psk_cache(path)
+        entry = _cache_entry(node_id, scope)
+        if cache.get(entry) == psk.hex():
+            return
+        cache.pop(entry, None)
+        cache[entry] = psk.hex()
+        # insertion order is age; keep the most recent hubs only
+        while len(cache) > _MAX_CACHE_ENTRIES:
+            cache.pop(next(iter(cache)))
+        _write_private_json(path, cache)
+    except OSError:
+        LOG.debug("could not persist the Noise PSK cache at %s", path)
+
+
+def forget_cached_psk(key_path: Optional[str], node_id: str,
+                      scope: Optional[str] = None) -> None:
+    """Drop a stored key.
+
+    Called when the hub rejects the key we offered, which is how a rotated
+    password is noticed: the next attempt derives from the current one.
+    """
+    path = _psk_cache_path(key_path)
+    if not path or not _cacheable_node_id(node_id):
+        return
+    try:
+        cache = _read_psk_cache(path)
+        if cache.pop(_cache_entry(node_id, scope), None) is None:
+            return
+        _write_private_json(path, cache)
+    except OSError:
+        LOG.debug("could not update the Noise PSK cache at %s", path)
+
+
+def clear_cached_psks(key_path: Optional[str]) -> None:
+    """Drop every stored key for the identity at ``key_path``.
+
+    For a deliberate local password change: every entry was derived from the
+    old password, so without this the next connection to each hub fails once
+    before the rejection forgets the entry.
+    """
+    path = _psk_cache_path(key_path)
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        LOG.debug("could not clear the Noise PSK cache at %s", path)
+
+
 def start_noise_handshake(initiator: bool,
                           pattern: str,
                           suite: str,
@@ -339,7 +542,8 @@ def start_noise_handshake(initiator: bool,
                           key_path: Optional[str] = None,
                           remote_pubkey: Optional[str] = None,
                           *,
-                          psk: Optional[bytes] = None
+                          psk: Optional[bytes] = None,
+                          cache_scope: Optional[str] = None
                           ) -> "NoiseHandShake":
     """Initialize a Noise handshake for a HiveMind protocol-v3 connection.
 
@@ -357,16 +561,24 @@ def start_noise_handshake(initiator: bool,
             May be omitted if ``psk`` is supplied instead.
         node_id: the server's node id announced in its cleartext HELLO.
         prologue: bytes from :func:`build_prologue`.
-        key_path: where the static X25519 private key persists.
+        key_path: where the static X25519 private key persists. On the
+            initiating side the derived PSK is cached beside it
+            (``<key>_psks.json``), so the directory must be writable and
+            private to this identity; without a ``key_path`` nothing is
+            cached and every connection derives.
         remote_pubkey: hex-encoded pinned remote static key (required for
             ``KKpsk0``).
+        cache_scope: the initiator's access key, which partitions its cache
+            entries from those of another client sharing the same key file
+            and hub; stored as a digest, never as the key itself.
         psk: a precomputed 32-byte pre-shared key, i.e. the output of
             ``derive_psk(password, node_id=node_id)``. Deriving the PSK
             runs argon2id (time_cost=3, memory_cost=64 MiB), which takes
-            150-330ms; since the salt is ``SHA-256(node_id)`` the result is
-            constant for a given (password, node_id) pair, so callers that
-            handshake repeatedly against the same node should derive it
-            once and pass it here to skip re-deriving it every time. It
+            from a few hundred milliseconds on a workstation to seconds on
+            a small board; since the salt is ``SHA-256(node_id)`` the result
+            is constant for a given (password, node_id) pair, so callers
+            that handshake repeatedly against the same node should derive
+            it once and pass it here (or let the ``key_path`` cache do it). It
             must equal ``derive_psk(password, node_id=node_id)`` for this
             node — a mismatched psk does not fail locally, it makes the
             handshake fail on the peer. Takes precedence over ``password``
@@ -380,6 +592,22 @@ def start_noise_handshake(initiator: bool,
     name = noise_protocol_name(pattern, suite)
     if key_path and os.path.dirname(key_path):
         os.makedirs(os.path.dirname(key_path), exist_ok=True)
+
+    # argon2id at 64 MiB, and the answer never changes for a password and a
+    # node id -- so derive once and keep it beside the static key. A caller
+    # that already has one keeps precedence; this only fills in the case where
+    # the password would otherwise be re-derived on every connection.
+    #
+    # Initiator only. On the listening side ``node_id`` is our own while the
+    # password varies per client, so a node-keyed cache would collide between
+    # clients and would collect every client's PSK into one file; the hub
+    # keeps its own bounded LRU instead.
+    if psk is None and initiator and password is not None:
+        psk = load_cached_psk(key_path, node_id, cache_scope)
+        if psk is None:
+            psk = derive_psk(password, node_id=node_id)
+            save_cached_psk(key_path, node_id, psk, cache_scope)
+
     try:
         return NoiseHandShake(
             initiator=initiator,
@@ -393,3 +621,5 @@ def start_noise_handshake(initiator: bool,
         )
     except Exception as e:
         raise NoiseHandshakeFailed(f"failed to initialize {name}: {e}") from e
+
+
