@@ -7,6 +7,7 @@ from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.protocol import CascadeAggregator, HiveMindSlaveProtocol
 from hivemind_bus_client.hive_map import HiveMapper, NodeInfo
 from hivemind_bus_client.identity import NodeIdentity
+from poorman_handshake.asymmetric import HandShake
 from poorman_handshake.symmetric.strength import WeakPasswordError
 
 
@@ -58,6 +59,34 @@ class TestHandshakeInitialization:
 
         receive.assert_called_once_with("pubkey-envelope")
         debug.assert_any_call("Key size: 256bit")
+
+
+class TestLegacyPubkeyHandshake:
+    """A pre-v3 server sends one RSA envelope and the client takes the
+    server's secret as the session key; the client never sends an envelope
+    of its own, so it must not need a secret of its own to receive one."""
+
+    def _server_and_client(self):
+        server = HandShake(key_size=1024)
+        client = HandShake(key_size=1024)
+        proto = _make_protocol()
+        proto.handshake = client
+        proto.pswd_handshake = None
+        proto._emit = MagicMock()
+        envelope = server.generate_handshake(client.pubkey)
+        return server, proto, envelope
+
+    def test_untrusted_server_envelope_yields_the_server_secret(self):
+        server, proto, envelope = self._server_and_client()
+        proto.mpubkey = ""
+        proto.receive_handshake(envelope)
+        assert proto.hm.crypto_key == server.secret
+
+    def test_verified_server_envelope_yields_the_server_secret(self):
+        server, proto, envelope = self._server_and_client()
+        proto.mpubkey = server.pubkey
+        proto.receive_handshake(envelope)
+        assert proto.hm.crypto_key == server.secret
 
 
 class TestConnectionState:
