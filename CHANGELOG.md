@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.7a1) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.6a3...1.1.7a1)
+
+**Merged pull requests:**
+
+- fix: reconnect quietly after websocket heartbeat timeouts [\#243](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/243) ([goldyfruit](https://github.com/goldyfruit))
+
+## [1.1.6a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.6a3) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.6a2...1.1.6a3)
+
 ## [1.1.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.6a2) (2026-09-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.6a1...1.1.6a2)
@@ -353,14 +365,6 @@
 ## [0.10.2a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a2) (2026-07-06)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.2a1...0.10.2a2)
-
-**Closed issues:**
-
-- Allow poorman-handshake 2 in the websocket client [\#138](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/138)
-
-**Merged pull requests:**
-
-- Allow poorman-handshake 2 [\#139](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/139) ([goldyfruit](https://github.com/goldyfruit))
 
 ## [0.10.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a1) (2026-07-04)
 
