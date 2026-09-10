@@ -1,8 +1,11 @@
 import base64
+import ipaddress
 import json
+import socket
 import threading
 import time
 from typing import List, Dict, Callable, Union, Optional
+from urllib.parse import urlsplit
 
 import pybase64
 import requests
@@ -54,8 +57,13 @@ class HiveMindHTTPClient(threading.Thread):
                  internal_bus: Optional[OVOSBusClient] = None,
                  bin_callbacks: Optional[BinaryDataCallbacks] = None,
                  http_timeout: float = HTTP_TIMEOUT,
-                 max_protocol_version: int = 3):
+                 max_protocol_version: int = 3,
+                 allow_insecure_http: bool = False):
         super().__init__(daemon=True)
+        # Accepts the access key crossing a network this process does not
+        # control, in the clear. Only for a caller that terminates TLS
+        # elsewhere, such as a tunnel or a test harness.
+        self.allow_insecure_http = allow_insecure_http
         # HiveMindSlaveProtocol._should_use_noise() reads this off the client;
         # without it the getattr default of 2 made every HTTP client decline
         # the v3 Noise handshake. Set to 2 to force the legacy handshake.
@@ -129,13 +137,103 @@ class HiveMindHTTPClient(threading.Thread):
             self.protocol.start_handshake()
         time.sleep(1) # let server process our "hello" response
 
+    #: Hostname suffixes that name a machine on the local network. A cleartext
+    #: request to one of these never leaves it.
+    #: Class-level default so a client built without ``__init__`` -- which the
+    #: tests and any subclass doing its own construction do -- still answers
+    #: this question instead of raising AttributeError from the guard below.
+    allow_insecure_http = False
+
+    @staticmethod
+    def _is_local_address(candidate: str) -> bool:
+        """Whether an IP literal names this machine or the local network."""
+        try:
+            address = ipaddress.ip_address(candidate.strip("[]"))
+        except ValueError:
+            return False
+        return (address.is_loopback or address.is_private
+                or address.is_link_local)
+
+    @classmethod
+    def _is_local_endpoint(cls, hostname: str) -> bool:
+        """Whether a cleartext request to this host stays on the local network.
+
+        A name is not evidence of where it points. ``hub.lan`` and
+        ``hub.internal`` look local and can resolve anywhere, so the answer
+        comes from resolving the name and requiring EVERY address it returns
+        to be loopback, private or link-local. One public answer is enough to
+        refuse, because that is the one the connection may use.
+
+        A name that cannot be resolved is refused rather than assumed local:
+        the question is where the credential is about to go, and an unanswered
+        question is not a yes.
+        """
+        if not hostname:
+            return False
+        host = hostname.strip("[]").rstrip(".").lower()
+        if cls._is_local_address(host):
+            return True
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            return False  # a literal that is not local resolves to itself
+        try:
+            resolved = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        except socket.gaierror:
+            return False
+        addresses = {info[4][0] for info in resolved}
+        return bool(addresses) and all(
+            cls._is_local_address(address) for address in addresses
+        )
+
+    def _assert_credential_transport(self, url: str) -> None:
+        """Refuse to put the access key on the wire in the clear.
+
+        Every request this client makes carries the access key, and it carries
+        it in the query string, where Noise does not reach: Noise protects the
+        frame body, not the URL. Over cleartext that key is readable by anything
+        on the path, and a query string is also the part of a request most
+        likely to be written to a log or an access record.
+
+        HTTPS is always allowed. Cleartext is allowed only to a host that
+        resolves entirely to the local network, because a satellite talking to
+        a hub on the same LAN is the ordinary deployment of this protocol and
+        refusing it would take that away. Cleartext to anything else is
+        refused, since the key would be crossing a network nobody in this
+        process controls. Pass ``allow_insecure_http=True`` to accept that
+        risk deliberately, for a tunnel or a harness terminating TLS
+        elsewhere.
+
+        Redirects are not followed on any request that carries the key: a hub
+        answering an HTTPS call with an HTTP ``Location`` would otherwise move
+        the credential onto cleartext after this check had already passed.
+        """
+        if self.allow_insecure_http:
+            return
+        parts = urlsplit(url)
+        if parts.scheme == "https":
+            return
+        if self._is_local_endpoint(parts.hostname or ""):
+            return
+        raise ValueError(
+            f"refusing to send the HiveMind access key in cleartext to "
+            f"{parts.hostname or url!r}: it does not resolve entirely to the "
+            f"local network. Use https, or pass allow_insecure_http=True to "
+            f"accept the risk"
+        )
+
     @property
     def base_url(self) -> str:
         url = f"{self._host}:{self._port}"
         if url.startswith("ws://"):
-            url = url.replace("ws://", "http://")
+            url = url.replace("ws://", "http://", 1)
         elif url.startswith("wss://"):
-            url = url.replace("wss://", "https://")
+            url = url.replace("wss://", "https://", 1)
+        # every caller of this property appends a path and attaches the access
+        # key, so this is the one place that sees all of them
+        self._assert_credential_transport(url)
         return url
 
     @property
@@ -479,6 +577,7 @@ class HiveMindHTTPClient(threading.Thread):
         url = f"{self.base_url}/send_message"
         return requests.post(url, data={"message": payload},
                              params={"authorization": self.auth},
+                             allow_redirects=False,
                              timeout=self.http_timeout)
 
     def _send_noise_frame(self, frame: bytes, transport) -> None:
@@ -508,6 +607,7 @@ class HiveMindHTTPClient(threading.Thread):
                 data={"message": pybase64.b64encode(frame).decode("utf-8"),
                       "binary": "1"},
                 params={"authorization": self.auth},
+                allow_redirects=False,
                 timeout=self.http_timeout)
         except Exception:
             # the send counter has advanced for this frame; a caught error
@@ -596,6 +696,7 @@ class HiveMindHTTPClient(threading.Thread):
         self.protocol.bind(bus)
         url = f"{self.base_url}/connect"
         response = requests.post(url, params={"authorization": self.auth},
+                                 allow_redirects=False,
                                  timeout=self.http_timeout)
         # An HTTP-level auth failure must surface here, not silently fall into
         # the handshake loop against a hub that already refused us.
@@ -632,6 +733,7 @@ class HiveMindHTTPClient(threading.Thread):
         url = f"{self.base_url}/disconnect"
         try:
             response = requests.post(url, params={"authorization": self.auth},
+                                     allow_redirects=False,
                                      timeout=self.http_timeout)
             return response.json()
         finally:
@@ -644,6 +746,7 @@ class HiveMindHTTPClient(threading.Thread):
             raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_messages"
         response = requests.get(url, params={"authorization": self.auth},
+                                allow_redirects=False,
                                 timeout=self.http_timeout).json()
         if response.get("error"):
             raise RuntimeError(response["error"])
@@ -655,6 +758,7 @@ class HiveMindHTTPClient(threading.Thread):
             raise ConnectionAbortedError("self.connect() needs to be called first!")
         url = f"{self.base_url}/get_binary_messages"
         response = requests.get(url, params={"authorization": self.auth},
+                                allow_redirects=False,
                                 timeout=self.http_timeout).json()
         if response.get("error"):
             raise RuntimeError(response["error"])

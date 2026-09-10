@@ -444,9 +444,12 @@ def test_a_message_survives_the_round_trip_through_real_noise_transports(size):
     receiver = _client(receiver_transport)
     posted = []
 
-    def capture(url, data, params, timeout):
+    def capture(url, data, params, timeout, allow_redirects=True):
         posted.append(pybase64.b64decode(data["message"]))
         assert data["binary"] == "1"
+        # the credential rides in params; a redirect would carry it onto
+        # whatever scheme the Location names
+        assert allow_redirects is False
         return _ok_response({"status": "ok"})
 
     payload = {"text": "x" * size}
