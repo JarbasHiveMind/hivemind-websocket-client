@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.4a1) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.3a2...1.1.4a1)
+
+**Closed issues:**
+
+- RSA handshake crashes client-side: generate\_handshake\(\) never called before receive\_handshake [\#209](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/209)
+
+**Merged pull requests:**
+
+- fix: take the server's secret in the one-way legacy RSA handshake [\#225](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/225) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.3a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.3a2) (2026-09-09)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.3a1...1.1.3a2)
@@ -355,10 +367,6 @@
 ## [0.9.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.2a1) (2026-06-06)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.1a1...0.9.2a1)
-
-**Merged pull requests:**
-
-- fix\(deps\): require ovos-bus-client\>=2.0.0a3 \(drops bundled hivemind protocol\) [\#128](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/128) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.9.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.1a1) (2026-06-05)
 
