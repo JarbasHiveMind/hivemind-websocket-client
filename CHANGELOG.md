@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.6a1) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.5a1...1.1.6a1)
+
+**Merged pull requests:**
+
+- test: e2e matrix asserts the v3-only handshake and captures the replayed frame at the wire [\#229](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/229) ([JarbasAl](https://github.com/JarbasAl))
+- fix\(http\): dispatch each protocol handler once [\#227](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/227) ([JarbasAl](https://github.com/JarbasAl))
+
+## [1.1.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.5a1) (2026-09-10)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.4a1...1.1.5a1)
+
+**Closed issues:**
+
+- Client answers a mid-session HANDSHAKE and is closed with 1008 by its own reply [\#231](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/231)
+
 ## [1.1.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.4a1) (2026-09-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.3a2...1.1.4a1)
@@ -349,17 +366,9 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.0a1...0.10.1a1)
 
-**Merged pull requests:**
-
-- fix: keep hivemind-core git ref out of package metadata \(unblock PyPI publish\) [\#134](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/134) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.10.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.0a1) (2026-07-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.9.2a1...0.10.0a1)
-
-**Merged pull requests:**
-
-- feat: protocol v3 Noise handshake client \(XXpsk2/KKpsk0\) with v2 fallback [\#131](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/131) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.9.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.9.2a1) (2026-06-06)
 
