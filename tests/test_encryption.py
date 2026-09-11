@@ -86,6 +86,25 @@ class TestJsonEncryptDecrypt:
         decrypted = decrypt_from_json(key, encrypted, cipher=cipher, encoding=encoding)
         assert decrypted == "hello world"
 
+    # Every member of the enum, not a chosen subset: the handshake advertises
+    # the whole of SupportedEncodings to a hub, so each one is a promise the
+    # client makes about what it can decode. Deriving the parameters from the
+    # enum means an encoding added later is covered without anyone remembering
+    # to add it here.
+    @pytest.mark.parametrize("cipher", list(SupportedCiphers))
+    @pytest.mark.parametrize("encoding", list(SupportedEncodings))
+    # Lengths straddle the block boundaries of the encoders: base32 packs 5
+    # bytes, base64 and z85 pack 4, base91 is bit-oriented, so a payload that
+    # divides evenly under one encoder does not under another. A single
+    # fixed-length sample can pass while a padding path is broken.
+    @pytest.mark.parametrize("length", [0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 31, 64, 255, 256])
+    def test_every_advertised_encoding_round_trips(self, cipher, encoding, length):
+        key = get_random_bytes(32)
+        payload = json.dumps({"m": "x" * length})
+        encrypted = encrypt_as_json(key, payload, cipher=cipher, encoding=encoding)
+        assert decrypt_from_json(key, encrypted, cipher=cipher,
+                                 encoding=encoding) == payload
+
     def test_dict_plaintext(self):
         key = get_random_bytes(32)
         data = {"utterance": "hello"}
