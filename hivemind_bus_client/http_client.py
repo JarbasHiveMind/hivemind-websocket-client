@@ -594,6 +594,18 @@ class HiveMindHTTPClient(threading.Thread):
 
         LOG.info("Connecting to Hivemind")
         self.protocol.bind(bus)
+        # A listener restart ends the session without a /disconnect, so the
+        # handshake event and the Noise transport of the previous session
+        # survive on this object. wait_for_handshake() below would return at
+        # once on the stale event, and the first message would be encrypted
+        # against a CipherState the server has already dropped. Only the
+        # client's own session state is cleared here: the protocol above is
+        # the one this connection will use, and resetting it would discard
+        # the site it was just given.
+        with self._session_lock():
+            self.connected.clear()
+            self.handshake_event.clear()
+            self.noise_transport = None
         url = f"{self.base_url}/connect"
         response = requests.post(url, params={"authorization": self.auth},
                                  timeout=self.http_timeout)
