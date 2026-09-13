@@ -761,9 +761,31 @@ class HiveMessageBusClient(OVOSBusClient):
 
     def _handle_hive_protocol(self, message: HiveMessage):
         # LOG.debug(f"received HiveMind message: {message.msg_type}")
-        if message.msg_type == HiveMessageType.BUS:
+        # A bound HiveMindSlaveProtocol delivers BUS through handle_bus, which
+        # strips forged verified-origin claims, updates the session and maps
+        # destination to source (HIVEMIND-BRIDGE-1 §3.1). Emitting here as well
+        # delivered every frame twice, the first time without those steps.
+        # Emit directly only when no protocol delivers to this bus.
+        if message.msg_type == HiveMessageType.BUS and not self._protocol_delivers_bus():
             self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)  # hive message
+
+    def _protocol_delivers_bus(self) -> bool:
+        """True when a bound protocol already delivers BUS frames to
+        internal_bus through its handle_bus: client.protocol, or any
+        protocol whose handle_bus is registered for BUS on this client
+        (a second protocol can be bound by hand to internal_bus)."""
+        owners = [getattr(self, "protocol", None)]
+        try:
+            owners += [getattr(handler, "__self__", None) for handler in
+                       list(self.emitter.listeners(HiveMessageType.BUS))]
+        except (AttributeError, TypeError):
+            pass
+        for owner in owners:
+            internal = getattr(owner, "internal_protocol", None)
+            if internal is not None and internal.bus is self.internal_bus:
+                return True
+        return False
 
     def emit(self, message: Union[MycroftMessage, HiveMessage],
              binary_type: HiveMindBinaryPayloadType = HiveMindBinaryPayloadType.UNDEFINED):

@@ -842,6 +842,51 @@ class TestHandleHiveProtocol(unittest.TestCase):
         client._handle_hive_protocol(msg)
         client.emitter.emit.assert_called()
 
+    def test_bus_frame_delivered_once_with_bound_protocol(self):
+        # issue #251 reproduction: no network, a real bound slave protocol
+        from hivemind_bus_client.client import HiveMessageBusClient
+        from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+
+        client = HiveMessageBusClient(key="k", password="p", host="127.0.0.1",
+                                      port=1, useragent="t", self_signed=True)
+        calls = []
+        client.on_mycroft("custos.shadow.request", lambda m: calls.append(m))
+        proto = HiveMindSlaveProtocol(client, shared_bus=False, site_id="s")
+        proto.bind(client.internal_bus)
+        from hivemind_bus_client.protocol import VERIFIED_SOURCE_PEER_KEY
+
+        client._handle_hive_protocol(HiveMessage(
+            HiveMessageType.BUS,
+            Message("custos.shadow.request", {"verb": "x"},
+                    {"destination": "node", VERIFIED_SOURCE_PEER_KEY: "forged"})))
+        self.assertEqual(len(calls), 1)
+        # the one delivery is the protocol path: destination mapped to source
+        # and the forged verified-origin claim removed
+        self.assertEqual(calls[0].context.get("source"), "node")
+        self.assertNotIn(VERIFIED_SOURCE_PEER_KEY, calls[0].context)
+
+    def test_bus_frame_delivered_once_with_a_second_protocol_on_the_internal_bus(self):
+        # client.protocol delivers to another bus; a second protocol is bound
+        # by hand to client.internal_bus. The client must see that a bound
+        # protocol already delivers to internal_bus, not only client.protocol.
+        from hivemind_bus_client.client import HiveMessageBusClient
+        from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+        from ovos_utils.fakebus import FakeBus
+
+        client = HiveMessageBusClient(key="k", password="p", host="127.0.0.1",
+                                      port=1, useragent="t", self_signed=True)
+        calls = []
+        client.on_mycroft("custos.shadow.request", lambda m: calls.append(m))
+        other_bus = FakeBus()
+        first = HiveMindSlaveProtocol(client, shared_bus=False, site_id="s")
+        first.bind(other_bus)
+        self.assertIs(client.protocol, first)
+        second = HiveMindSlaveProtocol(client, shared_bus=False, site_id="s")
+        second.bind(client.internal_bus)
+        client._handle_hive_protocol(HiveMessage(
+            HiveMessageType.BUS, Message("custos.shadow.request", {"verb": "x"})))
+        self.assertEqual(len(calls), 1)
+
 
 class TestHandleBinary(unittest.TestCase):
     def test_tts_audio_callback(self):

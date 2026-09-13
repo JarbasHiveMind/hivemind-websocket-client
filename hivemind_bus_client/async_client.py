@@ -575,9 +575,29 @@ class AsyncHiveMessageBusClient:
             LOG.warning(f"Ignoring received untyped binary data: {len(bin_data)} bytes")
 
     def _handle_hive_protocol(self, message: HiveMessage):
-        if message.msg_type == HiveMessageType.BUS:
+        # A bound HiveMindSlaveProtocol delivers BUS through handle_bus on the
+        # bus given to connect(). Emit directly only when that is not this bus,
+        # or every frame reaches internal_bus twice (issue #251).
+        if message.msg_type == HiveMessageType.BUS and not self._protocol_delivers_bus():
             self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)
+
+    def _protocol_delivers_bus(self) -> bool:
+        """True when a bound protocol already delivers BUS frames to
+        internal_bus through its handle_bus: self.protocol, or any
+        protocol whose handle_bus is registered for BUS on this client
+        (a second protocol can be bound by hand to internal_bus)."""
+        owners = [getattr(self, "protocol", None)]
+        try:
+            owners += [getattr(handler, "__self__", None) for handler in
+                       list(self.emitter.listeners(HiveMessageType.BUS))]
+        except (AttributeError, TypeError):
+            pass
+        for owner in owners:
+            internal = getattr(owner, "internal_protocol", None)
+            if internal is not None and internal.bus is self.internal_bus:
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # emit
