@@ -1,8 +1,9 @@
 import json
 import random
+import socket
 import ssl
 from collections.abc import Callable
-from threading import Event, Lock, Thread, current_thread
+from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Optional, Union
 
 import pybase64
@@ -45,6 +46,9 @@ from hivemind_bus_client.util import serialize_message
 
 
 WORKER_JOIN_TIMEOUT = 5  # seconds to wait for the reconnect worker to stop in close()
+# seconds a connection attempt may take to open (TCP, TLS and the websocket
+# upgrade) before it is abandoned and the reconnect loop tries again
+WEBSOCKET_CONNECT_TIMEOUT = 30.0
 
 
 class BinaryDataCallbacks:
@@ -138,7 +142,8 @@ class HiveMessageBusClient(OVOSBusClient):
                  bin_callbacks: BinaryDataCallbacks = BinaryDataCallbacks(),
                  websocket_ping_interval: Optional[float] = None,
                  websocket_ping_timeout: Optional[float] = None,
-                 max_protocol_version: int = 3):
+                 max_protocol_version: int = 3,
+                 websocket_connect_timeout: float | None = WEBSOCKET_CONNECT_TIMEOUT):
         self.bin_callbacks = bin_callbacks
         # highest HiveMind protocol version this client will negotiate
         # (HIVEMIND-WIRE-1 §2). 3 -> Noise handshake when the server also
@@ -171,6 +176,10 @@ class HiveMessageBusClient(OVOSBusClient):
         self._init_worker_lifecycle()
         self.websocket_ping_interval = websocket_ping_interval
         self.websocket_ping_timeout = websocket_ping_timeout
+        # None or 0 disables the watchdog on a connection attempt
+        self.websocket_connect_timeout = websocket_connect_timeout
+        # set by on_open for the connection attempt that is running now
+        self._ws_opened: Event | None = None
 
         # if you want to reduce CPU usage in exchange for more bandwidth set below to False
         self.compress = compress  # None -> auto
@@ -303,6 +312,9 @@ class HiveMessageBusClient(OVOSBusClient):
         Handle the "open" event from the websocket.
         A Basic message with the name "open" is forwarded to the emitter.
         """
+        opened = getattr(self, "_ws_opened", None)
+        if opened is not None:
+            opened.set()
         LOG.debug("Connected")
         self.connected_event.set()
         self.emitter.emit("open")
@@ -467,8 +479,13 @@ class HiveMessageBusClient(OVOSBusClient):
         # a second starter cannot clear this event and revive it.
         with self._worker_lock:
             self._stop_event.set()
+        # taken before close(): WebSocketApp.close() drops its socket reference
+        raw = self._raw_socket(self.client)
         try:
             self.client.close()
+            # a worker still waiting for the upgrade response is blocked in a
+            # read that close() cannot wake
+            self._shutdown_websocket_socket(self.client, raw)
         finally:
             self._clear_connection_state()
         # Read the thread handle without holding _worker_lock across the
@@ -631,7 +648,14 @@ class HiveMessageBusClient(OVOSBusClient):
                 "ssl_version": ssl.PROTOCOL_TLS_CLIENT}
         try:
             while not self._stop_event.is_set():
-                self.client.run_forever(**run_options)
+                opened = Event()
+                self._ws_opened = opened
+                watchdog = self._start_connect_watchdog(self.client, opened)
+                try:
+                    self.client.run_forever(**run_options)
+                finally:
+                    if watchdog is not None:
+                        watchdog.cancel()
                 self._clear_connection_state()
                 if self._stop_event.is_set():
                     break
@@ -661,6 +685,55 @@ class HiveMessageBusClient(OVOSBusClient):
         finally:
             self.started_running = False
             self._clear_connection_state()
+
+    def _start_connect_watchdog(self, app, opened: Event) -> Timer | None:
+        """Abandon this connection attempt if it has not opened in time.
+
+        A hub that accepts TCP but never answers the websocket upgrade (a
+        stopped process, a wedged listener) leaves ``run_forever()`` blocked
+        in the upgrade read, because websocket-client reads it with no
+        timeout. The reconnect loop only runs after ``run_forever()``
+        returns, so without this the client never tries again.
+        """
+        # getattr: a subclass that skips __init__ still gets the default
+        timeout = getattr(self, "websocket_connect_timeout",
+                          WEBSOCKET_CONNECT_TIMEOUT)
+        if not timeout or timeout <= 0:
+            return None
+        watchdog = Timer(timeout, self._abort_stalled_connect, args=(app, opened))
+        watchdog.daemon = True
+        watchdog.start()
+        return watchdog
+
+    def _abort_stalled_connect(self, app, opened: Event) -> None:
+        if opened.is_set() or self._stop_event.is_set():
+            return
+        LOG.warning("HiveMind websocket did not open within %.1f seconds "
+                    "(no response to the upgrade request); closing it to "
+                    "retry", getattr(self, "websocket_connect_timeout",
+                                     WEBSOCKET_CONNECT_TIMEOUT))
+        self._shutdown_websocket_socket(app, self._raw_socket(app))
+
+    @staticmethod
+    def _raw_socket(app):
+        """The TCP socket under a WebSocketApp, once its connect has started."""
+        return getattr(getattr(app, "sock", None), "sock", None)
+
+    @staticmethod
+    def _shutdown_websocket_socket(app, raw) -> None:
+        """Wake a thread blocked reading ``raw``.
+
+        Closing the websocket does not do it: websocket-client only acts on a
+        connected socket, and closing a file descriptor does not reliably
+        wake a read on another thread. ``shutdown`` does.
+        """
+        app.keep_running = False
+        if raw is None:
+            return
+        try:
+            raw.shutdown(socket.SHUT_RDWR)
+        except OSError as error:
+            LOG.debug("websocket socket already closed: %s", error)
 
     def _websocket_keepalive_options(self):
         return websocket_keepalive_options(
