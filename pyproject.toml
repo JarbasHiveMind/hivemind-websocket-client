@@ -48,7 +48,8 @@ test = [
     "websockets>=10.0",
 ]
 e2e = [
-    "hivescope>=0.5.0a2",
+    # >=0.8.6a1: InProcessHiveShim.key, read by the handshake (#226)
+    "hivescope>=0.8.6a1",
     "hivemind-core>=5.1.0a2,<6.0.0",
 ]
 benchmark = [
