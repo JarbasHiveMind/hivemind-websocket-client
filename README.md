@@ -315,7 +315,8 @@ for an unassigned wire code is raised by `serialization.get_bitstring`, which
 ```python
 from hivemind_bus_client.identity import NodeIdentity
 
-identity = NodeIdentity()            # loads from ~/.config/hivemind/_identity.json
+identity = NodeIdentity(app_name="my-app")  # ~/.config/hivemind/my-app/_identity.json
+# NodeIdentity() without a name still loads the shared ~/.config/hivemind/_identity.json
 print(identity.access_key)
 print(identity.default_master)
 

@@ -8,6 +8,25 @@ The identity is persisted in:
 ~/.config/hivemind/_identity.json
 ```
 
+## One identity per application
+
+HIVEMIND-CRYPTO-1 §2: a node is one application, not the user or the host.
+Two applications of one user are two nodes and must not present the same
+identifier or static key. Pass the application's own name:
+
+```python
+identity = NodeIdentity(app_name="voice-sat")
+# ~/.config/hivemind/voice-sat/_identity.json, keys in the same folder
+```
+
+`app_name` is one path segment: letters, digits, `.`, `_` and `-`, starting
+with a letter or digit, at most 64 characters. Passing both `identity_file`
+and `app_name` raises `ValueError`.
+
+`NodeIdentity()` without a name uses the shared
+`~/.config/hivemind/_identity.json`. §2 does not allow that location as a
+default, so an application passes its own `app_name`.
+
 Credentials (`access_key`, `password`), `useragent` and `site_id` are not
 part of the identity. They say how to reach one particular master, and a
 node that both serves clients and connects upstream has its own access key
