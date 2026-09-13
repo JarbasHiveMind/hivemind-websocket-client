@@ -524,3 +524,27 @@ async def test_double_connect_tears_down_first_transport():
     assert second_task.cancelled() is True
     assert bus._ws is None
     assert bus._receive_task is None
+
+
+def test_bus_frame_delivered_once_when_a_hand_bound_protocol_delivers_to_internal_bus():
+    """self.protocol delivers somewhere else, and a protocol bound by hand
+    registered its handle_bus for BUS and delivers to internal_bus. The
+    client must see that and not emit the frame a second time."""
+    bus = _bare_client()  # bus.protocol is a MagicMock not bound to internal_bus
+    delivered = []
+    bus.internal_bus.on("speak", lambda m: delivered.append(m))
+
+    class _HandBoundProtocol:
+        def __init__(self, internal_bus):
+            self.internal_protocol = MagicMock(bus=internal_bus)
+
+        def handle_bus(self, message):
+            self.internal_protocol.bus.emit(message.payload)
+
+    hand_bound = _HandBoundProtocol(bus.internal_bus)
+    bus.emitter.on(HiveMessageType.BUS, hand_bound.handle_bus)
+
+    bus._handle_hive_protocol(HiveMessage(
+        HiveMessageType.BUS, payload=MycroftMessage("speak", {"utterance": "hi"})))
+
+    assert len(delivered) == 1

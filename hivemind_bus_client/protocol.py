@@ -321,6 +321,10 @@ class HiveMindSlaveProtocol:
         LOG.info("Initializing HiveMindSlaveInternalProtocol")
         self.internal_protocol = HiveMindSlaveInternalProtocol(bus=bus, hm_bus=self.hm)
         self.internal_protocol.register_bus_handlers()
+        # connect() sets this already; a protocol bound by hand must be known
+        # to the client too, or the client also emits every BUS frame (#251).
+        if getattr(self.hm, "protocol", None) is None:
+            self.hm.protocol = self
         LOG.info("registering protocol handlers")
         self.hm.on(HiveMessageType.HELLO, self.handle_hello)
         self.hm.on(HiveMessageType.BROADCAST, self.handle_broadcast)
