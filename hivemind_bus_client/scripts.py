@@ -15,8 +15,20 @@ LOG.set_level("ERROR")
 
 
 @click.group()
-def hmclient_cmds():
+@click.option("--app", help="application name: use the identity in "
+                            "~/.config/hivemind/<app>/ instead of the shared "
+                            "~/.config/hivemind/_identity.json",
+              type=str, default=None)
+def hmclient_cmds(app):
     pass
+
+
+def _node_identity() -> NodeIdentity:
+    """The identity of the application named by the group's --app option."""
+    ctx = click.get_current_context(silent=True)
+    app = ctx.find_root().params.get("app") if ctx else None
+    # without --app the call stays exactly what it was before the option
+    return NodeIdentity(app_name=app) if app else NodeIdentity()
 
 
 @hmclient_cmds.command(help="persist node identity / credentials", name="set-identity")
@@ -28,7 +40,7 @@ def hmclient_cmds():
 def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not key and not password and not siteid:
         raise ValueError("please set at least one of key/password/siteid/host")
-    identity = NodeIdentity()
+    identity = _node_identity()
     if password and password != identity.password:
         # every cached Noise PSK was derived from the old password
         clear_cached_psks(identity.noise_key)
@@ -54,7 +66,7 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
 @click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context  (default read from identity file)", type=str, default="")
 def terminal(key: str, password: str, host: str, port: int, siteid: str):
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master
@@ -128,7 +140,7 @@ def send_mycroft(key: str, password: str, host: str, port: int, siteid: str, msg
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
 def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: str, payload: str):
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master
@@ -165,7 +177,7 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
 def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: str, payload: str):
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master
@@ -196,7 +208,7 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
                        name="test-identity")
 @click.option("--timeout", help="seconds to wait before giving up", type=float, default=30.0)
 def test_identity(timeout: float):
-    node = HiveMessageBusClient()
+    node = HiveMessageBusClient(identity=_node_identity())
 
     # Bounded on purpose. connect() defaults to retrying the handshake
     # forever, so a refused identity used to hang here indefinitely while the
@@ -244,7 +256,7 @@ def forget_server(host: str, port: int):
     stops connecting. Forget the old key here, then connect again to trust
     the new one.
     """
-    identity = NodeIdentity()
+    identity = _node_identity()
     host = host or identity.default_master or ""
     host = host.replace("ws://", "").replace("wss://", "")
     port = port or identity.default_port or 5678
@@ -262,7 +274,7 @@ def forget_server(host: str, port: int):
 
 @hmclient_cmds.command(help="recreate the private RSA key for inter-node communication", name="reset-pgp")
 def reset_keys():
-    identity = NodeIdentity()
+    identity = _node_identity()
     identity.create_keys()
     print("PUBKEY:", identity.public_key)
     identity.save()
@@ -283,7 +295,7 @@ def reset_keys():
 def ping(key: str, password: str, host: str, port: int, siteid: str,
          timeout: float, output_json: bool):
     """Send a PING flood and collect responsive PINGs to map the hive topology."""
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master

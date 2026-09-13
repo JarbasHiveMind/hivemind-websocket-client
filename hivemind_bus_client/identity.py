@@ -1,11 +1,15 @@
 import json
 import os
+import re
 from os.path import basename, dirname, isabs, isdir, isfile, join
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
 from ovos_utils.log import LOG
 from hivemind_bus_client.exceptions import IdentityFileCorrupted
 from typing import Dict, List, Optional
+
+# one path segment: no separators, and it cannot be "." or ".."
+_APP_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 
 class NodeIdentity:
@@ -16,17 +20,36 @@ class NodeIdentity:
         IDENTITY_FILE (JsonConfigXDG): A configuration file containing the node's identity information.
     """
 
-    def __init__(self, identity_file: Optional[str] = None):
+    def __init__(self, identity_file: Optional[str] = None,
+                 app_name: Optional[str] = None):
         """
         Initialize the NodeIdentity instance with an optional identity file.
 
         Args:
             identity_file (Optional[str]): Path to a custom identity file (default: None, uses default configuration).
+            app_name (Optional[str]): Name of the application that owns this
+                identity. The identity is kept in
+                ``~/.config/hivemind/<app_name>/_identity.json``, so two
+                applications of one user are two nodes (HIVEMIND-CRYPTO-1 §2).
+                Without it the shared ``~/.config/hivemind/_identity.json`` is used.
+
+        Raises:
+            ValueError: ``app_name`` is not one plain path segment, or both
+                ``identity_file`` and ``app_name`` are given.
         """
+        if app_name is not None:
+            if identity_file is not None:
+                raise ValueError("pass identity_file or app_name, not both")
+            if not _APP_NAME.fullmatch(app_name):
+                raise ValueError(f"app_name must be letters, digits, '.', '_' or '-', "
+                                 f"start with a letter or digit, and be at most 64 "
+                                 f"characters: {app_name!r}")
+        self.app_name = app_name
         # an empty store is falsy, so test explicitly: a caller that passes
         # its own (still empty) file must not silently get the default one
         if identity_file is None:
-            identity_file = JsonConfigXDG("_identity", subfolder="hivemind")
+            subfolder = join("hivemind", app_name) if app_name else "hivemind"
+            identity_file = JsonConfigXDG("_identity", subfolder=subfolder)
         self.IDENTITY_FILE = identity_file
         self._assert_identity_readable()
 
