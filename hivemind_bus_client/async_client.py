@@ -343,6 +343,8 @@ class AsyncHiveMessageBusClient:
             self._ws = await websockets.connect(
                 url, ssl=ssl_ctx, **self._websocket_keepalive_options()
             )
+            if self.protocol is not None:
+                self.protocol.connection_opened()
             self.connected_event.set()
             self.emitter.emit("open")
             self._receive_task = asyncio.create_task(self._receive_loop())
@@ -466,7 +468,14 @@ class AsyncHiveMessageBusClient:
             close_code = getattr(rcvd, "code", None)
             if close_code is None:
                 close_code = getattr(e, "code", None)
-            if close_code == self.AUTH_REJECTED_CLOSE_CODE:
+            protocol = getattr(self, "protocol", None)
+            kk_retry = protocol is not None and protocol.kk_attempt_failed()
+            if kk_retry:
+                # A KKpsk0 the server could not complete: the protocol keeps
+                # the pinned key and the next connect() retries with XXpsk2.
+                LOG.warning("HiveMind closed a failed KKpsk0 handshake; "
+                            "the next connect uses XXpsk2")
+            if close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry:
                 # Reconnecting cannot help: the credentials are identical on
                 # every attempt. Record the reason, wake wait_for_handshake so
                 # it fails fast instead of blocking forever, and stop.

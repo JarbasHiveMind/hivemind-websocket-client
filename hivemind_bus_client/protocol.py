@@ -281,6 +281,12 @@ class HiveMindSlaveProtocol:
     # "the handshake never completed", which is what distinguishes a normal
     # reconnect from the KKpsk0 lockout.
     _noise_established: bool = field(default=False, repr=False)
+    # Pin id whose KKpsk0 attempt failed. The next attempt uses XXpsk2, and
+    # that attempt must still present the pinned key (CRYPTO-1 §3.5).
+    _xx_retry_pin_id: str | None = field(default=None, repr=False)
+    # True from a failed KKpsk0 until the next connection opens. The client
+    # reads it when the close arrives, which can be after the state reset.
+    _kk_failure_close_pending: bool = field(default=False, repr=False)
     _server_hello_payload: Optional[dict] = field(default=None, repr=False)
     _server_handshake_payload: Optional[dict] = field(default=None, repr=False)
 
@@ -345,7 +351,7 @@ class HiveMindSlaveProtocol:
         # closes the socket — so this, not receive_noise_handshake, is where
         # most failures are observable.
         if not self._noise_established:
-            self._drop_stale_pin_after_kk_failure()
+            self._note_kk_failure()
             if self.noise_handshake is not None:
                 # A handshake was in flight and the socket closed under it.
                 # For KKpsk0 that is how a rejected PSK looks from here (the
@@ -460,7 +466,7 @@ class HiveMindSlaveProtocol:
         """
         node_id = self.internal_protocol.node_id
         noise_params = server_payload.get("noise") or {}
-        pinned = self.identity.get_pinned_noise_key(self._noise_pin_id)
+        pinned = self._kk_candidate_pin()
         selection = select_noise_options(noise_params.get("patterns") or [],
                                          noise_params.get("suites") or [],
                                          pinned)
@@ -514,7 +520,7 @@ class HiveMindSlaveProtocol:
             # fails cryptographically at handshake time (§3.4.3)
             LOG.exception("protocol v3 Noise handshake FAILED "
                           "(wrong password or tampered negotiation)")
-            self._drop_stale_pin_after_kk_failure()
+            self._note_kk_failure()
             # The PSK is one of the things this message authenticates, so the
             # rejection may mean the cached key was derived from a password
             # that has since been rotated. Drop it, so the next attempt
@@ -562,6 +568,7 @@ class HiveMindSlaveProtocol:
         self.hm.noise_transport = transport  # session encryption from here on
         self.noise_handshake = None
         self._noise_established = True
+        self._xx_retry_pin_id = None
         LOG.info("protocol v3 Noise session established "
                  f"(pattern={self._noise_pattern})")
 
@@ -589,40 +596,74 @@ class HiveMindSlaveProtocol:
         except Exception:
             LOG.debug("could not drop the cached Noise PSK", exc_info=True)
 
-    def _drop_stale_pin_after_kk_failure(self) -> None:
-        """Forget the pinned server key when a ``KKpsk0`` handshake fails.
+    def kk_attempt_failed(self) -> bool:
+        """True when this connection is a ``KKpsk0`` attempt that failed.
+
+        The server does not send a Noise error for a KK it cannot complete: it
+        closes with 1008. That close is not a refused identity. The client
+        retries once with ``XXpsk2``, so a close that ends such an attempt must
+        not stop the client. A refusal of the ``XXpsk2`` retry still does.
+        """
+        return self._kk_failure_close_pending or self._is_failed_kk_attempt()
+
+    def connection_opened(self) -> None:
+        """Forget the failed ``KKpsk0`` of the previous connection.
+
+        A 1008 on the new connection is a refusal again, for example a
+        refused ``XXpsk2`` retry or an access key the server does not know.
+        """
+        self._kk_failure_close_pending = False
+
+    def _is_failed_kk_attempt(self) -> bool:
+        return (not self._noise_established
+                and self._noise_pattern == NOISE_PATTERN_KK
+                and bool(self.identity.get_pinned_noise_key(
+                    self._noise_pin_id)))
+
+    def _kk_candidate_pin(self) -> str | None:
+        """The pinned server key, unless ``KKpsk0`` just failed against it."""
+        pin_id = self._noise_pin_id
+        if self._xx_retry_pin_id == pin_id:
+            return None
+        return self.identity.get_pinned_noise_key(pin_id)
+
+    def _note_kk_failure(self) -> None:
+        """Retry once with ``XXpsk2`` after a failed ``KKpsk0``; keep the pin.
 
         KK needs each side to hold the other's static key, but the client
-        picks it on the strength of having pinned the *server's* key — which
+        picks it on the strength of having pinned the *server's* key, which
         says nothing about whether the server still holds this node's. The two
         diverge whenever the identity is recreated (reinstall, fresh
-        container, new machine on the same credentials) or when one access key
-        is used from a second useragent, since the server stores one pin per
-        access key.
+        container, new machine on the same credentials), when an operator
+        clears the server's pin, or when one access key is used from a second
+        useragent, since the server stores one pin per access key.
 
-        Without this the node is locked out for good: it retries KK, fails,
-        and retries KK again, every few seconds, forever. Dropping the pin
-        makes the next attempt an ``XXpsk2`` handshake, which re-establishes
-        trust and re-pins.
+        Without a fallback the node is locked out: it retries KK, fails, and
+        retries KK again, forever. The fallback is one ``XXpsk2`` attempt.
 
-        This is not a downgrade an attacker can profit from. Both patterns
-        carry the password-derived PSK, so whoever answers still has to know
-        the password; failing KK on purpose only moves them to a handshake
-        they equally cannot complete. The genuine MITM signal is a *completed*
-        handshake whose static key contradicts the pin, and that path is
-        untouched below — it still refuses and keeps the pin.
+        The pin is kept. HIVEMIND-CRYPTO-1 §3.5: "On every subsequent
+        handshake with that identity, the presented static key MUST match the
+        pinned key; a mismatch is a fatal authentication failure." The
+        ``XXpsk2`` attempt is checked against the pin in
+        :meth:`receive_noise_handshake`, so a server that presents a different
+        key is refused, and the pin is never replaced silently. To trust a new
+        master key, the operator runs ``hivemind-client forget-server``.
         """
-        if self._noise_pattern != NOISE_PATTERN_KK:
+        if not self._is_failed_kk_attempt():
             return
+        # websocket-client can reset the connection state before it delivers
+        # the close, so remember the failure until the next connection opens
+        self._kk_failure_close_pending = True
         pin_id = self._noise_pin_id
-        if not self.identity.get_pinned_noise_key(pin_id):
+        if self._xx_retry_pin_id == pin_id:
             return
+        self._xx_retry_pin_id = pin_id
         LOG.warning(
-            f"KKpsk0 failed for {pin_id} and a pinned server key is present. "
-            "The master no longer holds this node's static key — most likely "
-            "this identity was recreated, or these credentials are in use "
-            "from another node. Dropping the pin and retrying with XXpsk2.")
-        self.identity.forget_noise_key(pin_id)
+            f"KKpsk0 failed for {pin_id}. The master may no longer hold this "
+            "node's static key: this identity was recreated, the pin was "
+            "reset on the master, or these credentials are in use from "
+            "another node. Keeping the pinned server key and retrying once "
+            "with XXpsk2, which must present the same key.")
 
     def _abort_noise(self, reason: str):
         """Fatal handshake failure — reject the connection (§3.4.3).

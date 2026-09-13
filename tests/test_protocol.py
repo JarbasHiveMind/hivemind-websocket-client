@@ -23,6 +23,22 @@ def _make_protocol() -> HiveMindSlaveProtocol:
     return proto
 
 
+def _selected_pattern(proto: HiveMindSlaveProtocol) -> str:
+    """Start a handshake with a server that offers both patterns.
+
+    Returns the pattern the client sent.
+    """
+    proto.internal_protocol = MagicMock(node_id="test-node-id")
+    proto._emit = MagicMock()
+    payload = {"noise": {"patterns": ["KKpsk0", "XXpsk2"],
+                         "suites": ["25519_ChaChaPoly_SHA256"]}}
+    with patch("hivemind_bus_client.protocol.start_noise_handshake") as start, \
+            patch("hivemind_bus_client.protocol.build_prologue", return_value=b""):
+        start.return_value.write_message.return_value = b"m1"
+        proto.start_noise_handshake(payload)
+    return start.call_args.kwargs["pattern"]
+
+
 class TestHandshakeInitialization:
     def test_bind_defers_legacy_password_validation(self):
         """Binding must not construct a handshake that may never be used."""
@@ -619,10 +635,53 @@ class TestNoiseKKFallback:
                               {"noise": {"msg": (b"x" * 16).hex()}})
         return proto, message
 
-    def test_failed_kk_drops_the_stale_pin(self):
+    def test_failed_kk_keeps_the_pin(self):
+        # HIVEMIND-CRYPTO-1 §3.5: the presented static key MUST match the
+        # pinned key. Dropping the pin here would let the retry trust any key.
         proto, message = self._protocol_failing_handshake("KKpsk0", b"pinned-key")
         proto.receive_noise_handshake(message.payload)
-        proto.identity.forget_noise_key.assert_called_once_with(proto._noise_pin_id)
+        proto.identity.forget_noise_key.assert_not_called()
+        assert proto.kk_attempt_failed()
+
+    def test_the_attempt_after_a_failed_kk_uses_xx(self):
+        proto, message = self._protocol_failing_handshake("KKpsk0", b"pinned-key")
+        proto.receive_noise_handshake(message.payload)
+        assert _selected_pattern(proto) == "XXpsk2"
+
+    def test_the_xx_retry_still_refuses_a_key_that_contradicts_the_pin(self):
+        proto, message = self._protocol_failing_handshake("KKpsk0", b"pinned-key")
+        proto.receive_noise_handshake(message.payload)
+        proto._noise_pattern = "XXpsk2"
+        proto.noise_handshake = MagicMock()
+        proto.noise_handshake.read_message.side_effect = None
+        proto.noise_handshake.read_message.return_value = b""
+        proto.noise_handshake.handshake_finished = True
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = b"attacker-key"
+            proto.receive_noise_handshake(message.payload)
+        proto.identity.forget_noise_key.assert_not_called()
+        proto.identity.pin_noise_key.assert_not_called()
+        assert proto.hm.noise_transport is None
+
+    def test_a_session_on_the_retry_makes_kk_available_again(self):
+        proto, message = self._protocol_failing_handshake("KKpsk0", b"pinned-key")
+        proto.receive_noise_handshake(message.payload)
+        proto._noise_pattern = "XXpsk2"
+        proto.noise_handshake = MagicMock()
+        proto.noise_handshake.read_message.side_effect = None
+        proto.noise_handshake.read_message.return_value = b""
+        proto.noise_handshake.handshake_finished = True
+        proto._emit = MagicMock()
+        with patch("hivemind_bus_client.protocol.NoiseTransport") as transport_cls:
+            transport_cls.return_value.remote_static_key = b"pinned-key"
+            proto.receive_noise_handshake(message.payload)
+        assert proto.hm.noise_transport is not None
+        assert _selected_pattern(proto) == "KKpsk0"
+
+    def test_a_failed_xx_is_not_a_failed_kk(self):
+        proto, message = self._protocol_failing_handshake("XXpsk2", b"pinned-key")
+        proto.receive_noise_handshake(message.payload)
+        assert not proto.kk_attempt_failed()
 
     def test_failed_xx_keeps_the_pin(self):
         # XX failing says nothing about the pin, and dropping it there would
@@ -657,10 +716,12 @@ class TestNoiseKKFallback:
         assert proto.hm.noise_transport is None
 
     @patch("hivemind_bus_client.protocol.HandShake")
-    def test_a_closed_socket_mid_kk_drops_the_pin(self, _handshake_cls):
+    def test_a_closed_socket_mid_kk_keeps_the_pin_and_retries_with_xx(
+            self, _handshake_cls):
         """The server closes rather than answering a KK it cannot complete,
         so the client never reaches receive_noise_handshake. The disconnect
-        path has to be what recovers, or the node loops on KK forever."""
+        path has to be what recovers, or the node loops on KK forever. It
+        must recover without forgetting the pinned server key."""
         proto = _make_protocol()
         proto._noise_pattern = "KKpsk0"
         proto._noise_established = False
@@ -668,9 +729,11 @@ class TestNoiseKKFallback:
         proto.hm.config.host = "hive.example"
         proto.hm.config.port = 5678
 
+        assert proto.kk_attempt_failed()
         proto.reset_connection_state()
 
-        proto.identity.forget_noise_key.assert_called_once_with("hive.example:5678")
+        proto.identity.forget_noise_key.assert_not_called()
+        assert _selected_pattern(proto) == "XXpsk2"
 
     @patch("hivemind_bus_client.protocol.HandShake")
     def test_a_normal_disconnect_after_a_good_session_keeps_the_pin(self, _handshake_cls):

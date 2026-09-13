@@ -1063,3 +1063,63 @@ class TestEmitRespectsCallerSession:
         message = Message("speak", {"utterance": "hi"})
         client.emit(message)
         assert message.context["session"]["site_id"] == "conn-default-site"
+
+
+class TestAFailedKKCloseIsRetriedOnce(unittest.TestCase):
+    """websocket-client reports the 1008 of a failed KKpsk0 twice.
+
+    ``on_error`` gets ``WebSocketConnectionClosedException`` first and clears
+    the connection state, which resets the protocol. ``on_close`` gets the
+    1008 after that. The retry must survive that order (T-1047).
+    """
+
+    def setUp(self):
+        from hivemind_bus_client.identity import NodeIdentity
+        from hivemind_bus_client.protocol import HiveMindSlaveProtocol
+
+        self.client = _make_client()
+        # the pin store is keyed on the endpoint a real client is configured with
+        self.client.config = MagicMock(host="hive.example", port=5678)
+        identity = MagicMock(spec=NodeIdentity)
+        identity.get_pinned_noise_key.return_value = "pinned-key"
+        self.proto = HiveMindSlaveProtocol(hm=self.client, identity=identity)
+        self.client.protocol = self.proto
+        handshake = patch("hivemind_bus_client.protocol.HandShake")
+        handshake.start()
+        self.addCleanup(handshake.stop)
+        stop = patch.object(self.client, "close")
+        self.close = stop.start()
+        self.addCleanup(stop.stop)
+
+    def _server_closes(self, pattern, reason="handshake failure: "):
+        self.proto._noise_pattern = pattern
+        self.client.on_error(
+            None, WebSocketConnectionClosedException("closed"))
+        self.client.on_close(None, 1008, reason)
+
+    def test_the_close_of_a_failed_kk_does_not_stop_the_client(self):
+        self.client.on_open()
+        self._server_closes("KKpsk0")
+
+        self.assertIsNone(self.client._auth_rejected)
+        self.close.assert_not_called()
+        self.proto.identity.forget_noise_key.assert_not_called()
+
+    def test_a_refused_xx_retry_stops_the_client(self):
+        self.client.on_open()
+        self._server_closes("KKpsk0")
+        self.client.on_open()
+        reason = "client Noise static key contradicts the pinned key"
+        self._server_closes("XXpsk2", reason)
+
+        self.assertEqual(self.client._auth_rejected, reason)
+        self.close.assert_called_once()
+
+    def test_a_1008_before_any_handshake_on_the_next_connection_stops(self):
+        self.client.on_open()
+        self._server_closes("KKpsk0")
+        self.client.on_open()
+        self._server_closes(None, "invalid api key")
+
+        self.assertEqual(self.client._auth_rejected, "invalid api key")
+        self.close.assert_called_once()
