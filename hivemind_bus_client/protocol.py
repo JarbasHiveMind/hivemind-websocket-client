@@ -361,6 +361,8 @@ class HiveMindSlaveProtocol:
         self.handshake = HandShake(self.identity.private_key)
         self.pswd_handshake = None
         self.mpubkey = ""
+        # a new connection has not sent its legacy HANDSHAKE yet
+        self._legacy_handshake_started = False
         self.noise_handshake = None
         self._noise_pattern = None
         self._server_hello_payload = None
@@ -661,9 +663,10 @@ class HiveMindSlaveProtocol:
         if self._server_handshake_payload and self._should_use_noise(self._server_handshake_payload):
             self.start_noise_handshake(self._server_handshake_payload)
             return
-        self._legacy_start_handshake(self._server_handshake_payload or {})
+        # only the clients' wait_for_handshake retry reaches this line
+        self._legacy_start_handshake(self._server_handshake_payload or {}, retry=True)
 
-    def _legacy_start_handshake(self, server_payload: dict):
+    def _legacy_start_handshake(self, server_payload: dict, retry: bool = False):
         if self.binarize:
             LOG.info("hivemind supports binarization protocol")
         else:
@@ -677,29 +680,61 @@ class HiveMindSlaveProtocol:
         else:
             payload["pubkey"] = self.handshake.pubkey
 
+        # A handshake envelope is only expected as the reply to this frame.
+        # The timed retry resends the frame but does not open the window:
+        # else a peer that holds its envelope back past the retry could
+        # replace a pre-shared key.
+        if not retry:
+            self._legacy_handshake_started = True
         self._emit(HiveMessage(HiveMessageType.HANDSHAKE, payload))
 
-    def receive_handshake(self, envelope):
-        if self.pswd_handshake is not None:
-            LOG.info("Received password envelope")
-            self.pswd_handshake.receive_and_verify(envelope)  # validate master password matched
-            self.hm.crypto_key = self.pswd_handshake.secret  # update to new crypto key
-        else:
-            LOG.info("Received pubkey envelope")
-            if self.handshake.secret is None:
-                # This side never generated its own envelope, so the server's
-                # secret is taken as-is: poorman_handshake XORs the received
-                # secret into the existing one, and that one starts empty.
-                self.handshake.secret = bytes(32)
-            # if we have a pubkey let's verify the master node is who it claims to be
-            # currently this is sent in HELLO, but advance use cases can read it from somewhere else
-            if self.mpubkey:
-                # authenticates the server to the client
-                self.handshake.receive_and_verify(envelope, self.mpubkey)
+    def receive_handshake(self, envelope) -> bool:
+        """Derive the legacy session key from the server's envelope.
+
+        Returns False, with the key and ``handshake_event`` unchanged, when the
+        envelope is refused or cannot be processed.
+        """
+        # A client that already holds a key (a pre-shared crypto_key) and never
+        # sent its own HANDSHAKE did not ask for an envelope. Anyone who can
+        # write on the socket before the handshake (the hub, or an active man
+        # in the middle on ws://) could otherwise install a key of their own
+        # choosing through a cleartext HELLO and HANDSHAKE.
+        existing_key = self.hm.crypto_key
+        has_key = isinstance(existing_key, (str, bytes)) and len(existing_key) > 0
+        if has_key and not getattr(self, "_legacy_handshake_started", False):
+            LOG.error("refusing a handshake envelope that would replace the existing "
+                      "key: this client did not start a handshake")
+            return False
+        try:
+            if self.pswd_handshake is not None:
+                LOG.info("Received password envelope")
+                self.pswd_handshake.receive_and_verify(envelope)  # validate master password matched
+                new_key = self.pswd_handshake.secret
             else:
-                # implicitly trust the server
-                self.handshake.receive_handshake(envelope)
-            self.hm.crypto_key = self.handshake.secret  # update to new crypto key
+                LOG.info("Received pubkey envelope")
+                if self.handshake.secret is None:
+                    # This side never generated its own envelope, so the server's
+                    # secret is taken as-is: poorman_handshake XORs the received
+                    # secret into the existing one, and that one starts empty.
+                    self.handshake.secret = bytes(32)
+                # if we have a pubkey let's verify the master node is who it claims to be
+                # currently this is sent in HELLO, but advance use cases can read it from somewhere else
+                if self.mpubkey:
+                    # authenticates the server to the client
+                    self.handshake.receive_and_verify(envelope, self.mpubkey)
+                else:
+                    # implicitly trust the server
+                    self.handshake.receive_handshake(envelope)
+                new_key = self.handshake.secret
+        except Exception as e:
+            # a malformed envelope must not raise out of the receive path
+            LOG.error(f"dropping a handshake envelope that could not be processed: "
+                      f"{type(e).__name__}")
+            return False
+        self.hm.crypto_key = new_key  # update to new crypto key
+        # one envelope answers one HANDSHAKE: a later envelope on this
+        # connection must not replace the key it just set
+        self._legacy_handshake_started = False
 
         # now that communication is secure, send our Session data and other personal info
         sess = Session(self.hm.session_id)
@@ -708,9 +743,15 @@ class HiveMindSlaveProtocol:
                                                   "site_id": self.site_id})
         self._emit(msg)
         self.hm.handshake_event.set()
+        return True
 
     def handle_handshake(self, message: HiveMessage):
-        LOG.info(f"HANDSHAKE: {message.payload}")
+        # the payload comes from an unauthenticated peer and can carry a
+        # password verifier: log its keys and size, never its content
+        payload = message.payload
+        size = len(str(payload))
+        keys = sorted(str(k)[:32] for k in payload)[:10] if isinstance(payload, dict) else []
+        LOG.info(f"HANDSHAKE: {type(payload).__name__} keys={keys} chars={size}")
         assert message.msg_type == HiveMessageType.HANDSHAKE
         # a HANDSHAKE frame arriving after the Noise session is already
         # established is a stray retry/offer from the peer, not a new
@@ -739,7 +780,8 @@ class HiveMindSlaveProtocol:
             envelope = message.payload["envelope"]
             self.hm.json_encoding = message.payload.get("encoding") or SupportedEncodings.JSON_HEX
             self.hm.cipher = message.payload.get("cipher") or SupportedCiphers.AES_GCM
-            self.receive_handshake(envelope)
+            if not self.receive_handshake(envelope):
+                return
             LOG.debug(f"Encoding: {self.hm.json_encoding}")
             LOG.debug(f"Cipher: {self.hm.cipher}")
             active_handshake = self.pswd_handshake or self.handshake
