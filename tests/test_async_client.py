@@ -472,6 +472,8 @@ async def test_auth_reject_1008_makes_wait_for_handshake_raise():
     from websockets.frames import Close
 
     bus = _bare_client()
+    # not a failed KKpsk0 attempt, which is retried once instead
+    bus.protocol.kk_attempt_failed.return_value = False
     exc = ConnectionClosedError(Close(1008, "invalid password"), None)
     bus._ws = _RaisingWS(exc)
     bus.connected_event.set()
@@ -484,6 +486,22 @@ async def test_auth_reject_1008_makes_wait_for_handshake_raise():
         await asyncio.wait_for(bus.wait_for_handshake(timeout=5), timeout=3)
     await recv
     assert seen == ["invalid password"]
+
+
+async def test_a_1008_ending_a_failed_kk_does_not_flag_auth_rejected():
+    """A KKpsk0 the server cannot complete is retried once with XXpsk2."""
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    bus = _bare_client()
+    bus.protocol = MagicMock()
+    bus.protocol.kk_attempt_failed.return_value = True
+    close = Close(1008, "handshake failure: ")
+    bus._ws = _RaisingWS(ConnectionClosedError(close, None))
+    bus.connected_event.set()
+    await bus._receive_loop()
+    assert bus._auth_rejected is None
+    assert not bus._auth_rejected_event.is_set()
 
 
 async def test_non_auth_close_does_not_flag_auth_rejected():
