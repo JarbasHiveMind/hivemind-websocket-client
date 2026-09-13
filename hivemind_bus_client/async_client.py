@@ -55,7 +55,7 @@ from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
                                                HiveMindBinaryPayloadType,
                                                decode_bitstring, get_bitstring)
-from hivemind_bus_client.util import serialize_message
+from hivemind_bus_client.util import serialize_message, unencrypted_frame_allowed
 
 
 _MISSING_WEBSOCKETS = (
@@ -520,8 +520,11 @@ class AsyncHiveMessageBusClient:
                 message = decrypt_from_json(self.crypto_key, message,
                                             cipher=self.cipher,
                                             encoding=self.json_encoding)
-            else:
-                LOG.debug("Message was unencrypted")
+            elif not unencrypted_frame_allowed(message, self.handshake_event.is_set()):
+                # CRYPTO-1 §3.5: once the key exists, only HELLO and HANDSHAKE
+                # before the handshake completes may arrive in cleartext
+                LOG.error("dropping an unencrypted message on an encrypted session")
+                return
 
         if isinstance(message, (bytes, bytearray)):
             try:
