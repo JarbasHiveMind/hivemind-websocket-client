@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.9a1) (2026-09-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.8a1...1.1.9a1)
+
+**Closed issues:**
+
+- Inbound BUS frames are emitted on the internal bus twice [\#251](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/251)
+
+**Merged pull requests:**
+
+- fix: deliver each inbound BUS frame to the internal bus once \(\#251\) [\#252](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/252) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+- fix: cache the derived Noise PSK beside the static key [\#226](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/226) ([goldyfruit](https://github.com/goldyfruit))
+
 ## [1.1.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.8a1) (2026-09-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.7a1...1.1.8a1)
@@ -346,25 +359,13 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.3a1...0.10.4a1)
 
-**Merged pull requests:**
-
-- refactor: construct legacy password handshake only when selected [\#142](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/142) ([goldyfruit](https://github.com/goldyfruit))
-
 ## [0.10.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.3a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.2a3...0.10.3a1)
 
-**Merged pull requests:**
-
-- fix: reject unassigned/reserved binary type codes per WIRE-1 §4.2 [\#145](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/145) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.10.2a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a3) (2026-07-31)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.2a2...0.10.2a3)
-
-**Merged pull requests:**
-
-- docs: rewrite README in Simplified Technical English [\#143](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/143) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.10.2a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.2a2) (2026-07-06)
 
