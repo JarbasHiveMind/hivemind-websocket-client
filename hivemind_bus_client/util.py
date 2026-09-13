@@ -33,6 +33,38 @@ def serialize_message(message: Union[HiveMessage, Message, Dict]) -> str:
         return json.dumps(message.__dict__)
 
 
+# the only message types a legacy hub sends in cleartext while a key is set
+_CLEARTEXT_HANDSHAKE_TYPES = (HiveMessageType.HELLO, HiveMessageType.HANDSHAKE)
+
+
+def unencrypted_frame_allowed(message: Union[str, Dict], handshake_done: bool) -> bool:
+    """Decide whether an unencrypted frame may be processed on a keyed legacy session.
+
+    HIVEMIND-CRYPTO-1 §3.5: before the key is established a peer accepts only
+    HELLO and HANDSHAKE, and after it a peer rejects any message that is not
+    encrypted. A legacy hub still sends HELLO and HANDSHAKE in cleartext while
+    a key is set, so those two are allowed until the handshake completes.
+
+    Args:
+        message: the received frame, a JSON string or an already parsed dict.
+        handshake_done: True once the client's handshake is complete.
+
+    Returns:
+        True only for a HELLO or HANDSHAKE frame before the handshake is done.
+        False for anything else, including a frame that does not parse.
+    """
+    if handshake_done:
+        return False
+    if isinstance(message, (str, bytes, bytearray)):
+        try:
+            message = json.loads(message)
+        except (ValueError, TypeError):
+            return False
+    if not isinstance(message, dict):
+        return False
+    return message.get("msg_type") in _CLEARTEXT_HANDSHAKE_TYPES
+
+
 def payload2dict(payload: Union[HiveMessage, Message, str]) -> Dict:
     """Recursively normalize *payload* to a JSON-safe dict.
 
