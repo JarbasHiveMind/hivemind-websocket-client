@@ -304,6 +304,9 @@ class HiveMessageBusClient(OVOSBusClient):
         A Basic message with the name "open" is forwarded to the emitter.
         """
         LOG.debug("Connected")
+        protocol = getattr(self, "protocol", None)
+        if protocol is not None:
+            protocol.connection_opened()
         self.connected_event.set()
         self.emitter.emit("open")
         # Restore reconnect timer to 5 seconds on sucessful connect
@@ -380,7 +383,8 @@ class HiveMessageBusClient(OVOSBusClient):
         close_code = args[1] if len(args) > 1 else None
         close_reason = args[2] if len(args) > 2 else None
 
-        if close_code == self.AUTH_REJECTED_CLOSE_CODE:
+        if (close_code == self.AUTH_REJECTED_CLOSE_CODE
+                and not self._failed_kk_retry_pending()):
             # Reconnecting cannot help: the credentials do not change between
             # attempts, so a retry loop here is an infinite loop that only
             # emits close frames. Record it, say so once, and stop.
@@ -418,6 +422,8 @@ class HiveMessageBusClient(OVOSBusClient):
         code = 256 * data[0] + data[1]
         if code != self.AUTH_REJECTED_CLOSE_CODE:
             return False
+        if self._failed_kk_retry_pending():
+            return False
         try:
             reason = data[2:].decode("utf-8") or "credentials refused"
         except UnicodeDecodeError:
@@ -433,6 +439,20 @@ class HiveMessageBusClient(OVOSBusClient):
             self.emitter.emit("auth_rejected", reason)
         except Exception:  # noqa: BLE001
             LOG.exception("failed to emit auth_rejected")
+        return True
+
+    def _failed_kk_retry_pending(self) -> bool:
+        """True when a 1008 close ends a failed ``KKpsk0`` attempt.
+
+        The server closes with 1008 for a KK it cannot complete. The protocol
+        keeps the pinned key and retries once with ``XXpsk2``, so that close
+        must not latch as a refused identity.
+        """
+        protocol = getattr(self, "protocol", None)
+        if protocol is None or not protocol.kk_attempt_failed():
+            return False
+        LOG.warning("HiveMind closed a failed KKpsk0 handshake; "
+                    "reconnecting once with XXpsk2")
         return True
 
     def _clear_connection_state(self):
