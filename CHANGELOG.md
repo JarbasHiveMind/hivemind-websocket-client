@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.10a1) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.9a2...1.1.10a1)
+
+**Merged pull requests:**
+
+- fix: refuse a legacy handshake envelope the client did not ask for [\#255](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/255) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.9a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.9a2) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.9a1...1.1.9a2)
@@ -346,10 +354,6 @@
 ## [0.10.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.5a2...0.10.6a1)
-
-**Merged pull requests:**
-
-- fix: never mislabel an unencodable message type as THIRDPRTY [\#151](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/151) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.10.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a2) (2026-08-02)
 
