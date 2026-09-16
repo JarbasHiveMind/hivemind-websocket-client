@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.14a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.14a2) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.14a1...1.1.14a2)
+
+**Merged pull requests:**
+
+- test: round-trip every advertised encoding, not three of seven [\#248](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/248) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.1.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.14a1) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.13a1...1.1.14a1)
+
 ## [1.1.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.13a1) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.12a1...1.1.13a1)
@@ -343,17 +355,9 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.11.1a1...1.0.0a1)
 
-**Breaking changes:**
-
-- feat!: remove the THIRDPRTY message type [\#160](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/160) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [0.11.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.1a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.11.0a1...0.11.1a1)
-
-**Merged pull requests:**
-
-- fix: share one PING flood cache per node [\#161](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/161) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.11.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.0a1) (2026-08-02)
 
