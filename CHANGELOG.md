@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.11a1) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.10a1...1.1.11a1)
+
+**Merged pull requests:**
+
+- fix: drop an unencrypted message on a keyed legacy session [\#253](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/253) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.10a1) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.9a2...1.1.10a1)
@@ -346,10 +354,6 @@
 ## [0.10.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a2) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.6a1...0.10.6a2)
-
-**Merged pull requests:**
-
-- docs: correct stale API, CLI, and identity claims [\#153](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/153) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.10.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a1) (2026-08-02)
 
