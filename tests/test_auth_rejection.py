@@ -66,3 +66,33 @@ class TestOrdinaryDisconnectsStillReconnect:
         client.on_error(None, ABNF(opcode=ABNF.OPCODE_PING, data=b"\x03\xf0"))
         assert client._auth_rejected is None
         client.close.assert_not_called()
+
+
+class TestAFailedKKIsRetriedOnceWithXX:
+    """A KKpsk0 attempt the server cannot complete is not a refused identity.
+
+    HIVEMIND-CRYPTO-1 §3.3 makes the failure fatal to that handshake and that
+    connection. The client keeps the pinned server key and makes one XXpsk2
+    attempt, which must present the same key (§3.5). Only a refusal of that
+    attempt stops the client.
+    """
+
+    def test_a_1008_ending_a_failed_kk_does_not_stop_the_client(self, client):
+        client.protocol = MagicMock()
+        client.protocol.kk_attempt_failed.return_value = True
+
+        client.on_error(None, _close_frame(1008, b"handshake failure: "))
+        client.on_close(None, 1008, "handshake failure: ")
+
+        assert client._auth_rejected is None
+        client.close.assert_not_called()
+
+    def test_a_1008_after_the_xx_retry_still_stops_the_client(self, client):
+        client.protocol = MagicMock()
+        client.protocol.kk_attempt_failed.return_value = False
+
+        reason = "client Noise static key contradicts the pinned key"
+        client.on_close(None, 1008, reason)
+
+        assert client._auth_rejected == reason
+        client.close.assert_called_once()
