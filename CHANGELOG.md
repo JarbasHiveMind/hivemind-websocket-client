@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.15a1) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.14a2...1.1.15a1)
+
+**Merged pull requests:**
+
+- fix: reconnect on a reused client after the listener restarts [\#247](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/247) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.14a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.14a2) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.14a1...1.1.14a2)
