@@ -181,6 +181,24 @@ class QueryLivenessTimer:
                 self._timer = None
             self.query_id = ""
 
+    def expire_now(self) -> bool:
+        """Report the timeout at once instead of waiting out the interval.
+
+        For a caller that already knows the answer can never arrive — the
+        socket carrying the query is gone. Waiting the rest of the interval
+        only delays the same report. Returns True when a wait was actually
+        running, so a caller can tell a lost query from nothing in flight.
+        """
+        with self._lock:
+            if self._timer is None:
+                return False
+            self._timer.cancel()
+            self._timer = None
+            query_id = self.query_id
+            self.query_id = ""
+        self.on_timeout(query_id)
+        return True
+
     def _fire(self) -> None:
         with self._lock:
             if self._timer is None:
@@ -369,6 +387,29 @@ class HiveMindSlaveProtocol:
         self._server_handshake_payload = None
         if self.internal_protocol is not None:
             self.internal_protocol.node_id = ""
+        self._settle_query_liveness()
+
+    def _settle_query_liveness(self) -> None:
+        """Deal with a QUERY still waiting when the socket goes away.
+
+        The timer was armed because intermediate nodes decline a QUERY
+        silently, so only the clock tells the originator the answer is lost.
+        A closed socket tells it sooner: whatever was in flight died with the
+        connection, and the replacement socket carries a new session that the
+        old query id means nothing in.
+
+        A reconnect reports the loss immediately rather than waiting out the
+        remaining interval, because the report is the same one and the wait
+        adds nothing. A permanent ``close()`` cancels instead: nobody is
+        listening on the internal bus, and firing there would either reach a
+        closed bus or deliver a timeout to an application that has shut down.
+        """
+        if self.query_liveness is None:
+            return
+        if getattr(self.hm, "stopping", False):
+            self.query_liveness.cancel()
+        elif self.query_liveness.expire_now():
+            LOG.debug("reported a QUERY as lost: its connection closed")
 
     @property
     def node_id(self):

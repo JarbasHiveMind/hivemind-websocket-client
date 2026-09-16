@@ -251,6 +251,17 @@ class HiveMessageBusClient(OVOSBusClient):
         return self._access_key
 
     @property
+    def stopping(self) -> bool:
+        """True once :meth:`close` was called — a permanent shutdown.
+
+        A dropped socket that the reconnect loop will replace is not this.
+        The difference decides whether work waiting on an answer should be
+        told the answer is lost or simply dropped, since after ``close()``
+        nobody is listening on the internal bus.
+        """
+        return self._stop_event.is_set()
+
+    @property
     def site_id(self):
         return self._site_id
 
