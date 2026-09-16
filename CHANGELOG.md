@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.13a1) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.12a1...1.1.13a1)
+
+**Merged pull requests:**
+
+- fix: retry a failed KKpsk0 once with XXpsk2 and keep the pinned key [\#250](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/250) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+- fix: retry a hub that accepts TCP but never answers the websocket upgrade [\#249](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/249) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.12a1) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.11a1...1.1.12a1)
@@ -300,7 +309,6 @@
 - fix: make the flood id cache thread safe [\#173](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/173) ([JarbasAl](https://github.com/JarbasAl))
 - fix: reconnect wait can reach 90s despite the 60s cap [\#172](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/172) ([JarbasAl](https://github.com/JarbasAl))
 - fix: a rejected handshake must not brick the satellite [\#171](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/171) ([JarbasAl](https://github.com/JarbasAl))
-- fix: emit honours the message's own bin\_type [\#159](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/159) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.4a1) (2026-08-04)
 
@@ -322,10 +330,6 @@
 ## [1.0.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.2a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.1a1...1.0.2a1)
-
-**Merged pull requests:**
-
-- fix: keep every route hop that names a source [\#158](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/158) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.1a1) (2026-08-03)
 
