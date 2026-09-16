@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.12a1) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.11a1...1.1.12a1)
+
+**Merged pull requests:**
+
+- fix: settle a waiting QUERY when its connection goes away [\#258](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/258) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.11a1) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.10a1...1.1.11a1)
@@ -346,10 +354,6 @@
 ## [0.11.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.11.0a1) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.6a2...0.11.0a1)
-
-**Merged pull requests:**
-
-- feat: HiveMessage.forward\(\) derives envelopes without losing fields [\#154](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/154) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.10.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.6a2) (2026-08-02)
 
