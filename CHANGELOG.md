@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.9a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.9a2) (2026-09-16)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.9a1...1.1.9a2)
+
+**Merged pull requests:**
+
+- chore: raise hivescope floor to \>=0.8.6a1 [\#257](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/257) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.9a1) (2026-09-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.8a1...1.1.9a1)
@@ -346,10 +354,6 @@
 ## [0.10.5a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a2) (2026-08-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/0.10.5a1...0.10.5a2)
-
-**Merged pull requests:**
-
-- test: cover the XX-path pinned-key mismatch abort \(CRYPTO-1 §3.4.5\) [\#149](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/149) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [0.10.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/0.10.5a1) (2026-08-02)
 
