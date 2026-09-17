@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.16a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.16a1) (2026-09-17)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.15a1...1.1.16a1)
+
+**Merged pull requests:**
+
+- fix: refuse a password envelope that fails verification by name [\#267](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/267) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.15a1) (2026-09-16)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.14a2...1.1.15a1)
@@ -354,10 +362,6 @@
 ## [1.0.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.1a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.0a1...1.0.1a1)
-
-**Merged pull requests:**
-
-- fix: keep the envelope route across a binary frame [\#164](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/164) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.0a1) (2026-08-03)
 
