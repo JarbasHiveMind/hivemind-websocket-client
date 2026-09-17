@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.21a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.21a1) (2026-09-17)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.20a1...1.1.21a1)
+
+**Merged pull requests:**
+
+- fix: require poorman-handshake 2.0.2a1 for the signature check [\#277](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/277) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.20a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.20a1) (2026-09-17)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.19a1...1.1.20a1)
@@ -362,10 +370,6 @@
 ## [1.0.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.5a1) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.4a1...1.0.5a1)
-
-**Merged pull requests:**
-
-- docs: remove stale WIRE-1 §4.2 divergence comment in serialization.py [\#175](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/175) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.4a1) (2026-08-04)
 
