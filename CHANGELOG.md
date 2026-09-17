@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.18a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.18a1) (2026-09-17)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.17a1...1.1.18a1)
+
+**Merged pull requests:**
+
+- fix: stop the worker on close\(\) and retry a hub that sends nothing [\#271](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/271) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.17a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.17a1) (2026-09-17)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.16a1...1.1.17a1)
@@ -357,10 +365,6 @@
 ## [1.0.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.3a1) (2026-08-03)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.2a1...1.0.3a1)
-
-**Merged pull requests:**
-
-- fix: jitter the reconnect backoff so a restart does not resynchronize the fleet [\#168](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/168) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.2a1) (2026-08-03)
 
