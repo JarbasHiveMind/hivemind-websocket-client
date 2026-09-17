@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.21a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.21a2) (2026-09-17)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.21a1...1.1.21a2)
+
+**Merged pull requests:**
+
+- test: drive an in-process satellite through InProcessHiveShim.key \(\#257 follow-up\) [\#279](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/279) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.21a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.21a1) (2026-09-17)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.20a1...1.1.21a1)
@@ -362,10 +370,6 @@
 ## [1.0.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a1) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.5a1...1.0.6a1)
-
-**Merged pull requests:**
-
-- fix: bound the QUERY originator's wait and the binary metadata block [\#177](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/177) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.5a1) (2026-08-10)
 
