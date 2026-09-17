@@ -42,7 +42,8 @@ from hivemind_bus_client.serialization import (
     decode_bitstring,
     get_bitstring,
 )
-from hivemind_bus_client.util import serialize_message, unencrypted_frame_allowed
+from hivemind_bus_client.util import (parse_text_frame, serialize_message,
+                                     unencrypted_frame_allowed)
 
 
 WORKER_JOIN_TIMEOUT = 5  # seconds to wait for the reconnect worker to stop in close()
@@ -805,11 +806,14 @@ class HiveMessageBusClient(OVOSBusClient):
             if isinstance(message, bytes):
                 message = decrypt_bin(self.crypto_key, message, cipher=self.cipher)
             # handle json encryption
-            elif "ciphertext" in message:
-                # LOG.debug(f"got encrypted message: {len(message)}")
-                message = decrypt_from_json(self.crypto_key, message,
+            elif (frame := parse_text_frame(message)) is None:
+                LOG.error("dropping a text message that is not a JSON object "
+                          "on an encrypted session")
+                return
+            elif "ciphertext" in frame:
+                message = decrypt_from_json(self.crypto_key, frame,
                                             cipher=self.cipher, encoding=self.json_encoding)
-            elif not unencrypted_frame_allowed(message, self.handshake_event.is_set()):
+            elif not unencrypted_frame_allowed(frame, self.handshake_event.is_set()):
                 # CRYPTO-1 §3.5: once the key exists, only HELLO and HANDSHAKE
                 # before the handshake completes may arrive in cleartext
                 LOG.error("dropping an unencrypted message on an encrypted session")

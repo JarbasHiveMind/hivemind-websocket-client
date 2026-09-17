@@ -6,7 +6,7 @@ Also re-exports deprecated encryption wrappers that redirect to
 import json
 import warnings
 import zlib
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, Message
@@ -35,6 +35,27 @@ def serialize_message(message: Union[HiveMessage, Message, Dict]) -> str:
 
 # the only message types a legacy hub sends in cleartext while a key is set
 _CLEARTEXT_HANDSHAKE_TYPES = (HiveMessageType.HELLO, HiveMessageType.HANDSHAKE)
+
+
+def parse_text_frame(message: Union[str, bytes, bytearray, Dict]) -> Optional[Dict]:
+    """Parse a text frame received on a keyed legacy session.
+
+    A client must test the parsed frame for the ``ciphertext`` key. A test on
+    the raw text also matches a frame that only has the word in a value.
+
+    Args:
+        message: the received text frame, or an already parsed dict.
+
+    Returns:
+        The frame as a dict, or None when it is not a JSON object.
+    """
+    if isinstance(message, dict):
+        return message
+    try:
+        frame = json.loads(message)
+    except (ValueError, TypeError):
+        return None
+    return frame if isinstance(frame, dict) else None
 
 
 def unencrypted_frame_allowed(message: Union[str, Dict], handshake_done: bool) -> bool:
