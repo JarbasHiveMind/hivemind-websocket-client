@@ -381,14 +381,19 @@ class HiveMindSlaveProtocol:
                 # may be the stale one. Forgetting a good key on a network
                 # drop costs one derivation.
                 self._forget_cached_psk()
+        # close() and the socket close callback can both run this, on two
+        # threads. Clear the pattern before the established flag, and both
+        # before the slow RSA key load below. Then a second caller sees
+        # either a session or no pattern, never a KKpsk0 that did not
+        # complete, and a good session does not log a false KKpsk0 failure.
+        self._noise_pattern = None
         self._noise_established = False
+        self.noise_handshake = None
         self.handshake = HandShake(self.identity.private_key)
         self.pswd_handshake = None
         self.mpubkey = ""
         # a new connection has not sent its legacy HANDSHAKE yet
         self._legacy_handshake_started = False
-        self.noise_handshake = None
-        self._noise_pattern = None
         self._server_hello_payload = None
         self._server_handshake_payload = None
         if self.internal_protocol is not None:
@@ -601,6 +606,10 @@ class HiveMindSlaveProtocol:
                 "'hivemind-client forget-server' to drop it and reconnect "
                 "to trust the new key.")
             self._abort_noise("pinned key mismatch")
+            self._latch_refusal(
+                f"the server Noise static key for {pin_id} does not match "
+                "the pinned key. Run 'hivemind-client forget-server' if the "
+                "master was reinstalled or replaced")
             return
         if not pinned and transport.remote_static_key:
             self.identity.pin_noise_key(pin_id, transport.remote_static_key)
@@ -711,6 +720,25 @@ class HiveMindSlaveProtocol:
             "reset on the master, or these credentials are in use from "
             "another node. Keeping the pinned server key and retrying once "
             "with XXpsk2, which must present the same key.")
+
+    def _latch_refusal(self, reason: str) -> None:
+        """Stop the client after it refused the server itself.
+
+        A pinned-key mismatch does not go away on the next attempt: the
+        same server presents the same key. Reconnecting only repeats the
+        refusal every few seconds. The client stops, as it does when the
+        server refuses the credentials, and the reason names the command
+        that repairs a legitimate key change.
+        """
+        latch = getattr(self.hm, "latch_refusal", None)
+        if not callable(latch):
+            return
+        try:
+            result = latch(reason)
+            if asyncio.iscoroutine(result):
+                asyncio.ensure_future(result)
+        except Exception:
+            LOG.exception("failed to stop the client after a refusal")
 
     def _abort_noise(self, reason: str):
         """Fatal handshake failure — reject the connection (§3.4.3).

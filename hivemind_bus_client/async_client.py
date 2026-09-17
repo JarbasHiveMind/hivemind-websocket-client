@@ -386,6 +386,21 @@ class AsyncHiveMessageBusClient:
         """
         await self.close()
 
+    def latch_refusal(self, reason: str) -> None:
+        """Record a refusal that no retry can fix, and wake the waiter.
+
+        The protocol calls this when this client refuses the server, such
+        as for a server key that contradicts the pinned key.
+        ``wait_for_handshake`` then raises ``ConnectionRefusedError``.
+        """
+        self._auth_rejected = reason
+        LOG.error(f"HiveMind connection refused: {reason}. Not reconnecting.")
+        self._auth_rejected_event.set()
+        try:
+            self.emitter.emit("auth_rejected", reason)
+        except Exception:  # noqa: BLE001
+            LOG.exception("failed to emit auth_rejected")
+
     async def close(self):
         """Cleanly close the WebSocket and stop the receive loop."""
         async with self._lifecycle_lock:
