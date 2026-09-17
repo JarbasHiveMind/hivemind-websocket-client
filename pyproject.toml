@@ -48,7 +48,10 @@ test = [
     "websockets>=10.0",
 ]
 e2e = [
-    # >=0.8.6a1: InProcessHiveShim.key, read by the handshake (#226)
+    # >=0.8.6a1: InProcessHiveShim.key, which the slave protocol reads as the
+    # Noise PSK cache scope (protocol.py, cache_scope=self.hm.key). #226.
+    # tests/e2e/test_in_process_satellite.py drives that path: it raises
+    # AttributeError on 0.8.5a2 and passes from 0.8.6a1.
     "hivescope>=0.8.6a1",
     "hivemind-core>=5.1.0a2,<6.0.0",
 ]
