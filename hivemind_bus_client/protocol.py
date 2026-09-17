@@ -904,6 +904,15 @@ class HiveMindSlaveProtocol:
 
         # master is requesting handshake start
         else:
+            # One connection has one legacy handshake. A request that arrives
+            # after the key is set would start a second handshake, and the
+            # envelope that answers it would replace the session key.
+            hm = getattr(self, "hm", None)
+            event = getattr(hm, "handshake_event", None)
+            if event is not None and event.is_set() is True:
+                LOG.error("refusing a HANDSHAKE request: this connection "
+                          "already has a session key")
+                return
             # required = message.payload.get("handshake")
             # if not required:
             #    self.hm.handshake_event.set()  # don't wait
