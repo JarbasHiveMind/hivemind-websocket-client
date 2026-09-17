@@ -478,6 +478,20 @@ class HiveMessageBusClient(OVOSBusClient):
                     "reconnecting once with XXpsk2")
         return True
 
+    def latch_refusal(self, reason: str) -> None:
+        """Stop reconnecting after this client refused the server.
+
+        The protocol calls this for a refusal that no retry can fix, such as
+        a server key that contradicts the pinned key.
+        """
+        self._auth_rejected = reason
+        LOG.error(f"HiveMind connection refused: {reason}. Not reconnecting.")
+        try:
+            self.emitter.emit("auth_rejected", reason)
+        except Exception:  # noqa: BLE001
+            LOG.exception("failed to emit auth_rejected")
+        self.close()
+
     def _clear_connection_state(self):
         self.connected_event.clear()
         self.handshake_event.clear()
