@@ -790,7 +790,12 @@ class HiveMindSlaveProtocol:
         try:
             if self.pswd_handshake is not None:
                 LOG.info("Received password envelope")
-                self.pswd_handshake.receive_and_verify(envelope)  # validate master password matched
+                # False means a wrong password, or this client's own envelope
+                # sent back. Refuse it here: the key must not depend on
+                # ``secret`` raising on an empty salt.
+                if not self.pswd_handshake.receive_and_verify(envelope):
+                    LOG.error("dropping a handshake envelope: password verification failed")
+                    return False
                 new_key = self.pswd_handshake.secret
             else:
                 LOG.info("Received pubkey envelope")
