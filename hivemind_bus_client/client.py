@@ -180,6 +180,8 @@ class HiveMessageBusClient(OVOSBusClient):
         self.websocket_connect_timeout = websocket_connect_timeout
         # set by on_open for the connection attempt that is running now
         self._ws_opened: Event | None = None
+        # set by the first frame the hub sends on the current connection
+        self._ws_heard: Event | None = None
 
         # if you want to reduce CPU usage in exchange for more bandwidth set below to False
         self.compress = compress  # None -> auto
@@ -512,24 +514,45 @@ class HiveMessageBusClient(OVOSBusClient):
             self._stop_event.set()
         # taken before close(): WebSocketApp.close() drops its socket reference
         raw = self._raw_socket(self.client)
+        # Read the thread handle without holding _worker_lock across the
+        # join: the worker's own finally block takes that lock to release
+        # itself, so joining while holding it would deadlock.
+        thread = self._get_worker_thread()
+        # A callback invoked from the worker thread (e.g. on_message) may
+        # call close(); joining ourselves would deadlock forever.
+        other_worker = thread is not None and thread is not current_thread()
         try:
+            if other_worker:
+                # Stop the worker before the socket is closed. The worker
+                # waits in select() on this socket. WebSocketApp.close()
+                # closes the file descriptor, and a descriptor closed on this
+                # thread does not wake select() on the worker: the worker
+                # then waits for ever. So send the close frame, shut the
+                # socket down to wake the worker, and let the worker close
+                # its own socket.
+                self._send_close_frame(self.client)
+                self._shutdown_websocket_socket(self.client, raw)
+                thread.join(timeout=timeout)
             self.client.close()
             # a worker still waiting for the upgrade response is blocked in a
             # read that close() cannot wake
             self._shutdown_websocket_socket(self.client, raw)
         finally:
             self._clear_connection_state()
-        # Read the thread handle without holding _worker_lock across the
-        # join: the worker's own finally block takes that lock to release
-        # itself, so joining while holding it would deadlock.
-        thread = self._get_worker_thread()
-        if thread is not None and thread is not current_thread():
-            # A callback invoked from the worker thread (e.g. on_message)
-            # may call close(); joining ourselves would deadlock forever.
-            thread.join(timeout=timeout)
-            if thread.is_alive():
-                LOG.warning("HiveMind reconnect worker did not exit within "
-                            "%.1fs of close(); thread still alive", timeout)
+        if other_worker and thread.is_alive():
+            LOG.warning("HiveMind reconnect worker did not exit within "
+                        "%.1fs of close(); thread still alive", timeout)
+
+    @staticmethod
+    def _send_close_frame(app) -> None:
+        """Send a websocket close frame and do not wait for the answer."""
+        sock = getattr(app, "sock", None)
+        if sock is None or not getattr(sock, "connected", False):
+            return
+        try:
+            sock.send_close()
+        except Exception as error:  # noqa: BLE001 - the socket can be half gone
+            LOG.debug("could not send the websocket close frame: %s", error)
 
     def wait_for_handshake(self, timeout=5, max_retries=None):
         """
@@ -680,8 +703,10 @@ class HiveMessageBusClient(OVOSBusClient):
         try:
             while not self._stop_event.is_set():
                 opened = Event()
+                heard = Event()
                 self._ws_opened = opened
-                watchdog = self._start_connect_watchdog(self.client, opened)
+                self._ws_heard = heard
+                watchdog = self._start_connect_watchdog(self.client, opened, heard)
                 try:
                     self.client.run_forever(**run_options)
                 finally:
@@ -717,7 +742,8 @@ class HiveMessageBusClient(OVOSBusClient):
             self.started_running = False
             self._clear_connection_state()
 
-    def _start_connect_watchdog(self, app, opened: Event) -> Timer | None:
+    def _start_connect_watchdog(self, app, opened: Event,
+                                heard: Event | None = None) -> Timer | None:
         """Abandon this connection attempt if it has not opened in time.
 
         A hub that accepts TCP but never answers the websocket upgrade (a
@@ -725,19 +751,37 @@ class HiveMessageBusClient(OVOSBusClient):
         in the upgrade read, because websocket-client reads it with no
         timeout. The reconnect loop only runs after ``run_forever()``
         returns, so without this the client never tries again.
+
+        A hub can also answer the upgrade and then send nothing: no HELLO and
+        no handshake. The client then waits in the frame read for ever. When
+        ``heard`` is given, the attempt is abandoned too if no frame arrived
+        in the same interval.
         """
         # getattr: a subclass that skips __init__ still gets the default
         timeout = getattr(self, "websocket_connect_timeout",
                           WEBSOCKET_CONNECT_TIMEOUT)
         if not timeout or timeout <= 0:
             return None
-        watchdog = Timer(timeout, self._abort_stalled_connect, args=(app, opened))
+        watchdog = Timer(timeout, self._abort_stalled_connect,
+                         args=(app, opened, heard))
         watchdog.daemon = True
         watchdog.start()
         return watchdog
 
-    def _abort_stalled_connect(self, app, opened: Event) -> None:
-        if opened.is_set() or self._stop_event.is_set():
+    def _abort_stalled_connect(self, app, opened: Event,
+                               heard: Event | None = None) -> None:
+        if self._stop_event.is_set():
+            return
+        if heard is not None and opened.is_set():
+            if heard.is_set():
+                return
+            LOG.warning("HiveMind hub sent nothing within %.1f seconds of the "
+                        "websocket upgrade (no HELLO or handshake); closing it "
+                        "to retry", getattr(self, "websocket_connect_timeout",
+                                            WEBSOCKET_CONNECT_TIMEOUT))
+            self._shutdown_websocket_socket(app, self._raw_socket(app))
+            return
+        if opened.is_set():
             return
         LOG.warning("HiveMind websocket did not open within %.1f seconds "
                     "(no response to the upgrade request); closing it to "
@@ -779,6 +823,9 @@ class HiveMessageBusClient(OVOSBusClient):
             message = args[0]
         else:
             message = args[1]
+        heard = getattr(self, "_ws_heard", None)
+        if heard is not None:
+            heard.set()
         if self.noise_transport is not None:
             # protocol v3: every post-handshake message is a Noise transport
             # message; there is no cleartext v3 session (CRYPTO-1 §3.4.5)
