@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.20a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.20a1) (2026-09-17)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.19a1...1.1.20a1)
+
+**Merged pull requests:**
+
+- fix: refuse a HANDSHAKE request once the session key is set [\#273](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/273) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.19a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.19a1) (2026-09-17)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.18a1...1.1.19a1)
@@ -358,8 +366,6 @@
 **Merged pull requests:**
 
 - docs: remove stale WIRE-1 §4.2 divergence comment in serialization.py [\#175](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/175) ([JarbasAl](https://github.com/JarbasAl))
-- fix: make the flood id cache thread safe [\#173](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/173) ([JarbasAl](https://github.com/JarbasAl))
-- fix: reconnect wait can reach 90s despite the 60s cap [\#172](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/172) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.4a1) (2026-08-04)
 
