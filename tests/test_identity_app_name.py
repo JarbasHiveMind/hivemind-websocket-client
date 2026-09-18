@@ -18,6 +18,15 @@ from click.testing import CliRunner
 from hivemind_bus_client.identity import NodeIdentity
 
 
+@pytest.fixture(autouse=True)
+def _own_config_home(tmp_path, monkeypatch):
+    # the box running the tests may hold a shared identity file, and a named
+    # application with no file of its own reads it (see
+    # test_identity_shared_fallback.py); these tests are about the paths
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
 def test_an_app_name_gives_the_application_its_own_identity_file():
     a = NodeIdentity(app_name="voice-sat")
     b = NodeIdentity(app_name="deltachat-bridge")
@@ -53,7 +62,8 @@ def test_an_identity_file_and_an_app_name_together_are_refused(tmp_path):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["--app", "voice-sat", "forget-server", "--host", "hub"], {"app_name": "voice-sat"}),
+    (["--app", "voice-sat", "forget-server", "--host", "hub"],
+     {"app_name": "voice-sat", "shared_fallback": True}),
     (["forget-server", "--host", "hub"], {}),      # no --app: the call is unchanged
 ])
 def test_the_cli_app_option_selects_the_application_identity(args, expected):
@@ -94,7 +104,7 @@ def test_connecting_commands_hand_the_application_identity_to_the_client(command
         client.return_value.handshake_event.wait.return_value = False
         result = CliRunner().invoke(scripts.hmclient_cmds,
                                     ["--app", "voice-sat", command] + extra)
-    node_identity.assert_called_once_with(app_name="voice-sat")
+    node_identity.assert_called_once_with(app_name="voice-sat", shared_fallback=True)
     assert client.called, result.output
     assert client.call_args.kwargs.get("identity") is identity, (
         f"{command} built the client without the application identity: "

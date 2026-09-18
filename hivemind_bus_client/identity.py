@@ -5,6 +5,7 @@ from os.path import basename, dirname, isabs, isdir, isfile, join
 from poorman_handshake.asymmetric.utils import export_RSA_key, create_RSA_key
 from json_database import JsonConfigXDG
 from ovos_utils.log import LOG
+from ovos_utils.xdg_utils import xdg_config_home
 from hivemind_bus_client.exceptions import IdentityFileCorrupted
 from typing import Dict, List, Optional
 
@@ -21,7 +22,8 @@ class NodeIdentity:
     """
 
     def __init__(self, identity_file: Optional[str] = None,
-                 app_name: Optional[str] = None):
+                 app_name: Optional[str] = None,
+                 shared_fallback: bool = True):
         """
         Initialize the NodeIdentity instance with an optional identity file.
 
@@ -32,6 +34,14 @@ class NodeIdentity:
                 ``~/.config/hivemind/<app_name>/_identity.json``, so two
                 applications of one user are two nodes (HIVEMIND-CRYPTO-1 §2).
                 Without it the shared ``~/.config/hivemind/_identity.json`` is used.
+            shared_fallback (bool): With ``app_name``, when the application
+                has no identity file yet and the shared
+                ``~/.config/hivemind/_identity.json`` exists, use the shared
+                file and log a warning. A deployment provisioned with
+                ``hivemind-client set-identity`` keeps working after the
+                application names itself. Pass ``False`` for a write that
+                must land in the application's own file. The shared file is
+                never created by this path.
 
         Raises:
             ValueError: ``app_name`` is not one plain path segment, or both
@@ -45,11 +55,30 @@ class NodeIdentity:
                                  f"start with a letter or digit, and be at most 64 "
                                  f"characters: {app_name!r}")
         self.app_name = app_name
+        #: True when a named application reads the shared file because it has
+        #: no file of its own yet
+        self.uses_shared_fallback = False
         # an empty store is falsy, so test explicitly: a caller that passes
         # its own (still empty) file must not silently get the default one
         if identity_file is None:
             subfolder = join("hivemind", app_name) if app_name else "hivemind"
-            identity_file = JsonConfigXDG("_identity", subfolder=subfolder)
+            # JsonConfigXDG binds its xdg_folder default at import time, so
+            # read XDG_CONFIG_HOME here, at construction
+            config_home = str(xdg_config_home())
+            identity_file = JsonConfigXDG("_identity", subfolder=subfolder,
+                                          xdg_folder=config_home)
+            if app_name and shared_fallback and not isfile(identity_file.path):
+                shared = JsonConfigXDG("_identity", subfolder="hivemind",
+                                       xdg_folder=config_home)
+                if isfile(shared.path):
+                    LOG.warning(
+                        f"{app_name!r} has no identity file at {identity_file.path} "
+                        f"and reads the shared {shared.path}. HIVEMIND-CRYPTO-1 §2 "
+                        f"wants one identity per application: run "
+                        f"'hivemind-client --app {app_name} set-identity ...' "
+                        f"to give it one")
+                    identity_file = shared
+                    self.uses_shared_fallback = True
         self.IDENTITY_FILE = identity_file
         self._assert_identity_readable()
 
