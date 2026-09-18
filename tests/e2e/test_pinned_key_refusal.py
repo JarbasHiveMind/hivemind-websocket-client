@@ -4,8 +4,6 @@ The client pinned a server key, and the server presents another key. The
 client must stop after the first refusal and name forget-server. It used to
 reconnect every few seconds forever.
 """
-import time
-
 import pytest
 from json_database import JsonStorage
 
@@ -55,7 +53,14 @@ def test_a_server_key_that_contradicts_the_pin_stops_the_client(tmp_path, master
     client.emitter.on("open", lambda *a: opened.append(1))
     with pytest.raises(ConnectionRefusedError, match="forget-server"):
         client.connect(site_id="s", handshake_max_retries=3)
-    time.sleep(8)  # longer than one reconnect delay
+    # The refusal latches and calls close(), which stops the reconnect worker.
+    # Once that thread has exited no reconnect can ever run, so wait on the
+    # thread, not on a delay that a slow runner can outlast.
+    assert client.stopping, "the refusal did not stop the client"
+    worker = client._get_worker_thread()
+    if worker is not None:
+        worker.join(timeout=10)
+        assert not worker.is_alive(), "the reconnect worker is still running"
     try:
         assert client._auth_rejected and "forget-server" in client._auth_rejected
         assert len(opened) <= 2, f"client reconnected {len(opened)} times"
