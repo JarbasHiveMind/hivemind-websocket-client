@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.22a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.22a1) (2026-09-18)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.21a2...1.1.22a1)
+
+**Merged pull requests:**
+
+- fix: report the refusal when the handshake retry finds the socket closed [\#281](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/281) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.21a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.21a2) (2026-09-17)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.21a1...1.1.21a2)
