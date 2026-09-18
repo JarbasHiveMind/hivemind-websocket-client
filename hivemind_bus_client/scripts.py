@@ -80,7 +80,8 @@ def terminal(key: str, password: str, host: str, port: int, siteid: str):
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     # node.connected_event.wait()
@@ -154,7 +155,8 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     node.connected_event.wait()
@@ -191,7 +193,8 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     node.connected_event.wait()
@@ -313,7 +316,8 @@ def ping(key: str, password: str, host: str, port: int, siteid: str,
     flood_id = str(uuid.uuid4())
     my_peer = f"{identity.name or 'hivemind-client'}::{flood_id[:8]}"
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
     if not node.connected_event.wait(timeout=10):
         print("[ERROR] Failed to connect to HiveMind within 10 seconds")

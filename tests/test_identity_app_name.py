@@ -64,3 +64,38 @@ def test_the_cli_app_option_selects_the_application_identity(args, expected):
         result = CliRunner().invoke(scripts.hmclient_cmds, args)
     assert result.exit_code == 0, result.output
     node_identity.assert_called_once_with(**expected)
+
+
+@pytest.mark.parametrize("command, extra", [
+    ("terminal", []),
+    ("escalate", ["--msg", "speak", "--payload", "{}"]),
+    ("propagate", ["--msg", "speak", "--payload", "{}"]),
+    ("ping", []),
+])
+def test_connecting_commands_hand_the_application_identity_to_the_client(command, extra):
+    """The client must present the application's own Noise key and pin store.
+
+    The four commands read key, password and host from the --app identity.
+    Without ``identity=`` the client fell back to NodeIdentity(), the shared
+    file, and presented the shared static key under the application's access
+    key (HIVEMIND-CRYPTO-1 §2 forbids one key under two access keys).
+    """
+    from hivemind_bus_client import scripts
+    with patch.object(scripts, "NodeIdentity") as node_identity, \
+         patch.object(scripts, "HiveMessageBusClient") as client:
+        identity = node_identity.return_value
+        identity.access_key = "sat-key"
+        identity.password = "correct-horse-battery-staple-92"
+        identity.default_master = "ws://hub"
+        identity.default_port = 5678
+        identity.site_id = "site"
+        identity.name = "voice-sat"
+        client.return_value.connected_event.wait.return_value = False
+        client.return_value.handshake_event.wait.return_value = False
+        result = CliRunner().invoke(scripts.hmclient_cmds,
+                                    ["--app", "voice-sat", command] + extra)
+    node_identity.assert_called_once_with(app_name="voice-sat")
+    assert client.called, result.output
+    assert client.call_args.kwargs.get("identity") is identity, (
+        f"{command} built the client without the application identity: "
+        f"{client.call_args}")
