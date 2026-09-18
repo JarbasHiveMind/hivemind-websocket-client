@@ -3,7 +3,15 @@
 The `hivemind-client` command provides utilities for managing identity and sending test messages.
 
 ```
-hivemind-client [COMMAND] [OPTIONS]
+hivemind-client [--app NAME] [COMMAND] [OPTIONS]
+```
+
+`--app NAME` makes every command use the identity of that application,
+`~/.config/hivemind/NAME/_identity.json`, instead of the shared
+`~/.config/hivemind/_identity.json`. It goes before the command:
+
+```bash
+hivemind-client --app voice-sat set-identity --key KEY --password PASS
 ```
 
 ---
