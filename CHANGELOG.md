@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.0a1) (2026-09-18)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.22a1...1.2.0a1)
+
+**Merged pull requests:**
+
+- feat: NodeIdentity\(app\_name=...\) keeps one identity per application [\#256](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/256) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.1.22a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.22a1) (2026-09-18)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.21a2...1.1.22a1)
@@ -370,10 +378,6 @@
 ## [1.0.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a2) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a1...1.0.6a2)
-
-**Merged pull requests:**
-
-- chore\(ci\): drop the broken, redundant Dependabot config [\#180](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/180) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a1) (2026-08-10)
 
