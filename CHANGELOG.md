@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.1a1) (2026-09-18)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.0a1...1.2.1a1)
+
+**Merged pull requests:**
+
+- fix: a named application reads the shared identity until it has its own [\#284](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/284) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.0a1) (2026-09-18)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.22a1...1.2.0a1)
@@ -370,10 +378,6 @@
 ## [1.0.6a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a3) (2026-08-10)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.6a2...1.0.6a3)
-
-**Merged pull requests:**
-
-- docs: correct claims that no longer match the code [\#182](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/182) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.6a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.6a2) (2026-08-10)
 
