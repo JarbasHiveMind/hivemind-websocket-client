@@ -108,6 +108,33 @@ def test_a_cli_write_with_app_lands_in_the_application_file(home, command):
     assert dict(NodeIdentity().IDENTITY_FILE) == before
 
 
+def test_forget_server_under_the_fallback_says_the_pin_is_shared(home):
+    from hivemind_bus_client.scripts import hmclient_cmds
+    shared = _provision_shared()
+    shared.pin_noise_key("hub.local:5678", "aa" * 32)
+    shared.save()
+    result = CliRunner().invoke(hmclient_cmds, ["--app", "voice-sat", "forget-server",
+                                                "--host", "hub.local", "--port", "5678"])
+    assert result.exit_code == 0, result.output
+    assert "voice-sat has no identity file of its own" in result.output
+    assert "checked by every application on this box" in result.output
+    assert "forgot pinned key for hub.local:5678" in result.output
+    # the pin is gone from the shared file: that is the shared state, said out loud
+    assert NodeIdentity().pinned_noise_keys == {}
+
+
+def test_forget_server_with_an_own_file_prints_no_shared_line(home):
+    from hivemind_bus_client.scripts import hmclient_cmds
+    _provision_shared()
+    own = NodeIdentity(app_name="voice-sat", shared_fallback=False)
+    own.pin_noise_key("hub.local:5678", "bb" * 32)
+    own.save()
+    result = CliRunner().invoke(hmclient_cmds, ["--app", "voice-sat", "forget-server",
+                                                "--host", "hub.local", "--port", "5678"])
+    assert result.exit_code == 0, result.output
+    assert "shared" not in result.output
+
+
 def test_a_cli_read_with_app_uses_the_fallback(home):
     from hivemind_bus_client.scripts import hmclient_cmds
     _provision_shared()

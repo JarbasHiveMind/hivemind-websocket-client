@@ -272,6 +272,11 @@ def forget_server(host: str, port: int):
     pin_id = f"{host}:{port}"
     if not host:
         raise ValueError("please set --host, no default master in the identity file")
+    if identity.uses_shared_fallback:
+        # the pin lives in the shared file until this application has its own
+        print(f"{identity.app_name} has no identity file of its own: this pin is "
+              f"in the shared {identity.IDENTITY_FILE.path}, checked by every "
+              f"application on this box")
     if identity.forget_noise_key(pin_id):
         print(f"forgot pinned key for {pin_id}")
         print("the next connection will trust and pin the key it sees")

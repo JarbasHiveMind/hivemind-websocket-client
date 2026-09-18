@@ -42,8 +42,12 @@ hivemind-client --app voice-sat set-identity --key KEY --password PASS --host HU
 ```
 
 writes `~/.config/hivemind/voice-sat/_identity.json`, and the warning
-stops. Pass `shared_fallback=False` for a write that must land in the
-application's own file whatever the box holds.
+stops. `set-identity` and `reset-pgp` pass `shared_fallback=False`, so
+they never touch the shared file. Everything else works on the file the
+application reads: under the fallback a pin the application adds on its
+first connection, or drops with `forget-server`, is the pin every other
+application on the box checks. Give the application its own file before
+you change pins.
 
 Credentials (`access_key`, `password`), `useragent` and `site_id` are not
 part of the identity. They say how to reach one particular master, and a

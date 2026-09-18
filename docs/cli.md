@@ -14,11 +14,14 @@ hivemind-client [--app NAME] [COMMAND] [OPTIONS]
 hivemind-client --app voice-sat set-identity --key KEY --password PASS
 ```
 
-On a box that only has the shared file, a read command with `--app NAME`
-(`terminal`, `ping`, `forget-server`, ...) uses the shared file and logs a
-warning. `set-identity` and `reset-pgp` with `--app NAME` always write
+On a box that only has the shared file, `--app NAME` uses the shared file
+and logs a warning until the application has a file of its own.
+`set-identity` and `reset-pgp` with `--app NAME` always write
 `~/.config/hivemind/NAME/_identity.json`: they give the application its own
-identity and never change the shared one.
+identity and never touch the shared one. A pin change (`forget-server`, and
+the first connection to a hub) lands in the file the application reads.
+Under the fallback that is the shared file, so the pin is dropped or added
+for every application on the box; `forget-server` prints that.
 
 ---
 
