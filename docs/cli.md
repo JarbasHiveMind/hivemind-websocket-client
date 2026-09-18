@@ -14,6 +14,12 @@ hivemind-client [--app NAME] [COMMAND] [OPTIONS]
 hivemind-client --app voice-sat set-identity --key KEY --password PASS
 ```
 
+On a box that only has the shared file, a read command with `--app NAME`
+(`terminal`, `ping`, `forget-server`, ...) uses the shared file and logs a
+warning. `set-identity` and `reset-pgp` with `--app NAME` always write
+`~/.config/hivemind/NAME/_identity.json`: they give the application its own
+identity and never change the shared one.
+
 ---
 
 ## `set-identity`

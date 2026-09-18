@@ -27,6 +27,24 @@ and `app_name` raises `ValueError`.
 `~/.config/hivemind/_identity.json`. §2 does not allow that location as a
 default, so an application passes its own `app_name`.
 
+### A box provisioned with the shared file
+
+Every deployment before `app_name` was provisioned with
+`hivemind-client set-identity`, which writes the shared file. When an
+application starts to name itself on such a box, it has no file of its own
+yet. `NodeIdentity(app_name=...)` then reads the shared file, logs a
+warning that names §2 and the command that gives the application its own
+identity, and sets `identity.uses_shared_fallback` to `True`. It never
+creates the shared file: without one, the application gets its own path.
+
+```bash
+hivemind-client --app voice-sat set-identity --key KEY --password PASS --host HUB
+```
+
+writes `~/.config/hivemind/voice-sat/_identity.json`, and the warning
+stops. Pass `shared_fallback=False` for a write that must land in the
+application's own file whatever the box holds.
+
 Credentials (`access_key`, `password`), `useragent` and `site_id` are not
 part of the identity. They say how to reach one particular master, and a
 node that both serves clients and connects upstream has its own access key

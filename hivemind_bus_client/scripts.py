@@ -23,12 +23,18 @@ def hmclient_cmds(app):
     pass
 
 
-def _node_identity() -> NodeIdentity:
-    """The identity of the application named by the group's --app option."""
+def _node_identity(shared_fallback: bool = True) -> NodeIdentity:
+    """The identity of the application named by the group's --app option.
+
+    ``shared_fallback=False`` is for a write: with ``--app`` it must land in
+    that application's own file, never in the shared one.
+    """
     ctx = click.get_current_context(silent=True)
     app = ctx.find_root().params.get("app") if ctx else None
     # without --app the call stays exactly what it was before the option
-    return NodeIdentity(app_name=app) if app else NodeIdentity()
+    if not app:
+        return NodeIdentity()
+    return NodeIdentity(app_name=app, shared_fallback=shared_fallback)
 
 
 @hmclient_cmds.command(help="persist node identity / credentials", name="set-identity")
@@ -40,7 +46,7 @@ def _node_identity() -> NodeIdentity:
 def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     if not key and not password and not siteid:
         raise ValueError("please set at least one of key/password/siteid/host")
-    identity = _node_identity()
+    identity = _node_identity(shared_fallback=False)
     if password and password != identity.password:
         # every cached Noise PSK was derived from the old password
         clear_cached_psks(identity.noise_key)
@@ -277,7 +283,9 @@ def forget_server(host: str, port: int):
 
 @hmclient_cmds.command(help="recreate the private RSA key for inter-node communication", name="reset-pgp")
 def reset_keys():
-    identity = _node_identity()
+    # new keys for the named application go into its own file, never into
+    # the shared one that every other application still reads
+    identity = _node_identity(shared_fallback=False)
     identity.create_keys()
     print("PUBKEY:", identity.public_key)
     identity.save()
