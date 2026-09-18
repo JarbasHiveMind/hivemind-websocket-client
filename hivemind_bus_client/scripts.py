@@ -44,8 +44,8 @@ def _node_identity(shared_fallback: bool = True) -> NodeIdentity:
 @click.option("--port", help="default port for hivemind-core", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context", type=str, default="")
 def identity_set(key: str, password: str, host: str, port: int, siteid: str):
-    if not key and not password and not siteid:
-        raise ValueError("please set at least one of key/password/siteid/host")
+    if not key and not password and not siteid and not host and not port:
+        raise ValueError("please set at least one of key/password/siteid/host/port")
     identity = _node_identity(shared_fallback=False)
     if password and password != identity.password:
         # every cached Noise PSK was derived from the old password
@@ -54,10 +54,13 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
     identity.access_key = key or identity.access_key
     identity.site_id = siteid or identity.site_id
     identity.default_port = port or identity.default_port or 5678
+    # a fresh identity has no master yet: with no --host there is nothing
+    # to normalise or store, and the connecting commands ask for --host
     host = host or identity.default_master
-    if not host.startswith("ws://") and not host.startswith("wss://"):
-        host = "ws://" + host
-    identity.default_master = host
+    if host:
+        if not host.startswith("ws://") and not host.startswith("wss://"):
+            host = "ws://" + host
+        identity.default_master = host
     if not identity.public_key:
         identity.create_keys()
         print("PUBKEY:", identity.public_key)

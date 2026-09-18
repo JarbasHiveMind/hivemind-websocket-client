@@ -41,6 +41,10 @@ hivemind-client set-identity [OPTIONS]
 | `--port INTEGER` | Default hub port |
 | `--siteid TEXT` | Location identifier injected into `message.context` |
 
+At least one option is required. Each option changes only its own field:
+a call without `--host` keeps the stored hub, and on a fresh identity
+stores none.
+
 **Example:**
 
 ```bash
