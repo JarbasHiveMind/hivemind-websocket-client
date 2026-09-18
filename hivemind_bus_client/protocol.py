@@ -605,11 +605,14 @@ class HiveMindSlaveProtocol:
                 "If you did, the pinned key is stale: run "
                 "'hivemind-client forget-server' to drop it and reconnect "
                 "to trust the new key.")
-            self._abort_noise("pinned key mismatch")
+            # Latch the reason before the abort closes the socket, so a
+            # waiter that wakes to a dead connection finds the refusal and
+            # not a bare send failure.
             self._latch_refusal(
                 f"the server Noise static key for {pin_id} does not match "
                 "the pinned key. Run 'hivemind-client forget-server' if the "
                 "master was reinstalled or replaced")
+            self._abort_noise("pinned key mismatch")
             return
         if not pinned and transport.remote_static_key:
             self.identity.pin_noise_key(pin_id, transport.remote_static_key)

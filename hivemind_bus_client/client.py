@@ -595,7 +595,20 @@ class HiveMessageBusClient(OVOSBusClient):
                 raise RuntimeError("timed out waiting for handshake")
             attempts += 1
             if self.connected_event.is_set():
-                self.protocol.start_handshake()
+                try:
+                    self.protocol.start_handshake()
+                except (ValueError, RuntimeError) as error:
+                    # The socket went down between the check above and the
+                    # send: a refusal that closed it, or a drop the worker
+                    # is about to replace. A refusal has its reason by now;
+                    # a drop is the next iteration's business.
+                    if self._auth_rejected:
+                        raise ConnectionRefusedError(
+                            f"HiveMind refused this identity: "
+                            f"{self._auth_rejected}"
+                        ) from error
+                    LOG.warning("handshake retry lost the connection: %s",
+                                error)
             else:
                 LOG.warning("Can't start handshake because websocket connection is not yet open...")
                 self.connected_event.wait(timeout=timeout)
