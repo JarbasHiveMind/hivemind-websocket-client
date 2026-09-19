@@ -465,3 +465,22 @@ class NodeIdentity:
         # makes an identity unusable once the file moves to another user's home
         self.private_key = key_name
         self.public_key = pub
+
+
+def shared_identity_for(owner: str) -> "NodeIdentity":
+    """The shared identity for a client built without ``identity=``.
+
+    HIVEMIND-CRYPTO-1 §2: two applications of one user MUST NOT present the
+    same identifier or static key pair. A client that is given no identity
+    can only fall back to the shared ``~/.config/hivemind/_identity.json``,
+    so every such client on the box presents one identifier and one Noise
+    static key, whatever access key it connects with. This keeps that
+    fallback, so no caller breaks, and says so in the log with the fix.
+    """
+    LOG.warning(
+        f"{owner} was built without identity= and uses the shared "
+        f"~/.config/hivemind/_identity.json. Every application of this user "
+        f"then presents one identifier and one static key, which "
+        f"HIVEMIND-CRYPTO-1 §2 forbids. Pass "
+        f"identity=NodeIdentity(app_name=\"<your-app>\")")
+    return NodeIdentity()

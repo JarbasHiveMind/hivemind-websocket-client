@@ -47,7 +47,7 @@ from hivemind_bus_client.encryption import (SupportedCiphers,
                                             SupportedEncodings, decrypt_bin,
                                             decrypt_from_json, encrypt_as_json,
                                             encrypt_bin, hybrid_encrypt)
-from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.identity import NodeIdentity, shared_identity_for
 from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.keepalive import websocket_keepalive_options
@@ -224,7 +224,7 @@ class AsyncHiveMessageBusClient:
     # ------------------------------------------------------------------
 
     def init_identity(self, site_id: Optional[str] = None):
-        self.identity = self.identity or NodeIdentity()
+        self.identity = self.identity or shared_identity_for(type(self).__name__)
         # Credentials say how to reach one master; they are not the node's
         # identity. Writing them back overwrote the node's own access key,
         # password and name on the first save — and pinning a peer key saves.
