@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.3a1) (2026-09-19)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.2a1...1.2.3a1)
+
+**Merged pull requests:**
+
+- fix: a client built without identity= says it presents the shared identity [\#288](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/288) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.2a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.2a1) (2026-09-18)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.1a1...1.2.2a1)
@@ -366,14 +374,6 @@
 ## [1.0.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.8a1) (2026-08-12)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.7a1...1.0.8a1)
-
-**Closed issues:**
-
-- protocol v3: a client with a stale Noise pin locks itself out permanently \(KKpsk0 retry loop, no XXpsk2 fallback\) [\#186](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/186)
-
-**Merged pull requests:**
-
-- fix: recover from a stale Noise pin instead of looping on KKpsk0 forever [\#187](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/187) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.7a1) (2026-08-10)
 
