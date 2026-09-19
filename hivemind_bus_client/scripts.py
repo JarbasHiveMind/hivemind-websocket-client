@@ -129,7 +129,24 @@ def terminal(key: str, password: str, host: str, port: int, siteid: str):
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
 def send_mycroft(key: str, password: str, host: str, port: int, siteid: str, msg: str, payload: str):
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    # like its siblings: the --app identity, both for the credentials and
+    # for the keys the client presents
+    identity = _node_identity()
+    password = password or identity.password
+    key = key or identity.access_key
+    host = host or identity.default_master
+    siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
+
+    if host and not host.startswith("ws://") and not host.startswith("wss://"):
+        host = "ws://" + host
+
+    if not key or not password or not host:
+        raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
+                           "call 'hivemind-client set-identity'")
+
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                                identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     node.connected_event.wait()

@@ -89,3 +89,23 @@ def test_with_an_identity_each_client_keeps_it_and_logs_nothing(build):
     assert client.identity is own
     ctor.assert_not_called()
     warning.assert_not_called()
+
+
+def test_send_mycroft_with_app_hands_the_application_identity_to_the_client_and_warns_nothing():
+    """send-mycroft was the one CLI command that built the client without
+    identity=: with --app the credentials came from the named identity and
+    the keys from the shared one, and the fallback warning fired."""
+    from click.testing import CliRunner
+    from hivemind_bus_client import scripts
+    own = _own_identity()
+    with patch.object(scripts, "NodeIdentity", return_value=own) as ctor, \
+         patch.object(scripts, "HiveMessageBusClient") as client, \
+         patch("hivemind_bus_client.identity.LOG.warning") as warning:
+        client.return_value.connected_event.wait.return_value = True
+        result = CliRunner().invoke(scripts.hmclient_cmds,
+                                    ["--app", "foo", "send-mycroft",
+                                     "--msg", "speak", "--payload", "{}"])
+    assert result.exit_code == 0, result.output
+    ctor.assert_called_once_with(app_name="foo", shared_fallback=True)
+    assert client.call_args.kwargs.get("identity") is own
+    warning.assert_not_called()
