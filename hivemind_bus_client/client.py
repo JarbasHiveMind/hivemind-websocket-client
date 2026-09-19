@@ -32,7 +32,7 @@ from hivemind_bus_client.encryption import (
     hybrid_encrypt,
 )
 from hivemind_bus_client.exceptions import MetadataTooLarge
-from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.identity import NodeIdentity, shared_identity_for
 from hivemind_bus_client.keepalive import websocket_keepalive_options
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.noise import NoiseTransportFailed
@@ -231,7 +231,7 @@ class HiveMessageBusClient(OVOSBusClient):
         downstream client then failed with "invalid api key" against
         credentials the node no longer had.
         """
-        self.identity = self.identity or NodeIdentity()
+        self.identity = self.identity or shared_identity_for(type(self).__name__)
         self._password = self._password or self.identity.password
         self._access_key = self._access_key or self.identity.access_key
         self._host = self._host or self.identity.default_master

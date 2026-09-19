@@ -17,7 +17,7 @@ from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, 
                                             SupportedEncodings, SupportedCiphers, hybrid_encrypt)
 from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.noise import NoiseTransportFailed
-from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.identity import NodeIdentity, shared_identity_for
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
@@ -176,7 +176,7 @@ class HiveMindHTTPClient(threading.Thread):
         self._access_key = val
 
     def init_identity(self, site_id=None):
-        self.identity = self.identity or NodeIdentity()
+        self.identity = self.identity or shared_identity_for(type(self).__name__)
         # Credentials say how to reach one master; they are not the node's
         # identity. Writing them back overwrote the node's own access key,
         # password and name on the first save — and pinning a peer key saves.

@@ -18,7 +18,7 @@ from ovos_utils.log import LOG
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers, optimal_ciphers, hybrid_decrypt
 from hivemind_bus_client.hive_map import FloodIdCache, HiveMapper
-from hivemind_bus_client.identity import NodeIdentity
+from hivemind_bus_client.identity import NodeIdentity, shared_identity_for
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.noise import (NOISE_PATTERN_KK, NOISE_SUPPORTED, PROTOCOL_V3,
                                        NoiseTransport, NoiseHandshakeFailed,
@@ -332,7 +332,7 @@ class HiveMindSlaveProtocol:
 
     def bind(self, bus: Optional[MessageBusClient] = None):
         if self.identity is None:
-            self.identity = self.hm.identity or NodeIdentity()
+            self.identity = self.hm.identity or shared_identity_for(type(self).__name__)
         self.handshake = HandShake(self.identity.private_key)
         # PasswordHandShake is a legacy (v2) mechanism. Build it only after
         # the server explicitly selects that fallback in handle_handshake();
