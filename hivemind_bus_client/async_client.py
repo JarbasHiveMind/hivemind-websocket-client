@@ -579,11 +579,11 @@ class AsyncHiveMessageBusClient:
             self._handle_hive_protocol(message)
         elif isinstance(message, str):
             self.emitter.emit("message", message)
-            self._handle_hive_protocol(HiveMessage(**json.loads(message)))
+            self._handle_hive_protocol(HiveMessage.from_wire(message))
         else:
             assert isinstance(message, dict)
             self.emitter.emit("message", json.dumps(message, ensure_ascii=False))
-            self._handle_hive_protocol(HiveMessage(**message))
+            self._handle_hive_protocol(HiveMessage.from_wire(message))
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY

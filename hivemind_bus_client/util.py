@@ -152,7 +152,7 @@ def get_hivemsg(msg: Union[Message, str, Dict]) -> HiveMessage:
     if isinstance(msg, str):
         msg = json.loads(msg)
     if isinstance(msg, dict):
-        msg = HiveMessage(**msg)
+        msg = HiveMessage.from_wire(msg)
     if isinstance(msg, Message):
         msg = HiveMessage(msg_type=HiveMessageType.BUS, payload=msg)
     assert isinstance(msg, HiveMessage)

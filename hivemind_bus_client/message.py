@@ -40,6 +40,21 @@ class HiveMindBinaryPayloadType(IntEnum):
     TTS_AUDIO = 6  # synthesized TTS audio to be played
 
 
+#: The wire types whose payload HIVEMIND-MSG-1 §4 requires. A frame of one
+#: of these with no payload key is malformed; every other type may omit it,
+#: and the constructor's own default supplies ``{}``.
+_PAYLOAD_REQUIRED = (HiveMessageType.HELLO, HiveMessageType.HANDSHAKE,
+                     HiveMessageType.HELLO.value,
+                     HiveMessageType.HANDSHAKE.value)
+
+
+class MalformedWirePayload(ValueError):
+    """A wire frame whose payload is not a JSON object (HIVEMIND-MSG-1 §4).
+
+    A ValueError, so the callers that already treat a bad frame as a
+    ValueError keep working."""
+
+
 class _Unset:
     """Sentinel telling forward() apart from an explicit None.
 
@@ -213,9 +228,10 @@ class HiveMessage:
             pload = pload.as_dict
         elif isinstance(pload, Message):
             pload = pload.serialize()
-        if isinstance(pload, str):
-            pload = json.loads(pload)
-
+        # A string payload is NOT parsed back into an object here. Doing so
+        # repaired a wire value that HIVEMIND-MSG-1 §4 refuses, and it let a
+        # HELLO whose payload was the string '{"site_id": "x"}' set a site
+        # id. `from_wire` rejects that shape before it reaches this.
         assert isinstance(pload, dict)
 
         return {"msg_type": self.msg_type,
@@ -282,11 +298,70 @@ class HiveMessage:
         return self.as_json
 
     @staticmethod
+    def _wire_payload(msg_type: Any, payload: Any) -> dict:
+        """The payload of a wire frame, refused unless it is a JSON object.
+
+        HIVEMIND-MSG-1 §4: the payload MUST be a JSON object, ``{}`` the only
+        empty form. A node rejects any other shape and never repairs it, so
+        this raises rather than substituting a value the sender did not send.
+
+        The Python constructor keeps its own default: ``HiveMessage(TYPE)``
+        with no payload is an API convenience and builds ``{}``. That is not
+        a repair of a wire value, because no wire value was read. Everything
+        that DOES read the wire comes through here.
+        """
+        if isinstance(payload, dict):
+            return payload
+        raise MalformedWirePayload(
+            f"{msg_type} payload must be a JSON object, got "
+            f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
+
+    @staticmethod
+    def from_wire(frame: Union[str, dict]) -> 'HiveMessage':
+        """Build a message from a wire frame, payload validated.
+
+        This is the one door for a frame that arrived over a connection. It
+        keeps the per-hop fields the frame carries, which
+        :meth:`deserialize` deliberately drops for a node that is about to
+        re-route the message: a client reads ``source_peer`` to decide
+        whether a PROPAGATE is trusted, so dropping it here would silently
+        change that decision.
+        """
+        if isinstance(frame, str):
+            frame = json.loads(frame)
+        if not isinstance(frame, dict):
+            raise MalformedWirePayload(
+                f"a wire frame must be a JSON object, got "
+                f"{type(frame).__name__} (HIVEMIND-MSG-1 §4)")
+        if "msg_type" not in frame:
+            raise MalformedWirePayload(f"not a HiveMind message: {frame}")
+        kwargs = dict(frame)
+        msg_type = kwargs.pop("msg_type")
+        if "payload" not in kwargs:
+            # Absent is refused only for the types that carry one. §4 names
+            # HELLO and HANDSHAKE; a PING frame is the whole message and has
+            # nothing to put in a payload, so an absent key there is the
+            # frame's shape and not a missing value.
+            if msg_type in _PAYLOAD_REQUIRED:
+                raise MalformedWirePayload(
+                    f"{msg_type} frame carries no payload "
+                    f"(HIVEMIND-MSG-1 §4)")
+            return HiveMessage(msg_type, **kwargs)
+        payload = HiveMessage._wire_payload(msg_type, kwargs.pop("payload"))
+        return HiveMessage(msg_type, payload, **kwargs)
+
+    @staticmethod
     def deserialize(payload: Union[str, dict]) -> 'HiveMessage':
         if isinstance(payload, str):
             payload = json.loads(payload)
 
         if "msg_type" in payload:
+            # §4 again: a frame whose payload is not an object is refused
+            # here, and the refusal is not swallowed by the `except` below,
+            # which exists to fall through to the BUS shape.
+            if "payload" in payload:
+                HiveMessage._wire_payload(payload["msg_type"],
+                                          payload["payload"])
             try:
                 return HiveMessage(payload["msg_type"], payload["payload"],
                                    metadata=payload.get("metadata", {}),
