@@ -2,7 +2,9 @@
 import json
 import pytest
 from ovos_bus_client.message import Message
-from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
+from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
+                                         HiveMindBinaryPayloadType,
+                                         MalformedWirePayload)
 
 
 class TestHiveMessageType:
@@ -44,9 +46,20 @@ class TestHiveMessageInit:
         assert hm._payload["type"] == "speak"
         assert hm._payload["data"]["utterance"] == "hi"
 
-    def test_from_json_string(self):
+    def test_a_json_string_payload_is_refused(self):
+        """The constructor no longer parses a string.
+
+        It used to, and because the inner view of a wrapped routing message
+        is built with ``HiveMessage(**self._payload)``, that parse repaired
+        an inner wire payload one level below ``from_wire``, which refuses
+        the same shape (HIVEMIND-MSG-1 §4). Text goes through
+        ``HiveMessage.from_wire``, which is the door for a wire value.
+        """
         payload_str = json.dumps({"type": "speak", "data": {"utterance": "hi"}, "context": {}})
-        hm = HiveMessage(HiveMessageType.BUS, payload_str)
+        with pytest.raises(MalformedWirePayload):
+            HiveMessage(HiveMessageType.BUS, payload_str)
+        hm = HiveMessage.from_wire({"msg_type": HiveMessageType.BUS.value,
+                                    "payload": json.loads(payload_str)})
         assert hm._payload["type"] == "speak"
 
     def test_from_dict(self):

@@ -287,10 +287,10 @@ class HiveMindHTTPClient(threading.Thread):
         if isinstance(message, HiveMessage):
             self._handle_hive_protocol(message)
         elif isinstance(message, str):
-            self._handle_hive_protocol(HiveMessage(**json.loads(message)))
+            self._handle_hive_protocol(HiveMessage.from_wire(message))
         else:
             assert isinstance(message, dict)
-            self._handle_hive_protocol(HiveMessage(**message))
+            self._handle_hive_protocol(HiveMessage.from_wire(message))
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY
