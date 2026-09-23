@@ -17,6 +17,8 @@ payload builds ``{}``. That is an API convenience and not a repair, because
 no wire value was read. The wire goes through ``from_wire``.
 """
 import json
+import subprocess
+import sys
 import unittest
 
 from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
@@ -132,8 +134,145 @@ class TestTheConstructorKeepsItsApiDefault(unittest.TestCase):
     def test_as_dict_does_not_parse_a_string_payload(self):
         msg = HiveMessage(HiveMessageType.HELLO)
         msg._payload = '{"site_id": "injected"}'
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(MalformedWirePayload):
             msg.as_dict
+
+    def test_the_as_dict_guard_survives_python_dash_o(self):
+        """`python -O` compiles an assert out; this guard must remain.
+
+        protocol.py carries the same note about an assert this project
+        already lost that way, so the guard is run under -O rather than
+        trusted. A source-text check would pass on a comment.
+        """
+        program = (
+            "from hivemind_bus_client.message import ("
+            "HiveMessage, HiveMessageType, MalformedWirePayload)\n"
+            "msg = HiveMessage(HiveMessageType.HELLO)\n"
+            "msg._payload = '{\"site_id\": \"injected\"}'\n"
+            "try:\n"
+            "    msg.as_dict\n"
+            "except MalformedWirePayload:\n"
+            "    print('REFUSED')\n"
+            "else:\n"
+            "    print('EMITTED')\n")
+        result = subprocess.run([sys.executable, "-O", "-c", program],
+                                capture_output=True, text=True)
+        self.assertEqual(result.stdout.strip(), "REFUSED", result.stderr)
+
+    def test_a_string_payload_is_refused_by_the_constructor(self):
+        with self.assertRaises(MalformedWirePayload):
+            HiveMessage(HiveMessageType.HELLO, '{"site_id": "injected"}')
+
+
+class TestAWrappedPayloadGetsTheSameDoor(unittest.TestCase):
+    """The repair used to survive one level of wrapping.
+
+    `HiveMessage.payload` builds the inner view with
+    `HiveMessage(**self._payload)`, so while the constructor parsed a string
+    the exact shape `from_wire` refuses was repaired one level down. A PING
+    travels PROPAGATE-wrapped (§4), and `handle_ping` then read `flood_id`
+    off the repaired object. §4 also forbids a node to rewrite the inner
+    payload of a wrapped routing message.
+    """
+
+    WRAPPERS = (HiveMessageType.PROPAGATE, HiveMessageType.BROADCAST,
+                HiveMessageType.ESCALATE)
+
+    INNER = (
+        (HiveMessageType.PING, '{"flood_id": "forged", "peer": "attacker"}'),
+        (HiveMessageType.HELLO, '{"site_id": "attacker"}'),
+        (HiveMessageType.INTERCOM, '{"encrypted_key": "x"}'),
+    )
+
+    def test_a_wrapped_string_payload_is_refused(self):
+        for wrapper in self.WRAPPERS:
+            for inner_type, inner_payload in self.INNER:
+                with self.subTest(wrapper=wrapper, inner=inner_type):
+                    frame = {"msg_type": wrapper.value,
+                             "payload": {"msg_type": inner_type.value,
+                                         "payload": inner_payload}}
+                    outer = HiveMessage.from_wire(frame)
+                    with self.assertRaises(MalformedWirePayload):
+                        outer.payload
+
+    def test_no_wrapped_shape_reaches_a_handler_as_an_object(self):
+        # the control the first cut of this file lacked: the same frames at
+        # the top level were already refused, and the wrapped form must not
+        # be the way in
+        for label, payload in REFUSED:
+            if not isinstance(payload, str):
+                continue
+            with self.subTest(payload=label):
+                frame = {"msg_type": HiveMessageType.PROPAGATE.value,
+                         "payload": {"msg_type": HiveMessageType.PING.value,
+                                     "payload": payload}}
+                outer = HiveMessage.from_wire(frame)
+                with self.assertRaises(MalformedWirePayload):
+                    outer.payload
+
+    def test_a_wrapped_object_payload_still_works(self):
+        """Control: the legitimate wrapped PING is untouched."""
+        frame = {"msg_type": HiveMessageType.PROPAGATE.value,
+                 "payload": {"msg_type": HiveMessageType.PING.value,
+                             "payload": {"flood_id": "abc"}}}
+        inner = HiveMessage.from_wire(frame).payload
+        self.assertEqual(inner.msg_type, HiveMessageType.PING)
+        self.assertEqual(inner.payload, {"flood_id": "abc"})
+
+    def test_a_wrapped_bus_message_still_works(self):
+        """Control: a PROPAGATE(BUS), the ordinary traffic shape."""
+        frame = {"msg_type": HiveMessageType.PROPAGATE.value,
+                 "payload": {"msg_type": HiveMessageType.BUS.value,
+                             "payload": {"type": "speak",
+                                         "data": {"utterance": "hi"}}}}
+        inner = HiveMessage.from_wire(frame).payload
+        self.assertEqual(inner.msg_type, HiveMessageType.BUS)
+        self.assertEqual(inner.payload.msg_type, "speak")
+
+
+class TestTheBinaryFrameDoorRefusesTheSameShapes(unittest.TestCase):
+    """`decode_bitstring` is a wire door too.
+
+    It used to hand the payload to the constructor as JSON TEXT and let the
+    constructor parse it, which is the repair this change removes. It now
+    parses the text itself and checks the result against §4.
+    """
+
+    def _frame(self, payload_text):
+        from hivemind_bus_client.serialization import get_bitstring
+        return get_bitstring(hive_type=HiveMessageType.PING,
+                             payload=payload_text, compressed=False)
+
+    def test_a_binary_frame_whose_payload_is_not_an_object_is_refused(self):
+        """The decoder wraps the refusal in its own wire-error type.
+
+        `MalformedBinaryFrame` is what every other bad binary frame raises,
+        so the refusal reaches a caller in the shape that caller expects,
+        and the §4 reason travels in the text.
+        """
+        from hivemind_bus_client.exceptions import MalformedBinaryFrame
+        from hivemind_bus_client.serialization import decode_bitstring
+        for label, payload in REFUSED:
+            if payload is None:
+                continue  # an absent payload is the frame's own shape
+            with self.subTest(payload=label):
+                frame = self._frame(json.dumps(payload))
+                with self.assertRaises(
+                        (MalformedWirePayload, MalformedBinaryFrame)) as caught:
+                    decode_bitstring(frame)
+                self.assertIn("HIVEMIND-MSG-1", str(caught.exception))
+
+    def test_a_binary_frame_with_an_object_payload_still_decodes(self):
+        """Control: the ordinary binary frame is untouched."""
+        from hivemind_bus_client.serialization import (decode_bitstring,
+                                                       get_bitstring)
+        from ovos_bus_client.message import Message
+        frame = get_bitstring(hive_type=HiveMessageType.BUS,
+                              payload=Message("speak", {"utterance": "hi"}),
+                              compressed=False)
+        msg = decode_bitstring(frame)
+        self.assertEqual(msg.msg_type, HiveMessageType.BUS)
+        self.assertEqual(msg.payload.msg_type, "speak")
 
 
 if __name__ == "__main__":

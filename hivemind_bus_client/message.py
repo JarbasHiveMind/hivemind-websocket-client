@@ -108,7 +108,20 @@ class HiveMessage:
         elif isinstance(payload, HiveMessage):
             payload = payload.as_dict
         elif isinstance(payload, str):
-            payload = json.loads(payload)
+            # A string is NOT parsed into an object here. `from_wire` is the
+            # one door for a wire value, and this constructor is what builds
+            # the INNER view of a wrapped routing message
+            # (`HiveMessage(**self._payload)`, see the payload property). So
+            # a repair here reapplied, one level down, exactly the repair
+            # `from_wire` refuses: a PROPAGATE carrying a PING whose payload
+            # was the string '{"flood_id": "forged"}' had it parsed and
+            # `handle_ping` read the forged id off it. HIVEMIND-MSG-1 §4 also
+            # forbids a node to rewrite the inner payload of a wrapped
+            # routing message.
+            raise MalformedWirePayload(
+                f"{msg_type} payload must be a JSON object, got str "
+                f"(HIVEMIND-MSG-1 §4). Parse the frame with "
+                f"HiveMessage.from_wire() instead.")
         self._payload = payload if payload is not None else {}
         # BUS/wrapper payloads are rebuilt into Message/HiveMessage objects on
         # access; without this cache every read returned a different object and
@@ -232,7 +245,16 @@ class HiveMessage:
         # repaired a wire value that HIVEMIND-MSG-1 §4 refuses, and it let a
         # HELLO whose payload was the string '{"site_id": "x"}' set a site
         # id. `from_wire` rejects that shape before it reaches this.
-        assert isinstance(pload, dict)
+        #
+        # This raises rather than asserting: `python -O` compiles an assert
+        # out, and the guard would then be gone in exactly the deployment
+        # that runs with it. protocol.py:1150 carries the same note about an
+        # assert this project already lost that way. The public payload
+        # setter is the way a string still reaches here.
+        if not isinstance(pload, dict):
+            raise MalformedWirePayload(
+                f"{self.msg_type} payload must be a JSON object, got "
+                f"{type(pload).__name__} (HIVEMIND-MSG-1 §4)")
 
         return {"msg_type": self.msg_type,
                 "payload": pload,

@@ -10,7 +10,9 @@ from bitstring import ReadError
 from hivemind_bus_client.exceptions import (MalformedBinaryFrame, MetadataTooLarge,
                                             UnsupportedProtocolVersion)
 from ovos_bus_client.message import Message
-from hivemind_bus_client.message import HiveMessageType, HiveMessage, HiveMindBinaryPayloadType
+from hivemind_bus_client.message import (HiveMessageType, HiveMessage,
+                                        HiveMindBinaryPayloadType,
+                                        MalformedWirePayload)
 from hivemind_bus_client.util import compress_payload, decompress_payload, cast2bytes, bytes2str
 
 PROTOCOL_VERSION = 1  # integer, a version increase signals new functionality added
@@ -195,6 +197,20 @@ def _decode_bitstring_v1(s):
     if not is_bin:
         payload = bytes2str(payload.bytes, compressed)
         route = _route_from_payload(payload)
+        # This is a wire door, like `from_wire`: the payload arrives as JSON
+        # text and is parsed HERE, then checked against HIVEMIND-MSG-1 §4.
+        # The constructor used to do the parsing, which made it repair an
+        # inner payload one level down (see message.py). A frame whose
+        # payload is not a JSON object raises MalformedWirePayload, which is
+        # a ValueError, and the callers of this function already treat a bad
+        # frame as one.
+        try:
+            payload = json.loads(payload)
+        except ValueError as err:
+            raise MalformedWirePayload(
+                f"{hive_type} binary frame payload is not JSON: {err} "
+                f"(HIVEMIND-MSG-1 §4)") from err
+        payload = HiveMessage._wire_payload(hive_type, payload)
     else:
         payload = payload.bytes
 
