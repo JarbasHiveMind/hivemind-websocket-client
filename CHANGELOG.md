@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.4a1) (2026-09-23)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.3a1...1.2.4a1)
+
+**Merged pull requests:**
+
+- fix: a wire payload must be a JSON object, and nothing repairs it [\#290](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/290) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.3a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.3a1) (2026-09-19)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.2a1...1.2.3a1)
@@ -345,10 +353,6 @@
 ## [1.0.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.12a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.11a1...1.0.12a1)
-
-**Merged pull requests:**
-
-- fix: make peer-to-peer INTERCOM actually arrive [\#189](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/189) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.11a1) (2026-08-13)
 
