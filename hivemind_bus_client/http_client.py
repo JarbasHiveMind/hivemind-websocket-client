@@ -18,7 +18,9 @@ from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, 
 from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.identity import NodeIdentity, shared_identity_for
-from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
+from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
+                                         HiveMindBinaryPayloadType,
+                                         MalformedWirePayload)
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
                                                get_bitstring, decode_bitstring)
@@ -287,10 +289,38 @@ class HiveMindHTTPClient(threading.Thread):
         if isinstance(message, HiveMessage):
             self._handle_hive_protocol(message)
         elif isinstance(message, str):
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
         else:
             assert isinstance(message, dict)
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
+
+    @staticmethod
+    def _parse_or_drop(frame) -> Optional[HiveMessage]:
+        """Build a HiveMessage from a wire frame, or drop the frame.
+
+        HIVEMIND-MSG-1 §3: "A node MUST forward or ignore a payload it does
+        not understand. It MUST NOT reject the connection over it, and it MUST
+        NOT stop its own handler over it." §6 repeats it in the MUST NOT list.
+
+        A refusal raised out of the receive callback does what that clause
+        forbids: the transport catches it, the error path runs, and the client
+        closes. One malformed frame from the peer would end the session. The
+        binary door above already drops and stays up, citing WIRE-1 §4.2; this
+        is the same treatment for the JSON door.
+
+        Returns None when the frame is dropped, so the caller returns too.
+        """
+        try:
+            return HiveMessage.from_wire(frame)
+        except MalformedWirePayload:
+            LOG.exception("dropping malformed wire frame (HIVEMIND-MSG-1 §3)")
+            return None
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY

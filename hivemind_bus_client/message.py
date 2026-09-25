@@ -67,13 +67,19 @@ class HiveMindBinaryPayloadType(IntEnum):
 #: task covers them; adding them here would be this library inventing a rule
 #: rather than enforcing one.
 #: The wire types whose payload CARRIES AN ENVELOPE, so an empty object is
-#: malformed rather than a legal degenerate. Architecture ruled this under
-#: T-4728, recorded in JarbasHiveMind/architecture#32, and it adds no new
-#: requirement: §4 says a BUS or SHARED_BUS payload "is a single Layer-1 bus
-#: message" and a routing type's "is itself a HiveMessage"; a Layer-1 bus
-#: message carries a required ``type`` and a HiveMessage a required
-#: ``msg_type``, which §2 also calls "the only field a receiver may rely on".
-#: ``{}`` carries neither.
+#: malformed rather than a legal degenerate.
+#:
+#: THIS READING IS THIS LIBRARY'S, not a merged clause. §4 says a BUS or
+#: SHARED_BUS payload "is a single Layer-1 bus message" and a routing type's
+#: "is itself a HiveMessage"; a Layer-1 bus message carries a required
+#: ``type`` and a HiveMessage a required ``msg_type``, which §2 also calls
+#: "the only field a receiver may rely on". ``{}`` carries neither, so this
+#: library refuses it. No merged clause says "empty is malformed" in those
+#: words. An earlier version of this comment cited an architecture pull
+#: request as the ruling; that request is OPEN and is about HANDSHAKE, HELLO
+#: and PING, so it does not rule on this and the citation is removed. When a
+#: clause that states the envelope rule merges, cite it here and this
+#: paragraph goes.
 #:
 #: The tolerate-it reading fails on §2's own rule that a receiver MUST treat a
 #: message whose ``msg_type`` is not in the registry as unroutable and MUST NOT

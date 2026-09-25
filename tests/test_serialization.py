@@ -98,10 +98,10 @@ class TestDecodeBitstring(unittest.TestCase):
 
     def test_escalate_roundtrip(self):
         # a nested HiveMessage, as PROPAGATE above uses. This was '{}' until
-        # architecture ruled an empty payload malformed for the envelope-
-        # carrying types (T-4728): the subject here is that the codec
-        # preserves the msg_type, and the payload was incidental filler that
-        # the decoder now refuses at the door.
+        # this library read §4 as refusing an empty payload for the envelope-
+        # carrying types: the subject here is that the codec preserves the
+        # msg_type, and the payload was incidental filler that the decoder
+        # now refuses at the door.
         decoded = self._roundtrip(HiveMessageType.ESCALATE,
                                   payload='{"msg_type":"ping","payload":{}}')
         self.assertEqual(decoded.msg_type, HiveMessageType.ESCALATE)

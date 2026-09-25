@@ -169,7 +169,13 @@ ENVELOPE_CARRYING = (HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
 
 
 class TestAnEmptyEnvelopePayloadIsRefused(unittest.TestCase):
-    """Architecture ruled this under T-4728, recorded in architecture#32.
+    """This library's reading of §4, pending a clause that states it.
+
+    No merged clause says "an empty payload is malformed" in those words. An
+    earlier version of this docstring cited an architecture pull request as
+    the ruling; that request is OPEN and is about HANDSHAKE, HELLO and PING,
+    so it does not rule on this. The refusal below rests on §4's own words,
+    quoted next, and changes when a clause merges that says otherwise.
 
     A present-but-empty payload is MALFORMED for the seven types §4 gives an
     envelope, not a legal degenerate they tolerate. §4 says a BUS or
