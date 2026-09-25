@@ -773,11 +773,26 @@ class HiveMindSlaveProtocol:
             return  # Noise session already established, nothing to start
         if self.noise_handshake is not None:
             return  # Noise handshake already in flight, keep waiting
-        if self._server_handshake_payload and self._should_use_noise(self._server_handshake_payload):
+        if self._server_handshake_payload is None:
+            # The retry fired before the server's HANDSHAKE offer arrived.
+            # Nothing is known about the peer yet, so a legacy frame here is
+            # a downgrade decided on no evidence: it used to send a v2
+            # pubkey handshake built from an empty payload, and a 5.x node
+            # refuses that with 1008 (HIVEMIND-CRYPTO-1 §3 gives Noise no
+            # legacy fallback). Under a burst of satellites against one
+            # IOLoop the offer is simply still in flight, so keep waiting.
+            # wait_for_handshake re-waits and gives up by max_retries, which
+            # reports a timeout instead of provoking a refusal.
+            LOG.debug("handshake retry before the server's offer arrived; "
+                      "waiting rather than downgrading")
+            return
+        if self._should_use_noise(self._server_handshake_payload):
             self.start_noise_handshake(self._server_handshake_payload)
             return
-        # only the clients' wait_for_handshake retry reaches this line
-        self._legacy_start_handshake(self._server_handshake_payload or {}, retry=True)
+        # only the clients' wait_for_handshake retry reaches this line, and
+        # only with a payload that shows a peer this client cannot speak v3
+        # with
+        self._legacy_start_handshake(self._server_handshake_payload, retry=True)
 
     def _legacy_start_handshake(self, server_payload: dict, retry: bool = False):
         if self.binarize:
