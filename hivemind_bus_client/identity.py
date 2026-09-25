@@ -21,6 +21,12 @@ class NodeIdentity:
         IDENTITY_FILE (JsonConfigXDG): A configuration file containing the node's identity information.
     """
 
+    #: Class-level default so the flag has a value even on an instance built
+    #: without ``__init__``. False is the safe direction: it means "this is
+    #: not the unnamed shared path", so ``save()`` behaves as it always did.
+    #: The constructor sets it True only for the one case that must refuse.
+    refuses_to_create_shared = False
+
     def __init__(self, identity_file: Optional[str] = None,
                  app_name: Optional[str] = None,
                  shared_fallback: bool = True):
@@ -79,6 +85,32 @@ class NodeIdentity:
                         f"to give it one")
                     identity_file = shared
                     self.uses_shared_fallback = True
+            elif not app_name:
+                # HIVEMIND-CRYPTO-1 §2: an implementation that stores
+                # identities for its caller MUST locate them per application
+                # and MUST NOT default to a location shared by every
+                # application of the same user. The shared file is still READ
+                # when a deployer has provisioned one, because that is the
+                # explicit provisioning choice §2 allows, but a new one is
+                # never created here.
+                if isfile(identity_file.path):
+                    LOG.warning(
+                        f"reading the shared {identity_file.path} because no "
+                        f"app_name was given. Every application of this user "
+                        f"then presents one identifier and one static key, "
+                        f"which HIVEMIND-CRYPTO-1 §2 forbids. Pass "
+                        f"app_name=\"<your-app>\" to give this application "
+                        f"its own identity")
+                else:
+                    self.refuses_to_create_shared = True
+                    LOG.warning(
+                        f"no app_name was given and no shared identity exists "
+                        f"at {identity_file.path}. None will be created: "
+                        f"HIVEMIND-CRYPTO-1 §2 forbids defaulting to a "
+                        f"location shared by every application of this user. "
+                        f"Pass app_name=\"<your-app>\", or provision the "
+                        f"shared file deliberately with "
+                        f"'hivemind-client set-identity --shared ...'")
         self.IDENTITY_FILE = identity_file
         self._assert_identity_readable()
 
@@ -442,8 +474,33 @@ class NodeIdentity:
     def save(self) -> None:
         """
         Save the current node identity to the identity file.
+
+        Raises:
+            ValueError: this identity has no ``app_name`` and no shared file
+                exists. Creating one here is what HIVEMIND-CRYPTO-1 §2
+                forbids, and a silent no-op would let a caller believe its
+                credentials were stored.
         """
+        self._refuse_if_it_would_create_the_shared_file("create")
         self.IDENTITY_FILE.store()
+
+    def _refuse_if_it_would_create_the_shared_file(self, verb: str) -> None:
+        """Refuse a write that would put this node in the shared location.
+
+        Used by both ``save()`` and ``create_keys()``. create_keys writes a
+        private key PEM into the identity file's directory BEFORE anything is
+        stored, so guarding only save() left an orphan key, and the created
+        directory, in the shared path a refused save then declined to use.
+        """
+        if self.refuses_to_create_shared and not isfile(self.IDENTITY_FILE.path):
+            raise ValueError(
+                f"refusing to {verb} the shared {self.IDENTITY_FILE.path}: "
+                f"HIVEMIND-CRYPTO-1 §2 forbids an identity location shared by "
+                f"every application of this user. Give this application a "
+                f"name, NodeIdentity(app_name=\"<your-app>\") or "
+                f"'hivemind-client --app <your-app> set-identity ...', or "
+                f"provision the shared file deliberately with "
+                f"'hivemind-client set-identity --shared ...'")
 
     def reload(self) -> None:
         """
@@ -458,6 +515,8 @@ class NodeIdentity:
         This method generates a new private key, stores it in a PEM file, and updates the node's public and private keys
         in the identity file.
         """
+        self._refuse_if_it_would_create_the_shared_file(
+            "write a private key beside")
         pub, secret = create_RSA_key()
         key_name = "HiveMindComs.pem"
         export_RSA_key(secret, join(dirname(self.IDENTITY_FILE.path), key_name))
