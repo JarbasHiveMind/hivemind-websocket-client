@@ -252,7 +252,7 @@ class HiveMindSlaveInternalProtocol:
         # this allows the master node to do passive monitoring of bus events
         if self.share_bus:
             msg = HiveMessage(HiveMessageType.SHARED_BUS,
-                              payload=message.serialize())
+                              payload=message)
             self.hm_bus.emit(msg)
 
         # this message is targeted at master
@@ -264,7 +264,7 @@ class HiveMindSlaveInternalProtocol:
                 peers = [peers]
             if self.node_id in peers:
                 msg = HiveMessage(HiveMessageType.BUS,
-                                  payload=message.serialize())
+                                  payload=message)
                 self.hm_bus.emit(msg)
 
 
