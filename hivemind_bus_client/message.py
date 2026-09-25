@@ -40,16 +40,87 @@ class HiveMindBinaryPayloadType(IntEnum):
     TTS_AUDIO = 6  # synthesized TTS audio to be played
 
 
-#: The wire types whose payload HIVEMIND-MSG-1 §4 requires. A frame of one
-#: of these with no payload key is malformed; every other type may omit it,
-#: and the constructor's own default supplies ``{}``.
-_PAYLOAD_REQUIRED = (HiveMessageType.HELLO, HiveMessageType.HANDSHAKE,
-                     HiveMessageType.HELLO.value,
-                     HiveMessageType.HANDSHAKE.value)
+#: The wire types whose payload MUST be present on the wire, refused at
+#: ``from_wire`` when the key is absent. Both the enum and its ``.value`` are
+#: listed, because a frame off the wire carries the string.
+#:
+#: HIVEMIND-MSG-1 §4 gives each of these a payload that cannot be absent: a
+#: Layer-1 bus message for ``BUS`` and ``SHARED_BUS``, a nested HiveMessage for
+#: ``BROADCAST``, ``PROPAGATE``, ``ESCALATE``, ``QUERY`` and ``CASCADE``, "an
+#: opaque byte string" for ``BINARY``, and the control fields their types
+#: require for ``HANDSHAKE`` and ``HELLO``. §2's envelope table marking
+#: ``payload`` Required "yes" is therefore right for all ten.
+#:
+#: Settled by architecture under T-4702, and this list is the answer. Before
+#: it, only HELLO and HANDSHAKE were here. Measured on the other eleven with a
+#: frame of ``{"msg_type": t}`` and no payload key: seven were ADMITTED and
+#: raised only when something read ``.payload``, ``BUS`` and ``SHARED_BUS``
+#: with ``KeyError`` and the five routing types with ``TypeError``, so a
+#: payload-less PROPAGATE blew up frames later in whatever read it. A refusal
+#: that happens by crash cannot be logged as a malformed frame, cannot name
+#: the field, and a caller cannot tell it from a bug. ``BINARY`` was refused
+#: incidentally, by the constructor's bytes check, citing no clause.
+#:
+#: TWO TYPES ARE LEFT OUT ON PURPOSE. ``PING`` may carry ``{}``: §4 says its
+#: payload "MAY be empty". ``INTERCOM`` and ``RENDEZVOUS`` are named nowhere
+#: in §4, so their payload shape is unspecified and a separate architecture
+#: task covers them; adding them here would be this library inventing a rule
+#: rather than enforcing one.
+#: The wire types whose payload CARRIES AN ENVELOPE, so an empty object is
+#: malformed rather than a legal degenerate. Architecture ruled this under
+#: T-4728, recorded in JarbasHiveMind/architecture#32, and it adds no new
+#: requirement: §4 says a BUS or SHARED_BUS payload "is a single Layer-1 bus
+#: message" and a routing type's "is itself a HiveMessage"; a Layer-1 bus
+#: message carries a required ``type`` and a HiveMessage a required
+#: ``msg_type``, which §2 also calls "the only field a receiver may rely on".
+#: ``{}`` carries neither.
+#:
+#: The tolerate-it reading fails on §2's own rule that a receiver MUST treat a
+#: message whose ``msg_type`` is not in the registry as unroutable and MUST NOT
+#: interpret its payload: there is nothing to tolerate an empty inner envelope
+#: into.
+#:
+#: Emptiness stays legal exactly where §4 grants it, HANDSHAKE, HELLO and PING,
+#: and those are not here. Nor are BINARY, whose payload is bytes, or INTERCOM
+#: and RENDEZVOUS, whose form §4 does not state (see _PAYLOAD_REQUIRED).
+#:
+#: Before this, all seven were ADMITTED with ``{}`` and raised only when
+#: something read ``.payload``: KeyError for the bus types, TypeError for the
+#: routing types.
+_ENVELOPE_PAYLOAD = tuple(
+    form
+    for _type in (HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
+                  HiveMessageType.BROADCAST, HiveMessageType.PROPAGATE,
+                  HiveMessageType.ESCALATE, HiveMessageType.QUERY,
+                  HiveMessageType.CASCADE)
+    for form in (_type, _type.value)
+)
+
+
+_PAYLOAD_REQUIRED = tuple(
+    form
+    for _type in (HiveMessageType.HANDSHAKE, HiveMessageType.HELLO,
+                  HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
+                  HiveMessageType.BROADCAST, HiveMessageType.PROPAGATE,
+                  HiveMessageType.ESCALATE, HiveMessageType.QUERY,
+                  HiveMessageType.CASCADE, HiveMessageType.BINARY)
+    for form in (_type, _type.value)
+)
 
 
 class MalformedWirePayload(ValueError):
-    """A wire frame whose payload is not a JSON object (HIVEMIND-MSG-1 §4).
+    """A wire frame whose payload this library refuses.
+
+    The object requirement is THIS LIBRARY'S, not the specification's.
+    HIVEMIND-MSG-1 §4 gives a form per ``msg_type`` -- a Layer-1 bus message
+    for BUS and SHARED_BUS, a nested HiveMessage for the routing types, "an
+    opaque byte string" for BINARY, and for HANDSHAKE, HELLO and PING "the
+    control fields those types require", with a PING payload "a plain
+    mapping". It never uses the phrase "JSON object". What §4 does carry, and
+    what every refusal below rests on, is its closing sentence: a node "MUST
+    NOT inspect or rewrite the inner payload of a wrapped routing message
+    except where another HiveMind specification explicitly permits it".
+    Parsing a string into an object is exactly that rewrite.
 
     A ValueError, so the callers that already treat a bad frame as a
     ValueError keep working."""
@@ -119,8 +190,9 @@ class HiveMessage:
             # forbids a node to rewrite the inner payload of a wrapped
             # routing message.
             raise MalformedWirePayload(
-                f"{msg_type} payload must be a JSON object, got str "
-                f"(HIVEMIND-MSG-1 §4). Parse the frame with "
+                f"{msg_type} payload arrived as str and is not parsed here: "
+                f"that would rewrite a wrapped inner payload, which "
+                f"HIVEMIND-MSG-1 §4 forbids. Parse the frame with "
                 f"HiveMessage.from_wire() instead.")
         self._payload = payload if payload is not None else {}
         # BUS/wrapper payloads are rebuilt into Message/HiveMessage objects on
@@ -253,8 +325,9 @@ class HiveMessage:
         # setter is the way a string still reaches here.
         if not isinstance(pload, dict):
             raise MalformedWirePayload(
-                f"{self.msg_type} payload must be a JSON object, got "
-                f"{type(pload).__name__} (HIVEMIND-MSG-1 §4)")
+                f"{self.msg_type} payload must be an object on the wire, got "
+                f"{type(pload).__name__}. Parsing it here would rewrite a "
+                f"wrapped inner payload, which HIVEMIND-MSG-1 §4 forbids")
 
         return {"msg_type": self.msg_type,
                 "payload": pload,
@@ -323,9 +396,15 @@ class HiveMessage:
     def _wire_payload(msg_type: Any, payload: Any) -> dict:
         """The payload of a wire frame, refused unless it is a JSON object.
 
-        HIVEMIND-MSG-1 §4: the payload MUST be a JSON object, ``{}`` the only
-        empty form. A node rejects any other shape and never repairs it, so
-        this raises rather than substituting a value the sender did not send.
+        This library requires an object, with ``{}`` the only empty form, and
+        never repairs another shape: it raises rather than substituting a
+        value the sender did not send.
+
+        That requirement is the library's own. HIVEMIND-MSG-1 §4 states a
+        form per ``msg_type`` rather than one blanket object rule, and does
+        not use the phrase "JSON object" at all. What §4 forbids, and what
+        this refusal enforces, is rewriting the inner payload of a wrapped
+        routing message, which is what parsing a string here would do.
 
         The Python constructor keeps its own default: ``HiveMessage(TYPE)``
         with no payload is an API convenience and builds ``{}``. That is not
@@ -333,10 +412,18 @@ class HiveMessage:
         that DOES read the wire comes through here.
         """
         if isinstance(payload, dict):
+            if not payload and msg_type in _ENVELOPE_PAYLOAD:
+                raise MalformedWirePayload(
+                    f"{msg_type} payload is empty, and HIVEMIND-MSG-1 §4 "
+                    f"gives this type an envelope: a Layer-1 bus message for "
+                    f"BUS and SHARED_BUS, a HiveMessage for the routing "
+                    f"types. Each carries a required type field, and {{}} "
+                    f"carries none")
             return payload
         raise MalformedWirePayload(
-            f"{msg_type} payload must be a JSON object, got "
-            f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
+            f"{msg_type} payload must be an object on the wire, got "
+            f"{type(payload).__name__}. Parsing it here would rewrite a "
+            f"wrapped inner payload, which HIVEMIND-MSG-1 §4 forbids")
 
     @staticmethod
     def from_wire(frame: Union[str, dict]) -> 'HiveMessage':
@@ -353,21 +440,24 @@ class HiveMessage:
             frame = json.loads(frame)
         if not isinstance(frame, dict):
             raise MalformedWirePayload(
-                f"a wire frame must be a JSON object, got "
-                f"{type(frame).__name__} (HIVEMIND-MSG-1 §4)")
+                f"a wire frame must be an object carrying the envelope, got "
+                f"{type(frame).__name__} (HIVEMIND-MSG-1 §2)")
         if "msg_type" not in frame:
             raise MalformedWirePayload(f"not a HiveMind message: {frame}")
         kwargs = dict(frame)
         msg_type = kwargs.pop("msg_type")
         if "payload" not in kwargs:
-            # Absent is refused only for the types that carry one. §4 names
-            # HELLO and HANDSHAKE; a PING frame is the whole message and has
-            # nothing to put in a payload, so an absent key there is the
-            # frame's shape and not a missing value.
+            # Absent is refused only for the types in _PAYLOAD_REQUIRED; a
+            # PING frame is the whole message and has nothing to put in a
+            # payload, so an absent key there is treated as the frame's shape
+            # and not a missing value. See the note on _PAYLOAD_REQUIRED: §2
+            # marks payload required for every type, so whether this split is
+            # right is an open question for architecture, and the behaviour
+            # is left as it is until then.
             if msg_type in _PAYLOAD_REQUIRED:
                 raise MalformedWirePayload(
-                    f"{msg_type} frame carries no payload "
-                    f"(HIVEMIND-MSG-1 §4)")
+                    f"{msg_type} frame carries no payload, which "
+                    f"HIVEMIND-MSG-1 §2 marks required")
             return HiveMessage(msg_type, **kwargs)
         payload = HiveMessage._wire_payload(msg_type, kwargs.pop("payload"))
         return HiveMessage(msg_type, payload, **kwargs)
