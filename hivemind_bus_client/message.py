@@ -81,8 +81,11 @@ class HiveMindBinaryPayloadType(IntEnum):
 #: into.
 #:
 #: Emptiness stays legal exactly where §4 grants it, HANDSHAKE, HELLO and PING,
-#: and those are not here. Nor are BINARY, whose payload is bytes, or INTERCOM
-#: and RENDEZVOUS, whose form §4 does not state (see _PAYLOAD_REQUIRED).
+#: and those are not here. Nor is BINARY, whose payload is bytes. INTERCOM and
+#: RENDEZVOUS are not here either, because neither carries an ENVELOPE: §4 now
+#: gives each an object of its own (architecture#32 at 567ddf1). An empty
+#: INTERCOM is refused by _NEVER_EMPTY below, on its own clause and with its
+#: own reason.
 #:
 #: Before this, all seven were ADMITTED with ``{}`` and raised only when
 #: something read ``.payload``: KeyError for the bus types, TypeError for the
@@ -97,13 +100,38 @@ _ENVELOPE_PAYLOAD = tuple(
 )
 
 
+#: INTERCOM and RENDEZVOUS join this list under architecture#32 at 567ddf1,
+#: which gives each a §4 form it did not have before. For INTERCOM the payload
+#: is "a JSON object carrying a ciphertext encrypted to the target peer's
+#: public key and a signature made by the originator", and it "is never absent
+#: and never the empty object". For RENDEZVOUS it is "a JSON object naming the
+#: outcome of one mailbox exchange", whose reply carries `status` and
+#: `mailbox_node`. An absent payload carries no ciphertext and no status, so
+#: absence is refused for both. The KEY NAMES inside the INTERCOM object stay
+#: with HIVEMIND-CRYPTO-1 and are not checked here.
 _PAYLOAD_REQUIRED = tuple(
     form
     for _type in (HiveMessageType.HANDSHAKE, HiveMessageType.HELLO,
                   HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
                   HiveMessageType.BROADCAST, HiveMessageType.PROPAGATE,
                   HiveMessageType.ESCALATE, HiveMessageType.QUERY,
-                  HiveMessageType.CASCADE, HiveMessageType.BINARY)
+                  HiveMessageType.CASCADE, HiveMessageType.BINARY,
+                  HiveMessageType.INTERCOM, HiveMessageType.RENDEZVOUS)
+    for form in (_type, _type.value)
+)
+
+
+#: §4 says the INTERCOM payload is "never absent and never the empty object,
+#: because neither carries a ciphertext or a signature". That is a second rule
+#: and it needs a second list: INTERCOM carries no envelope, so the envelope
+#: refusal above does not reach it and its reason would be the wrong one.
+#:
+#: RENDEZVOUS is NOT here. §4 names no empty form for it and says nothing
+#: against one, and this library does not extend a rule the specification did
+#: not write.
+_NEVER_EMPTY = tuple(
+    form
+    for _type in (HiveMessageType.INTERCOM,)
     for form in (_type, _type.value)
 )
 
@@ -412,6 +440,12 @@ class HiveMessage:
         that DOES read the wire comes through here.
         """
         if isinstance(payload, dict):
+            if not payload and msg_type in _NEVER_EMPTY:
+                raise MalformedWirePayload(
+                    f"{msg_type} payload is empty, and HIVEMIND-MSG-1 §4 "
+                    f"says an INTERCOM payload is never absent and never the "
+                    f"empty object, because neither carries a ciphertext or "
+                    f"a signature")
             if not payload and msg_type in _ENVELOPE_PAYLOAD:
                 raise MalformedWirePayload(
                     f"{msg_type} payload is empty, and HIVEMIND-MSG-1 §4 "
@@ -453,7 +487,8 @@ class HiveMessage:
             # and not a missing value. See the note on _PAYLOAD_REQUIRED: §2
             # marks payload required for every type, so whether this split is
             # right is an open question for architecture, and the behaviour
-            # is left as it is until then.
+            # is left as it is until then. PING is now the only type in the
+            # registry that this split lets through.
             if msg_type in _PAYLOAD_REQUIRED:
                 raise MalformedWirePayload(
                     f"{msg_type} frame carries no payload, which "
