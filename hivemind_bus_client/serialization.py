@@ -111,12 +111,51 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
 
     # when payload is binary data meant to be passed along raw and not parsed
     if hive_type == HiveMessageType.BINARY:
+        # MSG-1 §4: "For BINARY, the payload is an opaque byte string with an
+        # associated handling instruction". Anything else is refused here
+        # rather than appended, because BitArray.append() does not reject it:
+        # it reads a dict as a one-bit token, so the whole payload became a
+        # single bit on the wire, and it reads a str as a format spec, so a
+        # text payload raised from inside bitstring instead of naming the
+        # problem.
+        if not isinstance(payload, (bytes, bytearray, memoryview, BitArray,
+                                    BitStream)):
+            raise MalformedWirePayload(
+                f"a BINARY payload must be an opaque byte string, got "
+                f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
         # 4 bit unsigned integer - integer indicating pseudo format of bin content
         s.append(f'uint:4={binmap.get(binary_type, 0)}')
     # the remaining bits are the payload
     else:
+        # MSG-1 §4: every other binarizable type carries an object payload --
+        # a Layer-1 bus message for BUS and SHARED_BUS, a nested HiveMessage
+        # for the routing types. The text path refuses a non-object at
+        # HiveMessage.from_wire(); this path did not, so a str was written to
+        # the frame as raw bytes that no peer can parse. The message was then
+        # dropped at the far end, where the sender never learns of it, rather
+        # than refused here. A list or an int reached BitArray.append() and
+        # raised a bare AssertionError naming nothing.
         if hasattr(payload, "serialize"):
             payload = payload.serialize()
+        if isinstance(payload, str):
+            # A Message arrives here as its own JSON text, so text is a
+            # legitimate form: the same object, already encoded. Text that
+            # does not decode to an object is not, and that is the shape
+            # that used to reach the wire as raw bytes.
+            try:
+                decoded = json.loads(payload)
+            except ValueError:
+                raise MalformedWirePayload(
+                    f"{hive_type} payload is a string that is not JSON "
+                    f"(HIVEMIND-MSG-1 §4)")
+            if not isinstance(decoded, dict):
+                raise MalformedWirePayload(
+                    f"{hive_type} payload must be a JSON object, got JSON "
+                    f"{type(decoded).__name__} (HIVEMIND-MSG-1 §4)")
+        elif not isinstance(payload, dict):
+            raise MalformedWirePayload(
+                f"{hive_type} payload must be a JSON object, got "
+                f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
         payload = cast2bytes(payload, compressed)
 
     s.append(payload)
