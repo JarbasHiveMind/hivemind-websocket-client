@@ -30,10 +30,18 @@ read a server payload that was missing the v3 capability fields. It read no
 payload at all. The server offers every satellite the same full payload; this
 one had not received it yet.
 
-Waiting is right because every caller of ``start_handshake`` is a bounded
-retry loop that re-waits, in ``client.py``, ``async_client.py`` and
-``http_client.py``. A peer that truly never offers ends in that loop's own
-timeout, which reports the timeout instead of provoking a refusal.
+Waiting is right because every caller of ``start_handshake`` RE-WAITS: each
+loops while ``handshake_event`` is unset and calls it again, in ``client.py``,
+``async_client.py`` and ``http_client.py``. None of them treats the send as
+mandatory, so returning without sending cannot strand them.
+
+Those loops are BOUNDED ONLY WHEN ``max_retries`` is set. The default is
+``None``, and measured that way the loop ran 14 attempts in 3 s and never
+returned, against ``max_retries=3`` raising ``RuntimeError`` in 0.80 s. So
+under the default a peer that never offers leaves the client waiting rather
+than timing out. That is the trade this fix makes deliberately: waiting for a
+hub is what a satellite is for, and the downgrade it replaces got the
+satellite refused with 1008 and taken off the mesh until restarted.
 """
 import unittest
 from unittest.mock import MagicMock, patch
@@ -134,10 +142,49 @@ class TestEveryRetryCallerRewaits(unittest.TestCase):
     """Waiting is only safe because no caller treats the send as mandatory.
 
     If a caller called ``start_handshake`` once and then blocked forever,
-    returning without sending would hang instead of timing out.
+    returning without sending would hang.
+
+    This asserts RE-WAITING, not boundedness. The loops bound themselves only
+    when ``max_retries`` is set, and the default is None.
     """
 
-    def test_start_handshake_is_only_called_inside_a_bounded_loop(self):
+    def test_the_loops_are_bounded_only_when_max_retries_is_set(self):
+        """Pin both halves of the claim, so the docstring cannot drift again.
+
+        An earlier version of this file called these loops "bounded" without
+        qualification. They are not, by default: the parameter defaults to
+        None. Asserting the signature keeps the prose honest, and asserting
+        the raise keeps the bounded half real.
+        """
+        import inspect
+        import threading
+        from unittest.mock import MagicMock
+
+        from hivemind_bus_client.async_client import AsyncHiveMessageBusClient
+        from hivemind_bus_client.client import HiveMessageBusClient
+
+        for func in (HiveMessageBusClient.wait_for_handshake,
+                     AsyncHiveMessageBusClient.wait_for_handshake):
+            with self.subTest(func=func.__qualname__):
+                default = inspect.signature(func).parameters["max_retries"].default
+                self.assertIsNone(
+                    default,
+                    "the default changed: the 'bounded only when max_retries "
+                    "is set' wording in this file and in start_handshake now "
+                    "needs rewriting")
+
+        # and the bounded half is real: with a bound, it gives up
+        client = HiveMessageBusClient.__new__(HiveMessageBusClient)
+        client.handshake_event = threading.Event()   # never set
+        client.connected_event = threading.Event()
+        client.connected_event.set()
+        client._auth_rejected = None
+        client.protocol = MagicMock()
+        with self.assertRaises(RuntimeError):
+            client.wait_for_handshake(timeout=0.01, max_retries=2)
+        self.assertEqual(client.protocol.start_handshake.call_count, 2)
+
+    def test_start_handshake_is_only_called_inside_a_rewaiting_loop(self):
         import inspect
         import re
 
@@ -154,5 +201,5 @@ class TestEveryRetryCallerRewaits(unittest.TestCase):
                     self.assertRegex(
                         before.split("def ")[-1],
                         r"while not self\.handshake_event\.is_set\(\)",
-                        "start_handshake is called outside a re-waiting loop, "
-                        "so returning without sending could hang")
+                        "start_handshake is called outside a re-waiting "
+                        "loop, so returning without sending could hang")
