@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.5a1) (2026-09-25)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.4a1...1.2.5a1)
+
+**Merged pull requests:**
+
+- fix: the slave's upstream doors build an object payload, not a string [\#298](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/298) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.4a1) (2026-09-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.3a1...1.2.4a1)
@@ -361,11 +369,6 @@
 ## [1.0.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.10a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.9a1...1.0.10a1)
-
-**Merged pull requests:**
-
-- fix: make the hive map readable, and show the nodes that answered [\#191](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/191) ([JarbasAl](https://github.com/JarbasAl))
-- fix: a node has one identity, and connecting somewhere must not rewrite it [\#190](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/190) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.9a1) (2026-08-13)
 
