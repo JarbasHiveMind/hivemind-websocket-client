@@ -239,9 +239,31 @@ class TestTheBinaryFrameDoorRefusesTheSameShapes(unittest.TestCase):
     """
 
     def _frame(self, payload_text):
-        from hivemind_bus_client.serialization import get_bitstring
-        return get_bitstring(hive_type=HiveMessageType.PING,
-                             payload=payload_text, compressed=False)
+        """Assemble the frame directly, bypassing the sender's own guard.
+
+        ``get_bitstring`` used to build these frames, but it now refuses a
+        payload §4 does not allow, so it can no longer produce the malformed
+        frame this decoder test needs. That refusal is the point of the
+        sender guard; the decoder still has to be tested against a frame a
+        non-conforming peer can send, so the bits are laid out here instead,
+        per HIVEMIND-WIRE-1 §4.1.
+        """
+        from bitstring import BitArray
+        from hivemind_bus_client.serialization import _TYPE2INT
+        from hivemind_bus_client.util import cast2bytes
+
+        meta = cast2bytes({}, False)
+        s = BitArray()
+        s.append('uint:1=1')                                   # start marker
+        s.append('uint:1=0')                                   # not versioned
+        s.append(f'uint:5={_TYPE2INT[HiveMessageType.PING]}')   # msg type
+        s.append('uint:1=0')                                   # not compressed
+        s.append(f'uint:8={len(meta)}')                         # metadata len
+        s.append(meta)
+        s.append(cast2bytes(payload_text, False))               # payload block
+        while len(s) % 8 != 0:
+            s.insert('uint:1=0', 0)
+        return s
 
     def test_a_binary_frame_whose_payload_is_not_an_object_is_refused(self):
         """The decoder wraps the refusal in its own wire-error type.
