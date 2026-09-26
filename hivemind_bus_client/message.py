@@ -144,8 +144,19 @@ class HiveMessage:
             # hivemind-core's own door at protocol.py:584. Refusing it here
             # would be the receive-side twin T-5170 ruled out, and §4 forbids
             # an admitting node to inspect the inner payload of a wrapped
-            # routing message. A `Message` object never arrives from a wire,
-            # so this branch can only ever refuse an originator.
+            # routing message.
+            #
+            # What keeps this branch off the receive path is the `msg_type`,
+            # NOT the payload type. An earlier version of this comment said a
+            # `Message` object never arrives from a wire. That is false:
+            # `deserialize` builds one, `Message.deserialize(payload)`, for a
+            # frame that carries a `type` key. It is safe because that call
+            # names `HiveMessageType.BUS`, which §4 carries opaquely and which
+            # is not in `_ROUTING_TYPES`, so the guard cannot fire there. The
+            # wire doors that DO carry a routing `msg_type` all pass a dict:
+            # `from_wire`, `decode_bitstring`, `deserialize`'s wrapper branch,
+            # and the inner view the `payload` property rebuilds. So no wire
+            # door reaches this raise, and the reason is the type at the door.
             if msg_type in _ROUTING_TYPES:
                 raise ValueError(
                     f"a {msg_type} payload must be a nested HiveMessage with "
