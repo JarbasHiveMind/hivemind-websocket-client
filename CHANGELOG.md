@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.9a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.8a1...1.2.9a1)
+
+**Merged pull requests:**
+
+- fix: a 1008 on an established session is not a credential refusal [\#294](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/294) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.8a1) (2026-09-26)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.7a1...1.2.8a1)
@@ -369,10 +377,6 @@
 ## [1.0.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.14a1) (2026-08-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.13a1...1.0.14a1)
-
-**Merged pull requests:**
-
-- fix: run\_forever\(\) blocks on an existing worker instead of raising [\#199](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/199) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.13a1) (2026-08-13)
 
