@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.8a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.7a1...1.2.8a1)
+
+**Merged pull requests:**
+
+- fix: escalate and propagate send a deliverable nested envelope [\#300](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/300) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.7a1) (2026-09-26)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.6a1...1.2.7a1)
@@ -369,10 +377,6 @@
 ## [1.0.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.13a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.12a1...1.0.13a1)
-
-**Merged pull requests:**
-
-- fix: emit\(\) must not block the caller's loop when the transport is down [\#197](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/197) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.12a1) (2026-08-13)
 
