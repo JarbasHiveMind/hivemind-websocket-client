@@ -588,7 +588,12 @@ class TestRoutingPayloadIsAnEnvelope:
     def test_a_layer_1_message_is_refused(self, msg_type):
         with pytest.raises(ValueError) as err:
             HiveMessage(msg_type, Message("speak", {"utterance": "hi"}))
-        assert "HIVEMIND-MSG-1 §4" in str(err.value)
+        # Both clauses, because the requirement is a composition of them: §4
+        # makes the payload a HiveMessage, §2 makes `msg_type` required on
+        # one. A refusal that cited only §4 would leave the key looking like
+        # this library's own invention, which is what it was first called.
+        assert "HIVEMIND-MSG-1 §4 with §2" in str(err.value)
+        assert "msg_type" in str(err.value)
 
     @pytest.mark.parametrize("msg_type", ROUTING)
     def test_the_string_form_of_the_type_is_refused_too(self, msg_type):

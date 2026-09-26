@@ -124,9 +124,17 @@ class HiveMessage:
             # and the sender is told nothing. The refusal is the invariant of
             # this conversion, so it stands beside it.
             #
-            # `msg_type` is this library's own key, from the line below and
-            # from `as_dict`. §4 names the shape and no field, so the refusal
-            # does not cite §4 as the source of the key.
+            # The key is SPEC-REQUIRED, by composition, and the refusal
+            # says so. §4 makes the payload "itself a HiveMessage (a nested
+            # envelope)", and §2 makes `msg_type` a required field of a
+            # HiveMessage -- "msg_type | yes" in the three-field table, and
+            # "`msg_type` is the **only** field a receiver may rely on to
+            # decide how to handle a message". So a nested envelope with no
+            # `msg_type` is not a HiveMessage and the frame is not what §4
+            # requires. An earlier version of this comment said §4 "names the
+            # shape and no field" and cited the library for the key. That was
+            # wrong, and wrong in the cautious direction: there is no silence
+            # here to read as permission.
             #
             # A `Message` OBJECT, and nothing wider. A payload that is
             # already a dict with no `msg_type` is the same shape on the
@@ -140,8 +148,9 @@ class HiveMessage:
             # so this branch can only ever refuse an originator.
             if msg_type in _ROUTING_TYPES:
                 raise ValueError(
-                    f"a {msg_type} payload must be a nested HiveMessage "
-                    f"(HIVEMIND-MSG-1 §4), got a Layer-1 Message. Wrap it: "
+                    f"a {msg_type} payload must be a nested HiveMessage with "
+                    f"a 'msg_type' (HIVEMIND-MSG-1 §4 with §2), got a "
+                    f"Layer-1 Message. Wrap it: "
                     f"HiveMessage({msg_type}, "
                     f"HiveMessage(HiveMessageType.BUS, payload=<Message>)).")
             payload = {"type": payload.msg_type,
