@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -94,3 +95,123 @@ class TestForgetServer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestARoutingCommandSendsAnEnvelope(unittest.TestCase):
+    """HIVEMIND-MSG-1 §4: an ESCALATE or PROPAGATE payload IS a HiveMessage.
+
+    Both commands passed the Layer-1 ``Message`` straight in. The constructor
+    turns one into ``{"type", "data", "context"}``, which carries no
+    ``msg_type`` and is therefore not the nested envelope §4 requires. The far
+    end raises ``TypeError`` the moment it reads ``.payload``, so the frame is
+    unusable and the sender is told nothing.
+    """
+
+    def _emitted(self, command):
+        """Drive the real click command with the network stubbed out, and
+        return the HiveMessage it emitted."""
+        from hivemind_bus_client.message import HiveMessage
+
+        sent = []
+
+        class _Node:
+            def __init__(self, *a, **kw):
+                self.connected_event = unittest.mock.MagicMock()
+
+            def connect(self, *a, **kw):
+                pass
+
+            def emit(self, message):
+                sent.append(message)
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identity = _make_identity(tmpdir)
+            identity.password = "pw"
+            identity.access_key = "key"
+            identity.save()
+            with patch("hivemind_bus_client.scripts._node_identity",
+                       return_value=identity), \
+                 patch("hivemind_bus_client.scripts.HiveMessageBusClient",
+                       _Node):
+                result = CliRunner().invoke(
+                    command, ["--msg", "speak",
+                              "--payload", '{"utterance": "hi"}',
+                              # the flag under test in
+                              # test_the_outer_envelope_carries_the_site_id
+                              "--siteid", "test-site"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(len(sent), 1)
+        self.assertIsInstance(sent[0], HiveMessage)
+        return sent[0]
+
+    def test_escalate_wraps_the_message_in_a_bus_envelope(self):
+        from hivemind_bus_client.message import HiveMessageType
+        from hivemind_bus_client.scripts import escalate
+
+        outer = self._emitted(escalate)
+        self.assertEqual(outer.msg_type, HiveMessageType.ESCALATE)
+        inner = outer.as_dict["payload"]
+        self.assertIn("msg_type", inner,
+                      "a routing payload must itself be an envelope (§4)")
+        self.assertEqual(inner["msg_type"], HiveMessageType.BUS)
+
+    def test_propagate_wraps_the_message_in_a_bus_envelope(self):
+        from hivemind_bus_client.message import HiveMessageType
+        from hivemind_bus_client.scripts import propagate
+
+        outer = self._emitted(propagate)
+        self.assertEqual(outer.msg_type, HiveMessageType.PROPAGATE)
+        inner = outer.as_dict["payload"]
+        self.assertIn("msg_type", inner)
+        self.assertEqual(inner["msg_type"], HiveMessageType.BUS)
+
+    def test_the_layer_1_message_still_arrives_intact(self):
+        """The control: wrapping must not lose what the operator typed."""
+        from hivemind_bus_client.scripts import escalate
+
+        outer = self._emitted(escalate)
+        inner_bus = outer.payload          # the nested HiveMessage
+        self.assertEqual(inner_bus.payload.msg_type, "speak")
+        self.assertEqual(inner_bus.payload.data, {"utterance": "hi"})
+
+    def test_the_far_end_can_read_the_payload(self):
+        """What the defect actually broke: dereferencing .payload raised
+        TypeError, which is what a receiving node does on arrival."""
+        from hivemind_bus_client.message import HiveMessage, HiveMessageType
+        from hivemind_bus_client.scripts import propagate
+
+        outer = self._emitted(propagate)
+        inner = outer.payload
+        self.assertIsInstance(inner, HiveMessage)
+        self.assertEqual(inner.msg_type, HiveMessageType.BUS)
+        self.assertEqual(inner.payload.msg_type, "speak")
+
+    def test_the_outer_envelope_carries_the_site_id(self):
+        """HIVEMIND-MSG-1 §5: an unset target_site_id means NO node may
+        deliver the inner BUS message. The frame travels and nothing acts on
+        it, so a parseable envelope with the key unset is still undeliverable.
+        The key is read from the OUTER envelope.
+
+        --siteid was reaching node.connect, which declares this node's own
+        site, and never the message.
+        """
+        from hivemind_bus_client.scripts import escalate, propagate
+
+        for command in (escalate, propagate):
+            with self.subTest(command=command.name):
+                outer = self._emitted(command)
+                self.assertEqual(outer.as_dict["target_site_id"],
+                                 "test-site",
+                                 "the site the operator named must be on the "
+                                 "outer envelope, or no node may deliver it")
+
+    def test_the_inner_envelope_does_not_carry_it(self):
+        """The control. §5 says the key is read from the OUTER envelope, so
+        setting it on the inner one would look right and deliver nothing."""
+        from hivemind_bus_client.scripts import escalate
+
+        outer = self._emitted(escalate)
+        self.assertIsNone(outer.as_dict["payload"].get("target_site_id"))
