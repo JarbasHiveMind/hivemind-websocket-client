@@ -566,3 +566,50 @@ def test_bus_frame_delivered_once_when_a_hand_bound_protocol_delivers_to_interna
         HiveMessageType.BUS, payload=MycroftMessage("speak", {"utterance": "hi"})))
 
     assert len(delivered) == 1
+
+
+async def test_a_protocol_1008_on_an_established_async_session_does_not_latch():
+    """The async half of the established-session guard, which had no test.
+
+    Every other 1008 row here sets `connected_event` and never
+    `handshake_event`, so they all cover the never-established branch only.
+    Measured on the merged tree: forcing `_receive_loop`'s
+    `session_was_established` to False left the whole set green, so the async
+    guard could be disabled with nothing noticing. This row is the one that
+    fails on that mutation.
+    """
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    bus = _bare_client()
+    bus.protocol.kk_attempt_failed.return_value = False
+    exc = ConnectionClosedError(
+        Close(1008, "non-Noise message received on a protocol v3 session"),
+        None)
+    bus._ws = _RaisingWS(exc)
+    bus.connected_event.set()
+    # THE difference from every other 1008 row in this file: the credentials
+    # were accepted on this session.
+    bus.handshake_event.set()
+
+    seen = []
+    bus.emitter.on("auth_rejected", lambda reason: seen.append(reason))
+
+    await bus._receive_loop()
+
+    assert seen == [], (
+        "a protocol error on an established session must not be reported as "
+        f"a credential refusal, got {seen}")
+    assert bus._auth_rejected is None
+
+    # and the client must be free to reconnect. wait_for_handshake gives up
+    # on the RETRY count here, which is RuntimeError; what it must never do
+    # is raise ConnectionRefusedError, the "this identity is refused, stop"
+    # path. That distinction is the whole behaviour under test.
+    with pytest.raises(RuntimeError) as caught:
+        await asyncio.wait_for(bus.wait_for_handshake(timeout=0.05,
+                                                      max_retries=1),
+                               timeout=5)
+    assert not isinstance(caught.value, ConnectionRefusedError), (
+        "an established-session 1008 must not make wait_for_handshake report "
+        "a refused identity")

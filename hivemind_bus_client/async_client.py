@@ -476,6 +476,10 @@ class AsyncHiveMessageBusClient:
                     LOG.exception("Error in on_message")
         except (ConnectionClosedOK, ConnectionClosedError, ConnectionClosed) as e:
             LOG.debug(f"WebSocket closed: {e!r}")
+            # Read before the clear below: whether the session had been
+            # established decides how to read a 1008 (see the branch further
+            # down).
+            session_was_established = self.handshake_event.is_set()
             self.handshake_event.clear()
             self.crypto_key = None
             self.noise_transport = None
@@ -491,7 +495,24 @@ class AsyncHiveMessageBusClient:
                 # the pinned key and the next connect() retries with XXpsk2.
                 LOG.warning("HiveMind closed a failed KKpsk0 handshake; "
                             "the next connect uses XXpsk2")
-            if close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry:
+            if (close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry
+                    and session_was_established):
+                # 1008 on an ESTABLISHED session is not a credential refusal.
+                # hivemind-core sends 1008 from decode() for a non-Noise
+                # message on a v3 session, an invalid Noise transport message
+                # and an unencrypted message, all of which need an admitted
+                # connection to reach. The credentials were accepted minutes
+                # ago. Latching here took a correctly registered satellite off
+                # the mesh permanently and blamed its access key.
+                LOG.warning(
+                    f"HiveMind closed an established session with "
+                    f"{self.AUTH_REJECTED_CLOSE_CODE}: "
+                    f"{getattr(rcvd, 'reason', None) or getattr(e, 'reason', None) or 'no reason given'}. "
+                    f"The credentials were already accepted on this session, "
+                    f"so this is a protocol or transport error and not a "
+                    f"credential refusal. Reconnecting."
+                )
+            elif close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry:
                 # Reconnecting cannot help: the credentials are identical on
                 # every attempt. Record the reason, wake wait_for_handshake so
                 # it fails fast instead of blocking forever, and stop.

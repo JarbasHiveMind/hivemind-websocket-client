@@ -119,6 +119,32 @@ class HivePayloadWaiter(HiveMessageWaiter):
             super()._handler(message)
 
 
+#: Stamped on a WebSocketApp once its session completed the handshake.
+#: A new connection is a new object, so the fact has exactly the lifetime of
+#: the connection it describes — no reset to forget, and nothing to leak.
+_SESSION_ESTABLISHED_ATTR = "_hivemind_session_was_established"
+
+
+def _mark_session_established(socket) -> None:
+    """Remember, on the socket, that this connection reached READY."""
+    if socket is None:
+        return
+    try:
+        setattr(socket, _SESSION_ESTABLISHED_ATTR, True)
+    except Exception:  # a C object with no __dict__: fall back to forgetting
+        LOG.debug("could not mark the session established on %r", type(socket))
+
+
+def _session_was_established(socket) -> bool:
+    # `is True`, not a truth test. Any object that auto-creates attributes —
+    # a MagicMock in a test, a proxy in the wild — returns something TRUTHY
+    # for an attribute nobody set, and this guard would then read "the session
+    # was established" for a connection that never got past the credentials.
+    # That fails OPEN: a genuinely refused key would stop latching and retry
+    # for ever. Only the mark this module writes counts.
+    return getattr(socket, _SESSION_ESTABLISHED_ATTR, False) is True
+
+
 class HiveMessageBusClient(OVOSBusClient):
     # emit() grace window (seconds) for the "connection not currently open"
     # case. Kept short and non-configurable on purpose: it only exists to let
@@ -409,6 +435,36 @@ class HiveMessageBusClient(OVOSBusClient):
         close_code = args[1] if len(args) > 1 else None
         close_reason = args[2] if len(args) > 2 else None
 
+        # The socket the close belongs to, when websocket-client passes one,
+        # else the current one. `args[0] is not None` matters: a caller that
+        # passes None as the ws took the None, and the guard then fell back
+        # to handshake_event, which on_error has already cleared, so the 1008
+        # latched again — measured. websocket-client 1.9.2 always passes the
+        # app (_app.py:685), but it is a transitive dependency here and the
+        # callback signature is not ours to rely on. Read with getattr throughout: on_close is a
+        # CALLBACK and must not raise. A raise here loses the close handling
+        # entirely, which is the shape of defect this guard exists to fix,
+        # and it is the same reason the arguments above are read by position.
+        closed_socket = (args[0] if args and args[0] is not None
+                         else getattr(self, "client", None))
+        session_was_established = (self.handshake_event.is_set()
+                                   or _session_was_established(closed_socket))
+        if (close_code == self.AUTH_REJECTED_CLOSE_CODE
+                and not self._failed_kk_retry_pending()
+                and session_was_established):
+            # 1008 on an ESTABLISHED session is not a credential refusal; see
+            # _is_auth_rejection for the full reasoning. Reconnect.
+            LOG.warning(
+                f"HiveMind closed an established session with "
+                f"{self.AUTH_REJECTED_CLOSE_CODE}: "
+                f"{close_reason or 'no reason given'}. The credentials were "
+                f"already accepted on this session, so this is a protocol or "
+                f"transport error and not a credential refusal. Reconnecting."
+            )
+            self._clear_connection_state()
+            self.emitter.emit("close")
+            return
+
         if (close_code == self.AUTH_REJECTED_CLOSE_CODE
                 and not self._failed_kk_retry_pending()):
             # Reconnecting cannot help: the credentials do not change between
@@ -449,6 +505,20 @@ class HiveMessageBusClient(OVOSBusClient):
         if code != self.AUTH_REJECTED_CLOSE_CODE:
             return False
         if self._failed_kk_retry_pending():
+            return False
+        if self.handshake_event.is_set():
+            # A 1008 on an ESTABLISHED session is not a credential refusal.
+            # hivemind-core sends 1008 from decode() for a non-Noise message
+            # on a v3 session, an invalid Noise transport message and an
+            # unencrypted message. All three need an admitted connection to
+            # reach, so the credentials were accepted before this frame.
+            # Treating them as a refusal took a correctly registered
+            # satellite off the mesh permanently and blamed its access key.
+            #
+            # The split is read from the connection state rather than from
+            # the reason text: HIVEMIND-TRANSPORT-1 §2.2 makes a refusal
+            # machine-readable through a STABLE reason string, and these
+            # three reasons are free prose that no peer should parse.
             return False
         try:
             reason = data[2:].decode("utf-8") or "credentials refused"
@@ -496,6 +566,24 @@ class HiveMessageBusClient(OVOSBusClient):
         self.close()
 
     def _clear_connection_state(self):
+        # Read BEFORE the clear below, and remembered ON THE SOCKET.
+        #
+        # websocket-client delivers a close to on_error first, with an
+        # exception, and that path clears the connection state; on_close then
+        # runs with handshake_event already cleared and could not otherwise
+        # tell an established session from one that never got past the
+        # credentials. async_client keeps the same fact in a local, because
+        # its close arrives on one path only.
+        #
+        # It is stamped on the WebSocketApp, not on self, for two reasons a
+        # field could not give: a SECOND clear before on_close cannot
+        # downgrade it (an assignment did, and the 1008 latched again), and
+        # the next connection is a NEW WebSocketApp, so the fact cannot leak
+        # into it even when on_open never fires — a hub that refuses the
+        # upgrade outright closes with no open, and a genuinely refused key
+        # must still latch there.
+        if self.handshake_event.is_set():
+            _mark_session_established(getattr(self, "client", None))
         self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
