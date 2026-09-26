@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.10a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.9a1...1.2.10a1)
+
+**Merged pull requests:**
+
+- fix: refuse a Layer-1 Message as a routing payload \(MSG-1 §4\) [\#305](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/305) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.9a1) (2026-09-26)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.8a1...1.2.9a1)
@@ -369,10 +377,6 @@
 ## [1.0.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a1) (2026-08-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.14a1...1.0.15a1)
-
-**Merged pull requests:**
-
-- fix: add handshake\_max\_retries to async client connect\(\) [\#201](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/201) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.14a1) (2026-08-14)
 
