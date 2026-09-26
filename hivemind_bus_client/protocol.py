@@ -773,11 +773,35 @@ class HiveMindSlaveProtocol:
             return  # Noise session already established, nothing to start
         if self.noise_handshake is not None:
             return  # Noise handshake already in flight, keep waiting
-        if self._server_handshake_payload and self._should_use_noise(self._server_handshake_payload):
+        if self._server_handshake_payload is None:
+            # The retry fired before the server's HANDSHAKE offer arrived.
+            # Nothing is known about the peer yet, so a legacy frame here is
+            # a downgrade decided on no evidence: it used to send a v2
+            # pubkey handshake built from an empty payload, and a 5.x node
+            # refuses that with 1008 (HIVEMIND-CRYPTO-1 §3 gives Noise no
+            # legacy fallback). Under a burst of satellites against one
+            # IOLoop the offer is simply still in flight, so keep waiting.
+            #
+            # The caller re-waits: wait_for_handshake loops while
+            # handshake_event is unset and calls this again. It is BOUNDED
+            # ONLY WHEN max_retries is set, where it raises after that many
+            # attempts; the default is None, which retries for as long as the
+            # connection lasts. So under the default a peer that never offers
+            # leaves this waiting rather than timing out, and that is the
+            # trade this fix makes deliberately: waiting for a hub is what a
+            # satellite is for, while the downgrade it replaces got the
+            # satellite refused with 1008 and, because the client records
+            # that as a refused identity, taken off the mesh until restarted.
+            LOG.debug("handshake retry before the server's offer arrived; "
+                      "waiting rather than downgrading")
+            return
+        if self._should_use_noise(self._server_handshake_payload):
             self.start_noise_handshake(self._server_handshake_payload)
             return
-        # only the clients' wait_for_handshake retry reaches this line
-        self._legacy_start_handshake(self._server_handshake_payload or {}, retry=True)
+        # only the clients' wait_for_handshake retry reaches this line, and
+        # only with a payload that shows a peer this client cannot speak v3
+        # with
+        self._legacy_start_handshake(self._server_handshake_payload, retry=True)
 
     def _legacy_start_handshake(self, server_payload: dict, retry: bool = False):
         if self.binarize:
