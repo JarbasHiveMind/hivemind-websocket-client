@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.6a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.5a1...1.2.6a1)
+
+**Merged pull requests:**
+
+- fix: the binary send path refuses a payload shape §4 does not allow [\#292](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/292) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.5a1) (2026-09-25)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.4a1...1.2.5a1)
@@ -373,10 +381,6 @@
 ## [1.0.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.9a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.8a1...1.0.9a1)
-
-**Merged pull requests:**
-
-- fix: tolerate malformed route entries in update\_hop\_data [\#192](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/192) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.8a1) (2026-08-12)
 
