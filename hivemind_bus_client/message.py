@@ -40,32 +40,6 @@ class HiveMindBinaryPayloadType(IntEnum):
     TTS_AUDIO = 6  # synthesized TTS audio to be played
 
 
-#: The wire types whose payload MUST be present on the wire, refused at
-#: ``from_wire`` when the key is absent. Both the enum and its ``.value`` are
-#: listed, because a frame off the wire carries the string.
-#:
-#: HIVEMIND-MSG-1 §4 gives each of these a payload that cannot be absent: a
-#: Layer-1 bus message for ``BUS`` and ``SHARED_BUS``, a nested HiveMessage for
-#: ``BROADCAST``, ``PROPAGATE``, ``ESCALATE``, ``QUERY`` and ``CASCADE``, "an
-#: opaque byte string" for ``BINARY``, and the control fields their types
-#: require for ``HANDSHAKE`` and ``HELLO``. §2's envelope table marking
-#: ``payload`` Required "yes" is therefore right for all ten.
-#:
-#: Settled by architecture under T-4702, and this list is the answer. Before
-#: it, only HELLO and HANDSHAKE were here. Measured on the other eleven with a
-#: frame of ``{"msg_type": t}`` and no payload key: seven were ADMITTED and
-#: raised only when something read ``.payload``, ``BUS`` and ``SHARED_BUS``
-#: with ``KeyError`` and the five routing types with ``TypeError``, so a
-#: payload-less PROPAGATE blew up frames later in whatever read it. A refusal
-#: that happens by crash cannot be logged as a malformed frame, cannot name
-#: the field, and a caller cannot tell it from a bug. ``BINARY`` was refused
-#: incidentally, by the constructor's bytes check, citing no clause.
-#:
-#: TWO TYPES ARE LEFT OUT ON PURPOSE. ``PING`` may carry ``{}``: §4 says its
-#: payload "MAY be empty". ``INTERCOM`` and ``RENDEZVOUS`` are named nowhere
-#: in §4, so their payload shape is unspecified and a separate architecture
-#: task covers them; adding them here would be this library inventing a rule
-#: rather than enforcing one.
 #: The wire types whose payload CARRIES AN ENVELOPE, so an empty object is
 #: malformed rather than a legal degenerate.
 #:
@@ -103,6 +77,34 @@ _ENVELOPE_PAYLOAD = tuple(
 )
 
 
+#: The wire types whose payload MUST be present on the wire, refused at
+#: ``from_wire`` when the key is absent. Both the enum and its ``.value`` are
+#: listed, because a frame off the wire carries the string.
+#:
+#: HIVEMIND-MSG-1 §4 gives each of these a payload that cannot be absent: a
+#: Layer-1 bus message for ``BUS`` and ``SHARED_BUS``, a nested HiveMessage for
+#: ``BROADCAST``, ``PROPAGATE``, ``ESCALATE``, ``QUERY`` and ``CASCADE``, "an
+#: opaque byte string" for ``BINARY``, and the control fields their types
+#: require for ``HANDSHAKE`` and ``HELLO``. §2's envelope table marking
+#: ``payload`` Required "yes" is therefore right for all ten.
+#:
+#: Settled by architecture under T-4702, and this list is the answer. Before
+#: it, only HELLO and HANDSHAKE were here. Measured on the other eleven with a
+#: frame of ``{"msg_type": t}`` and no payload key: seven were ADMITTED and
+#: raised only when something read ``.payload``, ``BUS`` and ``SHARED_BUS``
+#: with ``KeyError`` and the five routing types with ``TypeError``, so a
+#: payload-less PROPAGATE blew up frames later in whatever read it. A refusal
+#: that happens by crash cannot be logged as a malformed frame, cannot name
+#: the field, and a caller cannot tell it from a bug. ``BINARY`` was refused
+#: incidentally, by the constructor's bytes check, citing no clause.
+#:
+#: THREE TYPES ARE LEFT OUT ON PURPOSE, and they are named here. ``PING``
+#: may carry ``{}``: §4 says its payload "MAY be empty". ``INTERCOM`` and
+#: ``RENDEZVOUS`` were named nowhere in §4 when this list was written, so
+#: their payload shape was unspecified and adding them here would have been
+#: this library inventing a rule rather than enforcing one. §4 has since
+#: gained a shape for both (architecture#32, merged as 7eabe88), and
+#: enforcing it is its own change rather than a line in this list.
 _PAYLOAD_REQUIRED = tuple(
     form
     for _type in (HiveMessageType.HANDSHAKE, HiveMessageType.HELLO,
@@ -456,10 +458,10 @@ class HiveMessage:
             # Absent is refused only for the types in _PAYLOAD_REQUIRED; a
             # PING frame is the whole message and has nothing to put in a
             # payload, so an absent key there is treated as the frame's shape
-            # and not a missing value. See the note on _PAYLOAD_REQUIRED: §2
-            # marks payload required for every type, so whether this split is
-            # right is an open question for architecture, and the behaviour
-            # is left as it is until then.
+            # and not a missing value. See the note on _PAYLOAD_REQUIRED: the
+            # split is architecture's answer under T-4702, not an open
+            # question, and §2's table now reads "yes, except PING" to match
+            # (architecture#32, merged as 7eabe88).
             if msg_type in _PAYLOAD_REQUIRED:
                 raise MalformedWirePayload(
                     f"{msg_type} frame carries no payload, which "

@@ -66,6 +66,10 @@ class TestAPayloadLessFrameIsRefusedAtTheDoor(unittest.TestCase):
         said = str(caught.exception)
         self.assertIn("propagate", said)
         self.assertIn("payload", said)
+        # The clause, because the test is named for it. Without this the
+        # citation could be dropped from the refusal and this row still
+        # passed, which is what it was doing.
+        self.assertIn("HIVEMIND-MSG-1 §2", said)
 
     def test_the_wire_form_is_matched_and_not_only_the_enum(self):
         """A frame off the wire carries the STRING, so both forms must be in
@@ -158,7 +162,10 @@ class TestAFrameWithAPayloadIsUnaffected(unittest.TestCase):
                 message = HiveMessage.from_wire(
                     {"msg_type": msg_type.value, "payload": payload})
                 self.assertEqual(message.msg_type, msg_type.value)
-                self.assertIsNotNone(message.payload)
+                # The VALUE, not just "not None": the payload that went in is
+                # the payload that comes back. `assertIsNotNone` passed for any
+                # object the door happened to build, including a wrong one.
+                self.assertEqual(message.as_dict["payload"], payload)
 
 
 #: §4 gives each of these an ENVELOPE, so an empty object is malformed
@@ -233,7 +240,8 @@ class TestAnEmptyEnvelopePayloadIsRefused(unittest.TestCase):
                 message = HiveMessage.from_wire(
                     {"msg_type": msg_type.value,
                      "payload": _VALID_PAYLOAD[msg_type]})
-                self.assertIsNotNone(message.payload)
+                self.assertEqual(message.as_dict["payload"],
+                                 _VALID_PAYLOAD[msg_type])
 
 
 class TestEmptinessStaysLegalWhereSection4GrantsIt(unittest.TestCase):

@@ -277,7 +277,20 @@ class HiveMindHTTPClient(threading.Thread):
                 LOG.exception("dropping malformed binary frame")
                 return
         elif isinstance(message, str):
-            message = json.loads(message)
+            try:
+                message = json.loads(message)
+            except json.JSONDecodeError:
+                # HIVEMIND-MSG-1 §3: a payload a node does not understand is
+                # ignored, and the connection is NOT rejected over it. This
+                # `json.loads` was bare, so a truncated or non-JSON text frame
+                # raised straight out of the receive callback: the transport
+                # calls on_error, the error path clears state and closes, and
+                # one frame from the peer ended the session. Widening
+                # `_parse_or_drop` was not enough, because the raise happens
+                # HERE, before that guard is reached -- measured.
+                LOG.error("dropping a text frame that is not JSON "
+                          "(HIVEMIND-MSG-1 §3)")
+                return
         if isinstance(message, dict) and "ciphertext" in message:
             LOG.error("got encrypted message, but could not decrypt!")
             return
@@ -318,7 +331,14 @@ class HiveMindHTTPClient(threading.Thread):
         """
         try:
             return HiveMessage.from_wire(frame)
-        except MalformedWirePayload:
+        except (MalformedWirePayload, json.JSONDecodeError):
+            # JSONDecodeError beside it, and not by preference: `from_wire`
+            # calls `json.loads` first (message.py:445), and JSONDecodeError is
+            # NOT a subclass of MalformedWirePayload. A truncated or non-JSON
+            # text frame is the broadest malformed frame there is, and without
+            # this it still raised out of the callback and closed the session --
+            # exactly what §3 forbids, and what the subject of this change
+            # claims it fixed.
             LOG.exception("dropping malformed wire frame (HIVEMIND-MSG-1 §3)")
             return None
 
