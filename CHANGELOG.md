@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.7a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.6a1...1.2.7a1)
+
+**Merged pull requests:**
+
+- fix: a handshake retry does not downgrade before the server's offer arrives [\#293](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/293) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.6a1) (2026-09-26)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.5a1...1.2.6a1)
