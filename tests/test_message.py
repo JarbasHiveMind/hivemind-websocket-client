@@ -557,3 +557,134 @@ class TestPayloadIdentity:
         assert msg.payload.msg_type == "t"
         msg["type"] = "u"
         assert msg.payload.msg_type == "u"
+
+
+class TestRoutingPayloadIsAnEnvelope:
+    """HIVEMIND-MSG-1 §4, the routing half, refused at the originator.
+
+    §4: "For ``BROADCAST``, ``PROPAGATE``, ``ESCALATE``, ``QUERY``, and
+    ``CASCADE``, the payload is **itself a HiveMessage** (a nested
+    envelope) whose ``msg_type`` is typically ``BUS``."
+
+    The constructor turns a ``Message`` into ``{"type", "data", "context"}``
+    with no ``msg_type``, so a Layer-1 message put straight into a routing
+    type is not an envelope. The far end raises ``TypeError`` the moment it
+    reads ``.payload``, and the sender is told nothing. This is what
+    ``hivemind-client escalate`` and ``propagate`` did until #300.
+
+    A LIBRARY INVARIANT, not a conformance point: it is invisible on the
+    wire and can only refuse this library's own caller.
+    """
+
+    ROUTING = [HiveMessageType.BROADCAST, HiveMessageType.PROPAGATE,
+               HiveMessageType.ESCALATE, HiveMessageType.QUERY,
+               HiveMessageType.CASCADE]
+    NOT_ROUTING = [HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
+                   HiveMessageType.HELLO, HiveMessageType.HANDSHAKE,
+                   HiveMessageType.PING, HiveMessageType.INTERCOM,
+                   HiveMessageType.RENDEZVOUS]
+
+    @pytest.mark.parametrize("msg_type", ROUTING)
+    def test_a_layer_1_message_is_refused(self, msg_type):
+        with pytest.raises(ValueError) as err:
+            HiveMessage(msg_type, Message("speak", {"utterance": "hi"}))
+        assert "HIVEMIND-MSG-1 §4" in str(err.value)
+
+    @pytest.mark.parametrize("msg_type", ROUTING)
+    def test_the_string_form_of_the_type_is_refused_too(self, msg_type):
+        """``HiveMessage("escalate", ...)`` is the same message."""
+        with pytest.raises(ValueError):
+            HiveMessage(msg_type.value, Message("speak", {}))
+
+    @pytest.mark.parametrize("msg_type", ROUTING)
+    def test_a_nested_envelope_is_accepted(self, msg_type):
+        """The control. The shape §4 asks for still builds and still reads."""
+        hm = HiveMessage(msg_type,
+                         HiveMessage(HiveMessageType.BUS,
+                                     Message("speak", {"utterance": "hi"})))
+        inner = hm.payload
+        assert isinstance(inner, HiveMessage)
+        assert inner.msg_type == HiveMessageType.BUS
+        assert inner.payload.msg_type == "speak"
+
+    @pytest.mark.parametrize("msg_type", NOT_ROUTING)
+    def test_a_type_outside_the_routing_half_still_takes_a_message(self, msg_type):
+        """The control on the scope.
+
+        §4 carries a BUS or SHARED_BUS payload OPAQUELY, and no other type
+        is named as a wrapper, so the conversion is untouched for all of
+        them.
+        """
+        hm = HiveMessage(msg_type, Message("speak", {"utterance": "hi"}))
+        assert hm._payload == {"type": "speak",
+                               "data": {"utterance": "hi"},
+                               "context": {}}
+
+    def test_the_refusal_is_a_value_error_not_a_wire_error(self):
+        """A bad argument, not a malformed frame.
+
+        ``MalformedWirePayload`` names ``from_wire`` in its text and is for a
+        wire value. The constructor's own idiom for a bad argument is
+        ``ValueError``, as with "Unknown HiveMessage.msg_type".
+        """
+        with pytest.raises(ValueError) as err:
+            HiveMessage(HiveMessageType.ESCALATE, Message("speak", {}))
+        assert not isinstance(err.value, MalformedWirePayload)
+
+
+class TestNoReceiveSideTwin:
+    """§4: a node "MUST NOT inspect or rewrite the inner payload of a
+    wrapped routing message". That binds a node ADMITTING a frame.
+
+    The guard reaches a ``Message`` OBJECT only, which no wire carries, so
+    every door still admits a peer's frame unchanged and a routing frame
+    that is not an envelope still fails where it always did, on
+    ``.payload``, at the injection point BRIDGE-1 §2 names. These are
+    regression tests for that scope, not for the doors themselves.
+    """
+
+    BAD = {"msg_type": "broadcast", "payload": {"a": 1}}
+
+    def test_a_dict_with_no_msg_type_is_still_built(self):
+        """The dict half is NOT enforced, deliberately.
+
+        hivemind-core builds a received frame with
+        ``HiveMessage(**payload)`` and its own suite builds this shape to
+        test a misbehaving peer. Refusing it here breaks that consumer, so
+        the dict half waits for the consumer fix.
+        """
+        assert HiveMessage(HiveMessageType.BROADCAST, {"a": 1})._payload == {"a": 1}
+
+    def test_from_wire_admits_the_frame(self):
+        hm = HiveMessage.from_wire(json.dumps(self.BAD))
+        assert hm._payload == {"a": 1}
+
+    def test_from_wire_still_fails_on_the_payload_read(self):
+        """The control on the negative: admitting it is not repairing it."""
+        hm = HiveMessage.from_wire(json.dumps(self.BAD))
+        with pytest.raises(TypeError):
+            hm.payload
+
+    def test_deserialize_admits_the_frame(self):
+        """``deserialize`` swallows exceptions and falls through to the BUS
+        shape, so a refusal inside it would read the frame as something it
+        is not, silently."""
+        hm = HiveMessage.deserialize(json.dumps(self.BAD))
+        assert hm.msg_type == HiveMessageType.BROADCAST
+        assert hm._payload == {"a": 1}
+
+    def test_decode_bitstring_admits_the_frame(self):
+        from hivemind_bus_client.serialization import (get_bitstring,
+                                                       decode_bitstring)
+        bs = get_bitstring(HiveMessageType.BROADCAST, payload={"a": 1})
+        assert decode_bitstring(bs)._payload == {"a": 1}
+
+    def test_the_inner_view_of_a_good_frame_still_rebuilds(self):
+        good = {"msg_type": "broadcast",
+                "payload": {"msg_type": "bus",
+                            "payload": {"type": "speak", "data": {},
+                                        "context": {}}}}
+        hm = HiveMessage.from_wire(json.dumps(good))
+        assert hm.payload.msg_type == HiveMessageType.BUS
+        # The cached view: reading twice gives the same object.
+        assert hm.payload is hm.payload

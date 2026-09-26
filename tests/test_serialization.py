@@ -8,7 +8,9 @@ from bitstring import BitArray, BitStream
 from ovos_bus_client import Message
 
 from hivemind_bus_client.exceptions import MalformedBinaryFrame, UnsupportedProtocolVersion
-from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
+from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
+                                         HiveMindBinaryPayloadType,
+                                         _ROUTING_TYPES)
 from hivemind_bus_client.serialization import (
     BINARY_ENCODABLE_TYPES, get_bitstring, decode_bitstring, PROTOCOL_VERSION,
     _INT2TYPE, _TYPE2INT,
@@ -97,13 +99,27 @@ class TestDecodeBitstring(unittest.TestCase):
         self.assertEqual(decoded.msg_type, HiveMessageType.PROPAGATE)
 
     def test_escalate_roundtrip(self):
-        decoded = self._roundtrip(HiveMessageType.ESCALATE, payload='{}')
+        # HIVEMIND-MSG-1 §4: an ESCALATE payload "is itself a HiveMessage (a
+        # nested envelope)". This fixture encoded '{}', a shape no peer can
+        # read: the far end raises TypeError on `.payload`. A codec test must
+        # carry a legal frame, or it asserts that an undeliverable one
+        # round-trips.
+        decoded = self._roundtrip(
+            HiveMessageType.ESCALATE,
+            payload='{"msg_type":"bus","payload":'
+                    '{"type":"speak","data":{},"context":{}}}')
         self.assertEqual(decoded.msg_type, HiveMessageType.ESCALATE)
+        # The nested envelope survives, which is what §4 asks of the codec.
+        self.assertEqual(decoded.payload.msg_type, HiveMessageType.BUS)
 
     def test_broadcast_roundtrip(self):
-        decoded = self._roundtrip(HiveMessageType.BROADCAST,
-                                  payload='{"type":"alert"}')
+        # §4 again: '{"type":"alert"}' is a Layer-1 message, not an envelope.
+        decoded = self._roundtrip(
+            HiveMessageType.BROADCAST,
+            payload='{"msg_type":"bus","payload":'
+                    '{"type":"alert","data":{},"context":{}}}')
         self.assertEqual(decoded.msg_type, HiveMessageType.BROADCAST)
+        self.assertEqual(decoded.payload.payload.msg_type, "alert")
 
     def test_ping_roundtrip(self):
         decoded = self._roundtrip(HiveMessageType.PING,
@@ -133,8 +149,15 @@ class TestDecodeBitstring(unittest.TestCase):
             HiveMessageType.CASCADE,
             HiveMessageType.PING,
         ]
-        payload = {"type": "test", "data": {}, "context": {}}
+        # HIVEMIND-MSG-1 §4 gives the two halves different payloads, so one
+        # payload for every type asserted a shape the spec forbids on five of
+        # them. A routing type carries a nested envelope; the rest carry the
+        # Layer-1 message.
+        bus_payload = {"type": "test", "data": {}, "context": {}}
+        nested = {"msg_type": HiveMessageType.BUS.value,
+                  "payload": bus_payload}
         for msg_type in types_with_payload:
+            payload = nested if msg_type in _ROUTING_TYPES else bus_payload
             bs = get_bitstring(msg_type, payload=payload)
             decoded = decode_bitstring(bs)
             self.assertEqual(decoded.msg_type, msg_type, f"Mismatch for {msg_type}")

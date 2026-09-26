@@ -40,6 +40,20 @@ class HiveMindBinaryPayloadType(IntEnum):
     TTS_AUDIO = 6  # synthesized TTS audio to be played
 
 
+#: The wire types whose payload HIVEMIND-MSG-1 §4 makes a nested envelope:
+#: "For ``BROADCAST``, ``PROPAGATE``, ``ESCALATE``, ``QUERY``, and
+#: ``CASCADE``, the payload is **itself a HiveMessage** (a nested envelope)
+#: whose ``msg_type`` is typically ``BUS``." ``BUS`` and ``SHARED_BUS`` are
+#: NOT here: §4 carries their payload OPAQUELY.
+_ROUTING_TYPES = frozenset(
+    [HiveMessageType.BROADCAST, HiveMessageType.PROPAGATE,
+     HiveMessageType.ESCALATE, HiveMessageType.QUERY,
+     HiveMessageType.CASCADE]
+    + [HiveMessageType.BROADCAST.value, HiveMessageType.PROPAGATE.value,
+       HiveMessageType.ESCALATE.value, HiveMessageType.QUERY.value,
+       HiveMessageType.CASCADE.value])
+
+
 #: The wire types whose payload HIVEMIND-MSG-1 §4 requires. A frame of one
 #: of these with no payload key is malformed; every other type may omit it,
 #: and the constructor's own default supplies ``{}``.
@@ -102,6 +116,34 @@ class HiveMessage:
         if not isinstance(payload, bytes) and msg_type == HiveMessageType.BINARY:
             raise ValueError(f"expected 'bytes' payload for HiveMessageType.BINARY, got {type(payload)}")
         elif isinstance(payload, Message):
+            # HIVEMIND-MSG-1 §4: a routing payload "is itself a HiveMessage
+            # (a nested envelope)". This conversion writes
+            # {"type", "data", "context"} and no `msg_type`, so a Layer-1
+            # message put straight into a routing type is NOT an envelope:
+            # the far end raises TypeError the moment it reads `.payload`,
+            # and the sender is told nothing. The refusal is the invariant of
+            # this conversion, so it stands beside it.
+            #
+            # `msg_type` is this library's own key, from the line below and
+            # from `as_dict`. §4 names the shape and no field, so the refusal
+            # does not cite §4 as the source of the key.
+            #
+            # A `Message` OBJECT, and nothing wider. A payload that is
+            # already a dict with no `msg_type` is the same shape on the
+            # wire, but it is also what every wire door hands this
+            # constructor -- `from_wire`, `deserialize`, `decode_bitstring`,
+            # the inner view the `payload` property rebuilds, and
+            # hivemind-core's own door at protocol.py:584. Refusing it here
+            # would be the receive-side twin T-5170 ruled out, and §4 forbids
+            # an admitting node to inspect the inner payload of a wrapped
+            # routing message. A `Message` object never arrives from a wire,
+            # so this branch can only ever refuse an originator.
+            if msg_type in _ROUTING_TYPES:
+                raise ValueError(
+                    f"a {msg_type} payload must be a nested HiveMessage "
+                    f"(HIVEMIND-MSG-1 §4), got a Layer-1 Message. Wrap it: "
+                    f"HiveMessage({msg_type}, "
+                    f"HiveMessage(HiveMessageType.BUS, payload=<Message>)).")
             payload = {"type": payload.msg_type,
                        "data": payload.data,
                        "context": payload.context}
