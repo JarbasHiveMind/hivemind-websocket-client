@@ -188,8 +188,23 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
     node.connected_event.wait()
     print("== connected to HiveMind")
 
+    # HIVEMIND-MSG-1 §4: an ESCALATE payload "is itself a HiveMessage (a
+    # nested envelope) whose msg_type is typically BUS". A Layer-1 Message
+    # passed straight in becomes {"type", "data", "context"} with no
+    # msg_type, which is NOT an envelope: the far end raises TypeError the
+    # moment it reads .payload, and the sender is told nothing.
+    # target_site_id on the OUTER envelope, and it is not decoration.
+    # HIVEMIND-MSG-1 §5: "When target_site_id is not set, or is empty, on a
+    # BROADCAST, a PROPAGATE, or an ESCALATE, no site identifier is equal to
+    # it. A node MUST NOT deliver the inner BUS message of that envelope to
+    # its Layer-1 bus." The key is read from the outer envelope, so without
+    # it the frame travels the mesh and nothing may deliver it. --siteid was
+    # reaching node.connect, which declares THIS node's own site, and never
+    # the message.
     hm = HiveMessage(HiveMessageType.ESCALATE,
-                     Message(msg, json.loads(payload)))
+                     HiveMessage(HiveMessageType.BUS,
+                                 Message(msg, json.loads(payload))),
+                     target_site_id=siteid)
     node.emit(hm)
 
     node.close()
@@ -226,8 +241,14 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
     node.connected_event.wait()
     print("== connected to HiveMind")
 
+    # §4 again: the payload of a PROPAGATE is a nested envelope, not the
+    # Layer-1 message itself. See the note on `escalate`.
+    # §5 again: unset means no node may deliver the inner BUS. See the note
+    # on `escalate`.
     hm = HiveMessage(HiveMessageType.PROPAGATE,
-                     Message(msg, json.loads(payload)))
+                     HiveMessage(HiveMessageType.BUS,
+                                 Message(msg, json.loads(payload))),
+                     target_site_id=siteid)
     node.emit(hm)
 
     node.close()
