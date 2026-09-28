@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.test_client import _make_client
+from test_client import _make_client
 
 
 def _refused_mid_retry(client, reason):

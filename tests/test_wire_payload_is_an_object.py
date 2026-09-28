@@ -19,6 +19,7 @@ no wire value was read. The wire goes through ``from_wire``.
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
@@ -155,8 +156,18 @@ class TestTheConstructorKeepsItsApiDefault(unittest.TestCase):
             "    print('REFUSED')\n"
             "else:\n"
             "    print('EMITTED')\n")
-        result = subprocess.run([sys.executable, "-O", "-c", program],
-                                capture_output=True, text=True)
+        # cwd matters here, not only -O. `python -c` puts the CURRENT
+        # WORKING DIRECTORY on the child's sys.path, and pytest runs from the
+        # repository root, so without this the child imports the working-tree
+        # copy of hivemind_bus_client rather than the installed one -- and
+        # this cell is then the only one in the suite that does not test what
+        # build_tests built. Running from an empty directory leaves the child
+        # with the installed package alone. `-P` does the same thing in one
+        # flag, but it is Python 3.11 and this repository still builds 3.10.
+        with tempfile.TemporaryDirectory() as outside_the_repository:
+            result = subprocess.run([sys.executable, "-O", "-c", program],
+                                    capture_output=True, text=True,
+                                    cwd=outside_the_repository)
         self.assertEqual(result.stdout.strip(), "REFUSED", result.stderr)
 
     def test_a_string_payload_is_refused_by_the_constructor(self):
