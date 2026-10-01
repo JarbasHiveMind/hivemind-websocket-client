@@ -1,19 +1,40 @@
 import json
+import time
+import uuid
 
 import click
 from ovos_bus_client import Message
 from ovos_utils.log import LOG
 from ovos_utils.fakebus import FakeBus
-
+from hivemind_bus_client.hive_map import HiveMapper
+from hivemind_bus_client.noise import clear_cached_psks
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.identity import NodeIdentity
-LOG.set_level("DEBUG")
+LOG.set_level("ERROR")
 
 
 @click.group()
-def hmclient_cmds():
+@click.option("--app", help="application name: use the identity in "
+                            "~/.config/hivemind/<app>/ instead of the shared "
+                            "~/.config/hivemind/_identity.json",
+              type=str, default=None)
+def hmclient_cmds(app):
     pass
+
+
+def _node_identity(shared_fallback: bool = True) -> NodeIdentity:
+    """The identity of the application named by the group's --app option.
+
+    ``shared_fallback=False`` is for a write: with ``--app`` it must land in
+    that application's own file, never in the shared one.
+    """
+    ctx = click.get_current_context(silent=True)
+    app = ctx.find_root().params.get("app") if ctx else None
+    # without --app the call stays exactly what it was before the option
+    if not app:
+        return NodeIdentity()
+    return NodeIdentity(app_name=app, shared_fallback=shared_fallback)
 
 
 @hmclient_cmds.command(help="persist node identity / credentials", name="set-identity")
@@ -23,17 +44,23 @@ def hmclient_cmds():
 @click.option("--port", help="default port for hivemind-core", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context", type=str, default="")
 def identity_set(key: str, password: str, host: str, port: int, siteid: str):
-    if not key and not password and not siteid:
-        raise ValueError("please set at least one of key/password/siteid/host")
-    identity = NodeIdentity()
+    if not key and not password and not siteid and not host and not port:
+        raise ValueError("please set at least one of key/password/siteid/host/port")
+    identity = _node_identity(shared_fallback=False)
+    if password and password != identity.password:
+        # every cached Noise PSK was derived from the old password
+        clear_cached_psks(identity.noise_key)
     identity.password = password or identity.password
     identity.access_key = key or identity.access_key
     identity.site_id = siteid or identity.site_id
     identity.default_port = port or identity.default_port or 5678
+    # a fresh identity has no master yet: with no --host there is nothing
+    # to normalise or store, and the connecting commands ask for --host
     host = host or identity.default_master
-    if not host.startswith("ws://") and not host.startswith("wss://"):
-        host = "ws://" + host
-    identity.default_master = host
+    if host:
+        if not host.startswith("ws://") and not host.startswith("wss://"):
+            host = "ws://" + host
+        identity.default_master = host
     if not identity.public_key:
         identity.create_keys()
         print("PUBKEY:", identity.public_key)
@@ -48,7 +75,7 @@ def identity_set(key: str, password: str, host: str, port: int, siteid: str):
 @click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
 @click.option("--siteid", help="location identifier for message.context  (default read from identity file)", type=str, default="")
 def terminal(key: str, password: str, host: str, port: int, siteid: str):
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master
@@ -62,7 +89,8 @@ def terminal(key: str, password: str, host: str, port: int, siteid: str):
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     # node.connected_event.wait()
@@ -101,7 +129,24 @@ def terminal(key: str, password: str, host: str, port: int, siteid: str):
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
 def send_mycroft(key: str, password: str, host: str, port: int, siteid: str, msg: str, payload: str):
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    # like its siblings: the --app identity, both for the credentials and
+    # for the keys the client presents
+    identity = _node_identity()
+    password = password or identity.password
+    key = key or identity.access_key
+    host = host or identity.default_master
+    siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
+
+    if host and not host.startswith("ws://") and not host.startswith("wss://"):
+        host = "ws://" + host
+
+    if not key or not password or not host:
+        raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
+                           "call 'hivemind-client set-identity'")
+
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                                identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     node.connected_event.wait()
@@ -122,7 +167,7 @@ def send_mycroft(key: str, password: str, host: str, port: int, siteid: str, msg
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
 def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: str, payload: str):
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master
@@ -136,14 +181,30 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     node.connected_event.wait()
     print("== connected to HiveMind")
 
+    # HIVEMIND-MSG-1 §4: an ESCALATE payload "is itself a HiveMessage (a
+    # nested envelope) whose msg_type is typically BUS". A Layer-1 Message
+    # passed straight in becomes {"type", "data", "context"} with no
+    # msg_type, which is NOT an envelope: the far end raises TypeError the
+    # moment it reads .payload, and the sender is told nothing.
+    # target_site_id on the OUTER envelope, and it is not decoration.
+    # HIVEMIND-MSG-1 §5: "When target_site_id is not set, or is empty, on a
+    # BROADCAST, a PROPAGATE, or an ESCALATE, no site identifier is equal to
+    # it. A node MUST NOT deliver the inner BUS message of that envelope to
+    # its Layer-1 bus." The key is read from the outer envelope, so without
+    # it the frame travels the mesh and nothing may deliver it. --siteid was
+    # reaching node.connect, which declares THIS node's own site, and never
+    # the message.
     hm = HiveMessage(HiveMessageType.ESCALATE,
-                     Message(msg, json.loads(payload)))
+                     HiveMessage(HiveMessageType.BUS,
+                                 Message(msg, json.loads(payload))),
+                     target_site_id=siteid)
     node.emit(hm)
 
     node.close()
@@ -159,7 +220,7 @@ def escalate(key: str, password: str, host: str, port: int, siteid: str, msg: st
 @click.option("--msg", help="ovos message type to inject", type=str)
 @click.option("--payload", help="ovos message.data json", type=str)
 def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: str, payload: str):
-    identity = NodeIdentity()
+    identity = _node_identity()
     password = password or identity.password
     key = key or identity.access_key
     host = host or identity.default_master
@@ -173,14 +234,21 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
         raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
                            "call 'hivemind-client set-identity'")
 
-    node = HiveMessageBusClient(key, host=host, port=port, password=password)
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
     node.connect(FakeBus(), site_id=siteid)
 
     node.connected_event.wait()
     print("== connected to HiveMind")
 
+    # §4 again: the payload of a PROPAGATE is a nested envelope, not the
+    # Layer-1 message itself. See the note on `escalate`.
+    # §5 again: unset means no node may deliver the inner BUS. See the note
+    # on `escalate`.
     hm = HiveMessage(HiveMessageType.PROPAGATE,
-                     Message(msg, json.loads(payload)))
+                     HiveMessage(HiveMessageType.BUS,
+                                 Message(msg, json.loads(payload))),
+                     target_site_id=siteid)
     node.emit(hm)
 
     node.close()
@@ -188,23 +256,174 @@ def propagate(key: str, password: str, host: str, port: int, siteid: str, msg: s
 
 @hmclient_cmds.command(help="test if Identity file can connect to HiveMind",
                        name="test-identity")
-def test_identity():
-    node = HiveMessageBusClient()
-    node.connect(FakeBus())
+@click.option("--timeout", help="seconds to wait before giving up", type=float, default=30.0)
+def test_identity(timeout: float):
+    node = HiveMessageBusClient(identity=_node_identity())
 
-    node.connected_event.wait()
-    print("== Identity successfully connected to HiveMind!")
+    # Bounded on purpose. connect() defaults to retrying the handshake
+    # forever, so a refused identity used to hang here indefinitely while the
+    # reconnect loop printed raw close frames - which reads as "the tool
+    # froze" rather than "your key is wrong".
+    retries = max(1, int(timeout // 5))
+    connected = False
+    try:
+        node.connect(FakeBus(), handshake_max_retries=retries)
+        connected = node.handshake_event.is_set() or node.connected_event.is_set()
+    except ConnectionRefusedError:
+        connected = False
+    except RuntimeError:
+        connected = False
+    finally:
+        node.close()
 
-    node.close()
+    if connected and not node._auth_rejected:
+        print("== Identity successfully connected to HiveMind!")
+        return
+
+    if node._auth_rejected:
+        raise click.ClickException(
+            f"HiveMind refused this identity: {node._auth_rejected}\n"
+            f"Check the access key and password with 'hivemind-client "
+            f"set-identity', and confirm the client is registered on the "
+            f"server with 'hivemind-core list-clients'."
+        )
+    raise click.ClickException(
+        f"could not reach HiveMind within {timeout:g}s. Check the host and "
+        f"port in the identity file, and that hivemind-core is listening."
+    )
+
+
+@hmclient_cmds.command(help="forget the pinned encryption key of a hivemind-core",
+                       name="forget-server")
+@click.option("--host", help="host of the hivemind-core (default read from identity file)", type=str, default="")
+@click.option("--port", help="port of the hivemind-core (default read from identity file)", type=int, required=False)
+def forget_server(host: str, port: int):
+    """Drop the pinned Noise key of a master.
+
+    A master is pinned the first time it is seen and every later
+    connection checks that the key did not change. Reinstalling the master
+    or restoring it from a backup gives it a new key, so the satellite
+    stops connecting. Forget the old key here, then connect again to trust
+    the new one.
+    """
+    identity = _node_identity()
+    host = host or identity.default_master or ""
+    host = host.replace("ws://", "").replace("wss://", "")
+    port = port or identity.default_port or 5678
+    pin_id = f"{host}:{port}"
+    if not host:
+        raise ValueError("please set --host, no default master in the identity file")
+    if identity.uses_shared_fallback:
+        # the pin lives in the shared file until this application has its own
+        print(f"{identity.app_name} has no identity file of its own: this pin is "
+              f"in the shared {identity.IDENTITY_FILE.path}, checked by every "
+              f"application on this box")
+    if identity.forget_noise_key(pin_id):
+        print(f"forgot pinned key for {pin_id}")
+        print("the next connection will trust and pin the key it sees")
+    else:
+        print(f"no pinned key for {pin_id}")
+        known = ", ".join(identity.pinned_noise_keys) or "none"
+        print(f"pinned servers: {known}")
 
 
 @hmclient_cmds.command(help="recreate the private RSA key for inter-node communication", name="reset-pgp")
 def reset_keys():
-    identity = NodeIdentity()
+    # new keys for the named application go into its own file, never into
+    # the shared one that every other application still reads
+    identity = _node_identity(shared_fallback=False)
     identity.create_keys()
     print("PUBKEY:", identity.public_key)
     identity.save()
     print(f"identity saved: {identity.IDENTITY_FILE.path}")
+
+
+@hmclient_cmds.command(
+    help="Send a PING and display the reachable hive map.",
+    name="ping",
+)
+@click.option("--key", help="HiveMind access key (default read from identity file)", type=str, default="")
+@click.option("--password", help="HiveMind password (default read from identity file)", type=str, default="")
+@click.option("--host", help="HiveMind host (default read from identity file)", type=str, default="")
+@click.option("--port", help="HiveMind port number (default: 5678)", type=int, required=False)
+@click.option("--siteid", help="location identifier (default read from identity file)", type=str, default="")
+@click.option("--timeout", help="seconds to collect responses (default: 5.0)", type=float, default=5.0)
+@click.option("--json", "output_json", is_flag=True, default=False, help="output raw JSON topology")
+def ping(key: str, password: str, host: str, port: int, siteid: str,
+         timeout: float, output_json: bool):
+    """Send a PING flood and collect responsive PINGs to map the hive topology."""
+    identity = _node_identity()
+    password = password or identity.password
+    key = key or identity.access_key
+    host = host or identity.default_master
+    siteid = siteid or identity.site_id or "unknown"
+    port = port or identity.default_port or 5678
+
+    if not key or not password or not host:
+        raise RuntimeError("NodeIdentity not set, please pass key/password/host or "
+                           "call 'hivemind-client set-identity'")
+
+    if not host.startswith("ws://") and not host.startswith("wss://"):
+        host = "ws://" + host
+
+    mapper = HiveMapper()
+    flood_id = str(uuid.uuid4())
+    my_peer = f"{identity.name or 'hivemind-client'}::{flood_id[:8]}"
+
+    node = HiveMessageBusClient(key, host=host, port=port, password=password,
+                               identity=identity)
+    node.connect(FakeBus(), site_id=siteid)
+    if not node.connected_event.wait(timeout=10):
+        print("[ERROR] Failed to connect to HiveMind within 10 seconds")
+        return
+    print(f"== connected to HiveMind, sending PING (timeout={timeout}s)")
+
+    mapper.start_ping(flood_id)
+
+    def on_ping_response(outer: HiveMessage):
+        """Handle a PROPAGATE message whose inner payload is a responsive PING."""
+        inner = outer.payload
+        if not isinstance(inner, HiveMessage):
+            return
+        if inner.msg_type != HiveMessageType.PING:
+            return
+        ping_data = inner.payload
+        if not isinstance(ping_data, dict):
+            return
+        if ping_data.get("flood_id") != flood_id:
+            return
+        # Transfer route from outer PROPAGATE to inner PING so HiveMapper can read it
+        inner.replace_route(outer.route)
+        if mapper.on_ping(inner, received_at=time.time()):
+            peer = ping_data.get("peer", "?")
+            site = ping_data.get("site_id", "")
+            site_str = f"  site={site}" if site else ""
+            print(f"  PING from {peer}{site_str}")
+
+    node.on(HiveMessageType.PROPAGATE, on_ping_response)
+
+    ping_payload = {
+        "flood_id": flood_id,
+        "timestamp": time.time(),
+        "peer": my_peer,
+        "site_id": siteid,
+    }
+    ping_inner = HiveMessage(HiveMessageType.PING, ping_payload)
+    ping_outer = HiveMessage(HiveMessageType.PROPAGATE, payload=ping_inner)
+    node.emit(ping_outer)
+
+    time.sleep(timeout)
+    node.close()
+
+    if not mapper.nodes:
+        print("[No responses received within the timeout window]")
+        return
+
+    if output_json:
+        print(mapper.to_json())
+    else:
+        print("\n== Hive Map ==")
+        print(mapper.to_ascii(root_peer=my_peer))
 
 
 if __name__ == "__main__":

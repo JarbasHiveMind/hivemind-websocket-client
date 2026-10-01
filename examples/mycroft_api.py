@@ -2,13 +2,17 @@ from hivemind_bus_client import HiveMessageBusClient, HiveMessage, \
     HiveMessageType
 from ovos_bus_client import Message
 
-# these should never be equal! one travels down the wire and is an access token
-key = "ivf1NQSkQNogWYyr"
-# the other is a pre-shared encryption key for a crude initial e2e encryption
-# NOTE: needs to be exactly 16chars
-crypto_key = "ivf1NQSkQNogWYyr"
+# Before this runs, the hub must grant this client the message types it sends:
+#   hivemind-core allow-msg "recognizer_loop:utterance" <node_id>
+#   hivemind-core allow-msg "speak" <node_id>
+# A new client has an empty whitelist and the hub denies everything it sends.
 
-bus = HiveMessageBusClient(key, crypto_key=crypto_key, ssl=False)
+# these are never equal! the access key travels down the wire as an access token
+key = "super_secret_access_key"
+# the password derives the session key during the handshake
+password = "super_secret_password"
+
+bus = HiveMessageBusClient(key, password=password)
 bus.run_in_thread()
 
 # simulate a user utterance
