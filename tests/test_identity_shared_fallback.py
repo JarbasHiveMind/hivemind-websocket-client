@@ -30,8 +30,22 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
+def _shared_store():
+    """The shared file addressed explicitly, as a deployer now must.
+
+    ``NodeIdentity()`` no longer creates it: HIVEMIND-CRYPTO-1 §2 forbids
+    defaulting to a location shared by every application of the user, so
+    provisioning it is a deliberate act. This is the route
+    ``hivemind-client set-identity --shared`` takes.
+    """
+    from json_database import JsonConfigXDG
+    from ovos_utils.xdg_utils import xdg_config_home
+    return JsonConfigXDG("_identity", subfolder="hivemind",
+                         xdg_folder=str(xdg_config_home()))
+
+
 def _provision_shared():
-    shared = NodeIdentity()
+    shared = NodeIdentity(identity_file=_shared_store())
     shared.name = "old-sat"
     shared.password = "hunter2"
     shared.access_key = "key"
@@ -83,13 +97,24 @@ def test_shared_fallback_false_keeps_the_application_path(home):
     assert named.password is None
 
 
-def test_without_an_app_name_nothing_changes(home):
+def test_without_an_app_name_the_shared_file_is_read_and_warned_about(home):
+    """Stage 3 changed this: the read stays, the silence does not.
+
+    An existing shared file is still read, because a deployer provisioning
+    one is the explicit choice HIVEMIND-CRYPTO-1 §2 allows. What is new is
+    that it says so, and names the fix.
+    """
     shared = _provision_shared()
     with patch("hivemind_bus_client.identity.LOG.warning") as warning:
         plain = NodeIdentity()
     assert plain.IDENTITY_FILE.path == shared.IDENTITY_FILE.path
     assert plain.uses_shared_fallback is False
-    warning.assert_not_called()
+    # reading an existing shared file is allowed, so nothing is refused
+    assert plain.refuses_to_create_shared is False
+    warning.assert_called_once()
+    said = warning.call_args[0][0]
+    assert "HIVEMIND-CRYPTO-1 §2" in said
+    assert "app_name" in said
 
 
 @pytest.mark.parametrize("command", [
