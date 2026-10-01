@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.11a1) (2026-10-01)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.10a1...1.2.11a1)
+
+**Merged pull requests:**
+
+- fix\(tests\): every cell imports the wheel, the subprocess one included [\#308](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/308) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.10a1) (2026-09-26)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.9a1...1.2.10a1)
@@ -369,10 +377,6 @@
 ## [1.0.15a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a2) (2026-08-15)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.15a1...1.0.15a2)
-
-**Merged pull requests:**
-
-- docs: add AGENTS.md with per-repo agent conventions [\#203](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/203) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a1) (2026-08-14)
 
