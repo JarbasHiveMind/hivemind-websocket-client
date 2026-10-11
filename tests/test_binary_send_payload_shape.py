@@ -17,8 +17,8 @@ shapes reached the wire or raised from inside bitstring:
 * ``BUS`` with a ``list`` or an ``int`` raised a bare ``AssertionError``
   that named neither the payload nor the rule.
 * ``BINARY`` with a ``dict`` became a SINGLE BIT on the wire.
-  ``BitArray().append({"a": 1})`` reads the mapping as a one-bit token, so
-  the whole payload was lost and the frame still went out.
+  bitstring 4's ``BitArray().append({"a": 1})`` reads the mapping as a
+  one-bit token, so the whole payload was lost and the frame still went out.
 * ``BINARY`` with a ``str`` raised ``ValueError: Can't parse token`` from
   bitstring, which reads a string as a format specification.
 
@@ -30,7 +30,7 @@ refusal and must change no frame that was already correct.
 """
 import unittest
 
-from bitstring import BitArray, BitStream
+from bitstring import BitArray, Bits
 from ovos_bus_client.message import Message
 
 from hivemind_bus_client.message import (HiveMessageType,
@@ -118,10 +118,14 @@ class TestTheBinarySendPathRefusesABadShape(unittest.TestCase):
         refusal moved somewhere that let a truncated frame out first.
         """
         probe = BitArray()
-        probe.append({"a": 1})
-        self.assertEqual(len(probe), 1,
-                         "bitstring still reads a mapping as one bit, which is "
-                         "why the payload has to be refused before append()")
+        try:
+            probe.append({"a": 1})
+        except TypeError:
+            pass  # bitstring 5 refuses a mapping outright
+        self.assertLessEqual(len(probe), 1,
+                             "bitstring cannot encode a mapping (4.x reads it "
+                             "as one bit, 5.x refuses it), which is why the "
+                             "payload has to be refused before append()")
 
 
 class TestAValidPayloadIsUnchanged(unittest.TestCase):
@@ -186,7 +190,7 @@ class TestAValidPayloadIsUnchanged(unittest.TestCase):
     def test_a_bitarray_binary_payload_is_accepted(self):
         """BINARY accepts the bit types the encoder itself produces."""
         for payload in (b"ab", bytearray(b"ab"), memoryview(b"ab"),
-                        BitArray(bytes=b"ab"), BitStream(bytes=b"ab")):
+                        BitArray(b"ab"), Bits(b"ab")):
             with self.subTest(payload=type(payload).__name__):
                 frame = get_bitstring(
                     hive_type=HiveMessageType.BINARY, payload=payload,

@@ -3,7 +3,7 @@ import os
 import random
 import unittest
 
-from bitstring import BitArray, BitStream
+from bitstring import BitArray, Bits
 
 from ovos_bus_client import Message
 
@@ -226,7 +226,7 @@ class TestDecodeBitstring(unittest.TestCase):
         s.append('uint:8=0')                              # metadata_len = 0
         s.append(b'{"type":"test","data":{},"context":{}}')
         while len(s) % 8 != 0:
-            s.insert('uint:1=0', 0)
+            s.prepend('uint:1=0')
         decoded = decode_bitstring(s.bytes)
         self.assertEqual(decoded.metadata, {})
         self.assertEqual(decoded.msg_type, HiveMessageType.BUS)
@@ -302,7 +302,7 @@ class TestUnassignedTypeCodeRejection(unittest.TestCase):
         # empty JSON object as the (uncompressed) metadata payload region
         # is not needed: metalen=0, so the rest is payload; leave empty.
         while len(s) % 8 != 0:
-            s.insert('uint:1=0', 0)
+            s.prepend('uint:1=0')
         return s.bytes
 
     def test_unassigned_codes_are_rejected(self):
@@ -335,14 +335,14 @@ class TestUnassignedTypeCodeRejection(unittest.TestCase):
                     bs = get_bitstring(mt, payload=b"\x01\x02")
                 else:
                     bs = get_bitstring(mt, payload=payload)
-                # re-read the 5-bit type code straight off the wire
-                st = BitStream(bs.bytes if hasattr(bs, "bytes") else bs)
-                pad = False
-                while not pad:
-                    pad = st.read(1).bool
-                if st.read(1).bool:
-                    st.read(8)
-                self.assertNotEqual(st.read(5).uint, 11)
+                # re-read the 5-bit type code straight off the wire,
+                # independently of the decoder's own reader
+                wire = Bits(bs.tobytes()).bin
+                pos = wire.index("1") + 1      # past the padding marker
+                if wire[pos] == "1":           # versioned: skip the version
+                    pos += 8
+                pos += 1
+                self.assertNotEqual(int(wire[pos:pos + 5], 2), 11)
 
     def test_thirdprty_type_is_gone(self):
         self.assertFalse(hasattr(HiveMessageType, "THIRDPRTY"))
@@ -402,7 +402,7 @@ class TestMycroft2Bitstring(unittest.TestCase):
 
     def test_unsupported_decode_version_raises(self):
         """Craft a versioned bitstring with proto_version=99 and verify decode raises."""
-        from bitstring import BitArray, BitStream
+        from bitstring import BitArray
         from hivemind_bus_client.serialization import decode_bitstring
         from hivemind_bus_client.exceptions import UnsupportedProtocolVersion
         s = BitArray()
@@ -412,7 +412,7 @@ class TestMycroft2Bitstring(unittest.TestCase):
         s.append('uint:5=1')       # dummy hive_type
         # Pad to byte boundary
         while len(s) % 8 != 0:
-            s.insert('uint:1=0', 0)
+            s.prepend('uint:1=0')
         with self.assertRaises(UnsupportedProtocolVersion):
             decode_bitstring(s.bytes)
 
@@ -651,7 +651,7 @@ class TestMalformedFrames(unittest.TestCase):
         s.append(meta)
         s.append(payload)
         while len(s) % 8 != 0:
-            s.insert('uint:1=0', 0)
+            s.prepend('uint:1=0')
         return s.bytes
 
     def test_metadata_len_past_end_of_frame(self):

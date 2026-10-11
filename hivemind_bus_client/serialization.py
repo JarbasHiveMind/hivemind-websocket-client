@@ -3,9 +3,7 @@ import sys
 import zlib
 from inspect import signature
 
-from bitstring import BitArray, BitStream
-
-from bitstring import ReadError
+from bitstring import BitArray, Bits, ReadError
 
 from hivemind_bus_client.exceptions import (MalformedBinaryFrame, MetadataTooLarge,
                                             UnsupportedProtocolVersion)
@@ -118,8 +116,7 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
         # single bit on the wire, and it reads a str as a format spec, so a
         # text payload raised from inside bitstring instead of naming the
         # problem.
-        if not isinstance(payload, (bytes, bytearray, memoryview, BitArray,
-                                    BitStream)):
+        if not isinstance(payload, (bytes, bytearray, memoryview, Bits)):
             raise MalformedWirePayload(
                 f"a BINARY payload must be an opaque byte string, got "
                 f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
@@ -160,11 +157,45 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
 
     s.append(payload)
 
-    # pad
-    while len(s) % 8 != 0:
-        s.insert(f'uint:1={int(0)}', 0)
+    # pad: 0 bits on the left up to a byte boundary. prepend() is used rather
+    # than insert(), whose argument order bitstring 5 reversed.
+    pad = -len(s) % 8
+    if pad:
+        s.prepend(f'uint:{pad}=0')
 
     return s
+
+
+class _FrameReader:
+    """A read cursor over a binary frame.
+
+    The decoder reads a frame field by field. bitstring 4 provided that cursor
+    as ``BitStream``; bitstring 5 removed ``BitStream`` and moved sequential
+    reads to a ``Reader`` class that bitstring 4 does not have. Slicing a
+    ``Bits`` behaves the same in both, so the cursor is kept here and both
+    major versions decode identically.
+
+    ``read(n)`` returns the next ``n`` bits as ``Bits`` and raises
+    ``ReadError`` when fewer than ``n`` remain, as ``BitStream.read`` did.
+    """
+
+    __slots__ = ("_bits", "pos")
+
+    def __init__(self, frame):
+        self._bits = Bits(frame)
+        self.pos = 0
+
+    def __len__(self):
+        return len(self._bits)
+
+    def read(self, n: int) -> Bits:
+        end = self.pos + n
+        if n < 0 or end > len(self._bits):
+            raise ReadError(f"cannot read {n} bits at position {self.pos}: "
+                            f"only {len(self._bits) - self.pos} remain")
+        chunk = self._bits[self.pos:end]
+        self.pos = end
+        return chunk
 
 
 def decode_bitstring(bitstr):
@@ -174,7 +205,7 @@ def decode_bitstring(bitstr):
     and UnsupportedProtocolVersion for a frame-format version this decoder
     does not implement; nothing else escapes for a bad frame.
     """
-    s = BitStream(bitstr)
+    s = _FrameReader(bitstr)
     try:
         pad = False
         while not pad:
@@ -208,7 +239,7 @@ def _decode_bitstring_v1(s):
             f"{sorted(_INT2TYPE)})"
         )
     hive_type = _INT2TYPE[type_code]
-    compressed = s.read(1).bool  # note: bool(BitStream) checks length (always True), .bool reads the actual bit
+    compressed = s.read(1).bool  # note: bool(Bits) checks length (always True), .bool reads the actual bit
 
     metalen = s.read(8).uint * 8
     if metalen > len(s) - s.pos:

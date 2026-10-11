@@ -273,7 +273,7 @@ class TestTheBinaryFrameDoorRefusesTheSameShapes(unittest.TestCase):
         s.append(meta)
         s.append(cast2bytes(payload_text, False))               # payload block
         while len(s) % 8 != 0:
-            s.insert('uint:1=0', 0)
+            s.prepend('uint:1=0')
         return s
 
     def test_a_binary_frame_whose_payload_is_not_an_object_is_refused(self):
