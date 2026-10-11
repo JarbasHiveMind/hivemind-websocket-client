@@ -11,6 +11,8 @@ from hivemind_bus_client.noise import clear_cached_psks
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.identity import NodeIdentity
+from json_database import JsonConfigXDG
+from ovos_utils.xdg_utils import xdg_config_home
 LOG.set_level("ERROR")
 
 
@@ -19,7 +21,14 @@ LOG.set_level("ERROR")
                             "~/.config/hivemind/<app>/ instead of the shared "
                             "~/.config/hivemind/_identity.json",
               type=str, default=None)
-def hmclient_cmds(app):
+@click.option("--shared", is_flag=True, default=False,
+              help="use the shared ~/.config/hivemind/_identity.json, and "
+                   "create it if it does not exist. Sharing one identity "
+                   "across applications is a provisioning choice a deployer "
+                   "makes explicitly (HIVEMIND-CRYPTO-1 §2); without this "
+                   "flag and without --app, an existing shared file is read "
+                   "but a new one is never created")
+def hmclient_cmds(app, shared):
     pass
 
 
@@ -30,11 +39,21 @@ def _node_identity(shared_fallback: bool = True) -> NodeIdentity:
     that application's own file, never in the shared one.
     """
     ctx = click.get_current_context(silent=True)
-    app = ctx.find_root().params.get("app") if ctx else None
-    # without --app the call stays exactly what it was before the option
-    if not app:
-        return NodeIdentity()
-    return NodeIdentity(app_name=app, shared_fallback=shared_fallback)
+    params = ctx.find_root().params if ctx else {}
+    app = params.get("app")
+    if app:
+        return NodeIdentity(app_name=app, shared_fallback=shared_fallback)
+    if params.get("shared"):
+        # the deployer asked for the shared file by name, which is the
+        # explicit provisioning choice HIVEMIND-CRYPTO-1 §2 allows. Passing
+        # the path as identity_file takes the no-app_name branch out of the
+        # way, so this is the one route that may create it.
+        return NodeIdentity(identity_file=JsonConfigXDG(
+            "_identity", subfolder="hivemind",
+            xdg_folder=str(xdg_config_home())))
+    # no --app and no --shared: reads an existing shared file, warns, and
+    # refuses to create one. save() raises with the fix in the message.
+    return NodeIdentity()
 
 
 @hmclient_cmds.command(help="persist node identity / credentials", name="set-identity")
