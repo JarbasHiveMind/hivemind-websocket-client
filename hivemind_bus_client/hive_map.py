@@ -1,0 +1,477 @@
+"""Hive topology mapper built from PING-only network discovery.
+
+Every node responds to a PING by propagating its own PING (with the same
+``flood_id``), so all nodes in the hive sync simultaneously.  An ephemeral
+``flood_id`` prevents infinite loops.
+"""
+import json
+import threading
+import hashlib
+import time
+from collections import OrderedDict
+from collections.abc import MutableSet
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set
+
+from hivemind_bus_client.message import HiveMessage
+
+
+@dataclass
+class NodeInfo:
+    """Metadata about a node discovered via PING flood."""
+
+    peer: str
+    site_id: Optional[str] = None
+    timestamp: Optional[float] = None       # sender's clock when they created the PING
+    received_at: Optional[float] = None     # our local clock when we received it
+    public_key: Optional[str] = None        # RSA public key if provided in PING
+    lang: Optional[str] = None             # locale announced by the node (e.g. "en-us")
+    trusted: bool = False                   # whether this peer's key is in the trusted list
+
+    @property
+    def latency_ms(self) -> Optional[float]:
+        """Estimated one-way latency in milliseconds (receiver clock minus sender clock).
+
+        This is a clock-difference estimate, **not** a true round-trip
+        measurement.  On unsynchronised clocks it may be negative or
+        inaccurate.  Returns None if either timestamp is unavailable.
+        """
+        if self.received_at is not None and self.timestamp is not None:
+            return (self.received_at - self.timestamp) * 1000
+        return None
+
+
+class FloodIdCache(MutableSet):
+    """Set of already-seen ``flood_id`` values, with FIFO eviction.
+
+    HIVEMIND-MSG-1 §4 and HIVEMIND-NODE-1 §4 make flood deduplication a
+    property of **the node**: "nodes drop messages whose ``flood_id`` they
+    have already seen", and each node answers a PING flood exactly once.
+
+    A node that has an upstream runs two protocol objects at once — a
+    listener serving its downstream clients and a slave connected to its
+    upstream. They are two halves of one node, so they MUST share one
+    cache; otherwise each half answers the same flood independently and
+    the node is mapped twice. This class is the shared store: create one
+    per node and hand the same instance to both halves (hivemind-core's
+    ``HiveMindListenerProtocol.bind_upstream`` does exactly that).
+
+    It behaves as a plain ``set`` of strings (``add``, ``in``, ``len``,
+    iteration) so existing code and tests keep working, and adds
+    :meth:`check` for the test-and-register step a flood handler needs.
+
+    The two halves of a node run on different threads — the listener on
+    the server IOLoop, the slave on its websocket client thread — so this
+    class carries its own lock. :meth:`check` is atomic: for one
+    ``flood_id``, exactly one caller ever gets ``False``.
+    """
+
+    def __init__(self, max_size: int = 1000) -> None:
+        self.max_size = max_size
+        # flood_id → insertion timestamp; ordered so eviction is FIFO
+        self._ids: "OrderedDict[str, float]" = OrderedDict()
+        self._lock = threading.Lock()
+
+    # --- MutableSet interface ---------------------------------------
+
+    def __contains__(self, flood_id: object) -> bool:
+        with self._lock:
+            return flood_id in self._ids
+
+    def __iter__(self):
+        with self._lock:
+            return iter(list(self._ids))
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._ids)
+
+    def __getitem__(self, flood_id: str) -> float:
+        """Insertion time of *flood_id*, for age inspection and debugging."""
+        with self._lock:
+            return self._ids[flood_id]
+
+    def add(self, flood_id: str) -> None:
+        """Register *flood_id*, evicting the oldest entries when full."""
+        with self._lock:
+            self._add(flood_id)
+
+    def _add(self, flood_id: str) -> None:
+        """``add`` without the lock, for callers that already hold it."""
+        if flood_id in self._ids:
+            return
+        while len(self._ids) >= self.max_size:
+            self._ids.popitem(last=False)  # FIFO — drop the oldest
+        self._ids[flood_id] = time.time()
+
+    def discard(self, flood_id: str) -> None:
+        with self._lock:
+            self._ids.pop(flood_id, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._ids.clear()
+
+    # --- flood handling ---------------------------------------------
+
+    def check(self, flood_id: str, max_size: Optional[int] = None) -> bool:
+        """Test *flood_id* and register it in one step.
+
+        Returns ``True`` when the flood was **already** seen (the caller
+        must drop the message), ``False`` the first time (the caller
+        handles it). An empty ``flood_id`` always reads as seen, so a
+        malformed PING never triggers a response.
+
+        The test and the registration happen under one lock, so two
+        threads racing on the same ``flood_id`` cannot both win.
+        """
+        if not flood_id:
+            return True
+        with self._lock:
+            if flood_id in self._ids:
+                return True
+            if max_size is not None:
+                self.max_size = max_size
+            self._add(flood_id)
+            return False
+
+
+def display_peer(peer: str) -> str:
+    """A peer id short enough to read in a tree.
+
+    A node identifies itself by its public key, so a peer id is often a full
+    PEM block — several lines of base64 that destroy the layout of any tree
+    drawn around it. The fingerprint is stable and long enough to tell two
+    nodes apart at a glance. Machine-readable output keeps the full key.
+    """
+    if not peer:
+        return str(peer)
+    if "BEGIN PUBLIC KEY" in peer:
+        digest = hashlib.sha256(peer.encode("utf-8")).hexdigest()
+        return f"key:{digest[:12]}"
+    return peer
+
+
+
+class HiveMapper:
+    """Collect responsive PINGs from a flood and build a directed hive topology graph.
+
+    Usage::
+
+        mapper = HiveMapper()
+        mapper.start_ping(flood_id)
+        # ... feed each received inner PING HiveMessage ...
+        mapper.on_ping(ping_msg)
+        print(mapper.to_ascii(root_peer="my-node::session1"))
+    """
+
+    def __init__(self, max_seen_pings: int = 1000, node_ttl: float = 600.0) -> None:
+        # peer → NodeInfo for every node that responded
+        self.nodes: Dict[str, NodeInfo] = {}
+        # source peer → set of target peers (directed edges from route records)
+        self.edges: Dict[str, Set[str]] = {}
+        # flood_id → set of peer IDs that already sent a PING (deduplication),
+        # FIFO-bounded at the same order of magnitude as FloodIdCache's
+        # default: on_ping runs for every arrival, before the flood-id dedup
+        # gate (hivemind-core calls it unconditionally), so a hostile or
+        # looping peer can drive an unbounded number of distinct flood_ids.
+        self._seen_pings: "OrderedDict[str, Set[str]]" = OrderedDict()
+        self.max_seen_pings = max_seen_pings
+        # nodes/edges only grow from PING traffic and are never individually
+        # removed by protocol logic, unlike _seen_pings/_seen_flood_ids which
+        # exist purely to dedup a single flood. A hard cap would drop the
+        # oldest-known node even if it is still live and just quiet; instead
+        # nodes expire only after node_ttl seconds without a fresh PING, so a
+        # topology view only forgets peers it hasn't heard from in a while.
+        self.node_ttl = node_ttl
+        # already-answered flood ids (FIFO eviction). Replaceable so the two
+        # protocol halves of one node can share a single store — see
+        # FloodIdCache and HiveMindSlaveProtocol.bind_flood_cache.
+        self._seen_flood_ids: FloodIdCache = FloodIdCache()
+
+    def start_ping(self, flood_id: str) -> None:
+        """Register a new PING session, clearing stale deduplication state for that ID.
+
+        Args:
+            flood_id: UUID string from the PING payload.
+        """
+        self._register_seen_ping(flood_id, set())
+
+    def _register_seen_ping(self, flood_id: str, seen: Set[str]) -> None:
+        if flood_id in self._seen_pings:
+            del self._seen_pings[flood_id]
+        while len(self._seen_pings) >= self.max_seen_pings:
+            self._seen_pings.popitem(last=False)  # FIFO — drop the oldest flood
+        self._seen_pings[flood_id] = seen
+
+    def prune_stale_nodes(self, now: Optional[float] = None) -> None:
+        """Drop nodes (and their edges) not heard from within ``node_ttl`` seconds."""
+        now = now if now is not None else time.time()
+        stale = [peer for peer, node in self.nodes.items()
+                 if node.received_at is not None and now - node.received_at > self.node_ttl]
+        for peer in stale:
+            del self.nodes[peer]
+            self.edges.pop(peer, None)
+            for targets in self.edges.values():
+                targets.discard(peer)
+
+    def on_ping(self, message: HiveMessage, received_at: Optional[float] = None) -> bool:
+        """Ingest a received PING HiveMessage and update the topology graph.
+
+        The route on *message* must already contain the hop history transferred
+        from the outer PROPAGATE wrapper (done by ``_unpack_message`` in the server
+        protocol before this method is called).
+
+        Args:
+            message: Inner PING HiveMessage with ``msg_type == HiveMessageType.PING``.
+            received_at: Local clock timestamp when the PING was received.
+
+        Returns:
+            True if the PING was new and the graph was updated; False if duplicate.
+        """
+        payload = message.payload
+        if not isinstance(payload, dict):
+            return False
+
+        flood_id = payload.get("flood_id", "")
+        peer = payload.get("peer", "")
+
+        if not flood_id or not peer:
+            return False
+
+        self.prune_stale_nodes()
+
+        if flood_id in self._seen_pings:
+            seen = self._seen_pings[flood_id]
+        else:
+            seen = set()
+            self._register_seen_ping(flood_id, seen)
+        if peer in seen:
+            return False
+        seen.add(peer)
+
+        self.nodes[peer] = NodeInfo(
+            peer=peer,
+            site_id=payload.get("site_id"),
+            timestamp=payload.get("timestamp"),
+            received_at=received_at,
+            public_key=payload.get("public_key"),
+            lang=payload.get("lang"),
+        )
+
+        for hop in message.route:
+            if not isinstance(hop, dict):
+                continue
+            source = hop.get("source", "")
+            targets = hop.get("targets") or []
+            if source:
+                edge_set = self.edges.setdefault(source, set())
+                for t in targets:
+                    if t:
+                        edge_set.add(t)
+
+        return True
+
+    def mark_trusted_nodes(self, trusted_keys: Dict[str, str]) -> None:
+        """Mark nodes whose public key is in the trusted keys mapping.
+
+        Should be called after PING discovery completes to update each
+        ``NodeInfo.trusted`` flag based on the identity's trusted keys.
+
+        Args:
+            trusted_keys: Alias → public key mapping from ``NodeIdentity.trusted_keys``.
+        """
+        trusted_values = set(trusted_keys.values())
+        for node in self.nodes.values():
+            node.trusted = node.public_key is not None and node.public_key in trusted_values
+
+    def is_peer_trusted(self, peer: str) -> bool:
+        """Check if a peer is trusted based on prior PING discovery.
+
+        Args:
+            peer: The peer identifier string.
+
+        Returns:
+            True if the peer was discovered and marked as trusted.
+        """
+        node = self.nodes.get(peer)
+        return node is not None and node.trusted
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serialisable snapshot of the current topology.
+
+        Returns:
+            dict with keys ``nodes`` (list of node dicts) and ``edges``
+            (list of ``{source, target}`` dicts).
+        """
+        nodes = [
+            {
+                "peer": n.peer,
+                "site_id": n.site_id,
+                "timestamp": n.timestamp,
+                "latency_ms": n.latency_ms,
+                "public_key": n.public_key,
+                "lang": n.lang,
+                "trusted": n.trusted,
+            }
+            for n in self.nodes.values()
+        ]
+        edges = [
+            {"source": src, "target": tgt}
+            for src, targets in self.edges.items()
+            for tgt in targets
+        ]
+        return {"nodes": nodes, "edges": edges}
+
+    def to_json(self) -> str:
+        """Return ``to_dict()`` as a formatted JSON string."""
+        return json.dumps(self.to_dict(), indent=2)
+
+    def to_ascii(self, root_peer: Optional[str] = None) -> str:
+        """Render the hive topology as a human-readable ASCII tree.
+
+        PING routes flow *toward* the originator, so edges are stored as
+        ``relayer → originator``.  When ``root_peer`` (the local node / PING
+        originator) is supplied the edge direction is inverted for display so
+        that the tree reads top-down from the originator outward to leaf nodes.
+
+        Args:
+            root_peer: Peer ID of the local node, labeled ``[self]`` at the
+                tree root.  Omit to display the raw edge directions.
+
+        Returns:
+            Multi-line string representing the topology.
+        """
+        if not self.nodes and not self.edges:
+            return "[No nodes discovered]"
+
+        lines: List[str] = []
+
+        if root_peer is not None:
+            # Build display children as the *inverse* of stored edges:
+            # stored: relayer → originator  →  display: originator ← relayer
+            display_children: Dict[str, List[str]] = {}
+            for src, targets in self.edges.items():
+                for t in targets:
+                    display_children.setdefault(t, [])
+                    if src not in display_children[t]:
+                        display_children[t].append(src)
+
+            def _render_inv(peer: str, prefix: str, is_last: bool,
+                            seen: frozenset = frozenset()) -> None:
+                connector = "└── " if is_last else "├── "
+                node = self.nodes.get(peer)
+                site = f"  site={node.site_id}" if node and node.site_id else ""
+                lat = (f"  latency={node.latency_ms:.0f}ms"
+                       if node and node.latency_ms is not None else "")
+                # Two nodes that relayed each other's PINGs produce a cycle in
+                # the display graph, and flood routing produces exactly that.
+                # Walking it recursively never terminates, so a peer already on
+                # this branch is drawn once and marked rather than descended
+                # into. `seen` is per-branch, not global: a node legitimately
+                # reachable by two paths must still appear under both.
+                if peer in seen:
+                    lines.append(f"{prefix}{connector}{display_peer(peer)} (cycle)")
+                    return
+                lines.append(f"{prefix}{connector}{display_peer(peer)}{site}{lat}")
+                kids = display_children.get(peer, [])
+                child_prefix = prefix + ("    " if is_last else "│   ")
+                for i, kid in enumerate(kids):
+                    _render_inv(kid, child_prefix, i == len(kids) - 1,
+                                seen | {peer})
+
+            node = self.nodes.get(root_peer)
+            site = f"  site={node.site_id}" if node and node.site_id else ""
+            lines.append(f"[self] {display_peer(root_peer)}{site}")
+            kids = list(display_children.get(root_peer, []))
+
+            # A node that answered the flood directly leaves no relayed hop
+            # behind, so it appears in `nodes` with no edge naming it. Rendering
+            # only the edge graph then drew a map with nothing on it but
+            # `[self]` while the answers were sitting in the node table — the
+            # map looked empty against a hive that had just replied.
+            has_parent = {child
+                          for children in display_children.values()
+                          for child in children}
+            for peer in self.nodes:
+                if peer != root_peer and peer not in has_parent and peer not in kids:
+                    kids.append(peer)
+
+            for i, kid in enumerate(kids):
+                _render_inv(kid, "", i == len(kids) - 1)
+
+        else:
+            # Raw display following stored edge direction (relayer → originator)
+            children: Dict[str, List[str]] = {}
+            all_targets: Set[str] = set()
+            for src, targets in self.edges.items():
+                children.setdefault(src, [])
+                for t in targets:
+                    children[src].append(t)
+                    all_targets.add(t)
+
+            candidate_roots = [p for p in self.edges if p not in all_targets]
+            display_roots = candidate_roots or list(self.edges.keys())[:1]
+            # Nodes that answered directly have no edge at all. Without them a
+            # hive whose members all replied to the originator renders as
+            # "[No topology data]" — empty against a hive that just answered.
+            for peer in self.nodes:
+                if peer not in children and peer not in all_targets \
+                        and peer not in display_roots:
+                    display_roots.append(peer)
+
+            def _render(peer: str, prefix: str, is_last: bool,
+                        seen: frozenset = frozenset()) -> None:
+                connector = "└── " if is_last else "├── "
+                node = self.nodes.get(peer)
+                site = f"  site={node.site_id}" if node and node.site_id else ""
+                lat = (f"  latency={node.latency_ms:.0f}ms"
+                       if node and node.latency_ms is not None else "")
+                # Same cycle hazard as `_render_inv` above: flood routing can
+                # make two nodes relay each other's PINGs, and the raw edge
+                # graph carries that cycle just as the inverted one does.
+                # `seen` is per-branch, not global, so a node reachable by two
+                # separate paths still renders under both.
+                if peer in seen:
+                    lines.append(f"{prefix}{connector}{display_peer(peer)} (cycle)")
+                    return
+                lines.append(f"{prefix}{connector}{display_peer(peer)}{site}{lat}")
+                kids = children.get(peer, [])
+                child_prefix = prefix + ("    " if is_last else "│   ")
+                for i, kid in enumerate(kids):
+                    _render(kid, child_prefix, i == len(kids) - 1,
+                            seen | {peer})
+
+            for root in display_roots:
+                node = self.nodes.get(root)
+                site = f"  site={node.site_id}" if node and node.site_id else ""
+                lines.append(f"{display_peer(root)}{site}")
+                kids = children.get(root, [])
+                for i, kid in enumerate(kids):
+                    _render(kid, "", i == len(kids) - 1)
+
+        return "\n".join(lines) if lines else "[No topology data]"
+
+    def check_flood_id(self, flood_id: str, max_size: int = 1000) -> bool:
+        """Check whether *flood_id* has been seen before, and register it.
+
+        Used for flood-loop prevention: the first call for a given
+        ``flood_id`` returns ``False`` (not seen), subsequent calls
+        return ``True``.  When the cache exceeds *max_size* the oldest
+        entries (by insertion time) are evicted first (FIFO).
+
+        Args:
+            flood_id: The flood identifier to check.
+            max_size: Maximum number of flood IDs to retain.
+
+        Returns:
+            ``True`` if the flood_id was already seen, ``False`` otherwise.
+        """
+        return self._seen_flood_ids.check(flood_id, max_size=max_size)
+
+    def clear(self) -> None:
+        """Reset the mapper to an empty state."""
+        self.nodes.clear()
+        self.edges.clear()
+        self._seen_pings.clear()
+        self._seen_flood_ids.clear()
