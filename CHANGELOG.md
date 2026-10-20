@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.12a1) (2026-10-20)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.11a2...1.2.12a1)
+
+**Merged pull requests:**
+
+- fix: echo the hub's session back so get\_response follow-ups work [\#312](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/312) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.11a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.11a2) (2026-10-20)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.11a1...1.2.11a2)
@@ -369,10 +377,6 @@
 ## [1.0.17a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.17a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.16a1...1.0.17a1)
-
-**Merged pull requests:**
-
-- fix: close\(\) joins its reconnect worker thread so callers get a clean stop [\#207](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/207) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.16a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.16a1) (2026-09-01)
 
