@@ -2,7 +2,9 @@ import json
 import random
 import socket
 import ssl
+import time
 from collections.abc import Callable
+from copy import deepcopy
 from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Optional, Union
 
@@ -153,6 +155,13 @@ class HiveMessageBusClient(OVOSBusClient):
     # unreachable master) emit() must fail fast rather than block its caller,
     # since callers include event-loop code (see emit() docstring).
     _EMIT_NOT_CONNECTED_GRACE = 0.05
+
+    # The session state record the hub last returned for this client's own
+    # session_id (OVOS-SESSION-1 §2.1). Override fields such as pipeline and
+    # blacklisted_skills belong to the node and are never kept.
+    _SESSION_STATE_FIELDS = ("active_handlers", "converse_handlers",
+                             "response_mode", "intent_context")
+    hub_session: Optional[dict] = None
 
     def __init__(self, key: Optional[str] = None,
                  password: Optional[str] = None,
@@ -1039,8 +1048,19 @@ class HiveMessageBusClient(OVOSBusClient):
         # destination to source (HIVEMIND-BRIDGE-1 §3.1). Emitting here as well
         # delivered every frame twice, the first time without those steps.
         # Emit directly only when no protocol delivers to this bus.
-        if message.msg_type == HiveMessageType.BUS and not self._protocol_delivers_bus():
-            self.internal_bus.emit(message.payload)
+        if message.msg_type == HiveMessageType.BUS:
+            # read the carrier as the hub sent it: emitting to internal_bus
+            # stamps this client's own default session onto a frame that has
+            # none, and those defaults are not hub state
+            carrier = message.payload.context.get("session")
+            if (isinstance(carrier, dict)
+                    and carrier.get("session_id") == self.session_id):
+                self.hub_session = {
+                    **{k: deepcopy(carrier[k]) for k in self._SESSION_STATE_FIELDS
+                       if k in carrier},
+                    "session_id": self.session_id, "site_id": self.site_id}
+            if not self._protocol_delivers_bus():
+                self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)  # hive message
 
     def _protocol_delivers_bus(self) -> bool:
@@ -1071,6 +1091,7 @@ class HiveMessageBusClient(OVOSBusClient):
        
         Notes:
             - For messages with msg_type == HiveMessageType.BUS, the function will ensure the payload.context contains routing fields (source, platform, destination, session) and will emit the payload to the client's internal bus before sending.
+            - A BUS message that carries no session is sent with the session state record (active_handlers, converse_handlers, response_mode, intent_context) the hub last returned for this client's session_id (hub_session), minus an expired response_mode, or with only session_id and site_id before any reply. A session set by the caller is never replaced.
             - This method transmits the message over the client's WebSocket and may perform serialization, optional compression, and optional encryption depending on client configuration.
        
         Raises:
@@ -1114,8 +1135,16 @@ class HiveMessageBusClient(OVOSBusClient):
                     updated_payload.context["platform"] = self.useragent
                 if "destination" not in updated_payload.context:
                     updated_payload.context["destination"] = "HiveMind"
-                if "session" not in updated_payload.context:
-                    updated_payload.context["session"] = {}
+                if not updated_payload.context.get("session"):
+                    # the client is the authority for its own session: send
+                    # back the latest one the hub returned, so state such as
+                    # response_mode survives to the next turn
+                    updated_payload.context["session"] = deepcopy(
+                        self.hub_session or {})
+                    mode = updated_payload.context["session"].get("response_mode")
+                    if isinstance(mode, dict) and mode.get("expires_at", float("inf")) <= time.time():
+                        # an expired response mode is inert (OVOS-CONVERSE-1 §2.2)
+                        del updated_payload.context["session"]["response_mode"]
                 session = updated_payload.context["session"]
                 if not session.get("session_id"):
                     session["session_id"] = self.session_id
