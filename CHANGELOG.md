@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.11a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.11a2) (2026-10-20)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.11a1...1.2.11a2)
+
+**Merged pull requests:**
+
+- fix: encode and decode binary frames on bitstring 4 and 5 [\#310](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/310) ([goldyfruit](https://github.com/goldyfruit))
+
 ## [1.2.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.11a1) (2026-10-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.10a1...1.2.11a1)
@@ -369,10 +377,6 @@
 ## [1.0.16a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.16a1) (2026-09-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.15a2...1.0.16a1)
-
-**Merged pull requests:**
-
-- fix: respect caller-supplied session\_id/site\_id in emit\(\) [\#205](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/205) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.15a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a2) (2026-08-15)
 
