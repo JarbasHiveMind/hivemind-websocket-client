@@ -56,7 +56,8 @@ from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
                                                HiveMindBinaryPayloadType,
                                                decode_bitstring, get_bitstring)
 from hivemind_bus_client.util import (parse_text_frame, serialize_message,
-                                     unencrypted_frame_allowed)
+                                      session_state_record, session_to_send,
+                                      unencrypted_frame_allowed)
 
 
 _MISSING_WEBSOCKETS = (
@@ -136,6 +137,10 @@ class AsyncHiveMessageBusClient:
         reply = await bus.wait_for_response(query, timeout=3.0)
         await bus.close()
     """
+
+    # The session state record the hub last returned for this client's own
+    # session_id (see util.session_state_record)
+    hub_session: dict | None = None
 
     def __init__(self,
                  key: Optional[str] = None,
@@ -631,8 +636,17 @@ class AsyncHiveMessageBusClient:
         # A bound HiveMindSlaveProtocol delivers BUS through handle_bus on the
         # bus given to connect(). Emit directly only when that is not this bus,
         # or every frame reaches internal_bus twice (issue #251).
-        if message.msg_type == HiveMessageType.BUS and not self._protocol_delivers_bus():
-            self.internal_bus.emit(message.payload)
+        if message.msg_type == HiveMessageType.BUS:
+            # read the carrier as the hub sent it: emitting to internal_bus
+            # stamps this client's own default session onto a frame that has
+            # none, and those defaults are not hub state
+            state = session_state_record(
+                message.payload.context.get("session"),
+                self.session_id, self.site_id)
+            if state is not None:
+                self.hub_session = state
+            if not self._protocol_delivers_bus():
+                self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)
 
     def _protocol_delivers_bus(self) -> bool:
@@ -663,6 +677,10 @@ class AsyncHiveMessageBusClient:
 
         Performs the same routing-context injection, optional binary
         framing, and optional encryption as the sync client.
+
+        A BUS message that carries no session is sent with the session state
+        record the hub last returned for this client's session_id
+        (``hub_session``), minus an expired ``response_mode``.
         """
         if isinstance(message, MycroftMessage):
             message = HiveMessage(msg_type=HiveMessageType.BUS, payload=message)
@@ -684,7 +702,11 @@ class AsyncHiveMessageBusClient:
                 ctx.setdefault("source", self.useragent)
                 ctx.setdefault("platform", self.useragent)
                 ctx.setdefault("destination", "HiveMind")
-                ctx.setdefault("session", {})
+                if not ctx.get("session"):
+                    # the client is the authority for its own session: send
+                    # back the latest state the hub returned, so a
+                    # get_response follow-up keeps its response_mode
+                    ctx["session"] = session_to_send(self.hub_session)
                 if not ctx["session"].get("session_id"):
                     ctx["session"]["session_id"] = self.session_id
                 if not ctx["session"].get("site_id"):

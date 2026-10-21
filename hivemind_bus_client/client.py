@@ -2,9 +2,7 @@ import json
 import random
 import socket
 import ssl
-import time
 from collections.abc import Callable
-from copy import deepcopy
 from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Optional, Union
 
@@ -45,6 +43,7 @@ from hivemind_bus_client.serialization import (
     get_bitstring,
 )
 from hivemind_bus_client.util import (parse_text_frame, serialize_message,
+                                      session_state_record, session_to_send,
                                      unencrypted_frame_allowed)
 
 
@@ -157,10 +156,7 @@ class HiveMessageBusClient(OVOSBusClient):
     _EMIT_NOT_CONNECTED_GRACE = 0.05
 
     # The session state record the hub last returned for this client's own
-    # session_id (OVOS-SESSION-1 §2.1). Override fields such as pipeline and
-    # blacklisted_skills belong to the node and are never kept.
-    _SESSION_STATE_FIELDS = ("active_handlers", "converse_handlers",
-                             "response_mode", "intent_context")
+    # session_id (see util.session_state_record)
     hub_session: Optional[dict] = None
 
     def __init__(self, key: Optional[str] = None,
@@ -1052,13 +1048,11 @@ class HiveMessageBusClient(OVOSBusClient):
             # read the carrier as the hub sent it: emitting to internal_bus
             # stamps this client's own default session onto a frame that has
             # none, and those defaults are not hub state
-            carrier = message.payload.context.get("session")
-            if (isinstance(carrier, dict)
-                    and carrier.get("session_id") == self.session_id):
-                self.hub_session = {
-                    **{k: deepcopy(carrier[k]) for k in self._SESSION_STATE_FIELDS
-                       if k in carrier},
-                    "session_id": self.session_id, "site_id": self.site_id}
+            state = session_state_record(
+                message.payload.context.get("session"),
+                self.session_id, self.site_id)
+            if state is not None:
+                self.hub_session = state
             if not self._protocol_delivers_bus():
                 self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)  # hive message
@@ -1139,12 +1133,8 @@ class HiveMessageBusClient(OVOSBusClient):
                     # the client is the authority for its own session: send
                     # back the latest one the hub returned, so state such as
                     # response_mode survives to the next turn
-                    updated_payload.context["session"] = deepcopy(
-                        self.hub_session or {})
-                    mode = updated_payload.context["session"].get("response_mode")
-                    if isinstance(mode, dict) and mode.get("expires_at", float("inf")) <= time.time():
-                        # an expired response mode is inert (OVOS-CONVERSE-1 §2.2)
-                        del updated_payload.context["session"]["response_mode"]
+                    updated_payload.context["session"] = session_to_send(
+                        self.hub_session)
                 session = updated_payload.context["session"]
                 if not session.get("session_id"):
                     session["session_id"] = self.session_id

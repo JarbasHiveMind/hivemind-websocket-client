@@ -23,7 +23,8 @@ from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
                                                get_bitstring, decode_bitstring)
 from hivemind_bus_client.util import (parse_text_frame, serialize_message,
-                                     unencrypted_frame_allowed)
+                                      session_state_record, session_to_send,
+                                      unencrypted_frame_allowed)
 from poorman_handshake.asymmetric.utils import load_RSA_key
 
 
@@ -40,6 +41,10 @@ class HiveMindHTTPClient(threading.Thread):
     """
     A client for the HiveMind HTTP server protocol.
     """
+
+    # The session state record the hub last returned for this client's own
+    # session_id (see util.session_state_record)
+    hub_session: dict | None = None
 
     def __init__(self, key: Optional[str] = None,
                  password: Optional[str] = None,
@@ -319,6 +324,12 @@ class HiveMindHTTPClient(threading.Thread):
         # so they run from _handlers below; calling them here as well handled
         # every frame twice, and a second handle_handshake re-entered the
         # Noise exchange with the capability payload and aborted the session.
+        if message.msg_type == HiveMessageType.BUS:
+            state = session_state_record(
+                message.payload.context.get("session"),
+                self.session_id, self.site_id)
+            if state is not None:
+                self.hub_session = state
         if message.msg_type in self._handlers:
             for handler in self._handlers[message.msg_type]:
                 try:
@@ -424,8 +435,11 @@ class HiveMindHTTPClient(threading.Thread):
                 ctxt["platform"] = self.useragent
             if "destination" not in message.payload.context:
                 ctxt["destination"] = "HiveMind"
-            if "session" not in ctxt:
-                ctxt["session"] = {}
+            if not ctxt.get("session"):
+                # the client is the authority for its own session: send back
+                # the latest state the hub returned, so a get_response
+                # follow-up keeps its response_mode
+                ctxt["session"] = session_to_send(self.hub_session)
             if not ctxt["session"].get("session_id"):
                 ctxt["session"]["session_id"] = self.session_id
             if not ctxt["session"].get("site_id"):

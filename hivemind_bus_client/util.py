@@ -4,12 +4,52 @@ Also re-exports deprecated encryption wrappers that redirect to
 ``hivemind_bus_client.encryption``.
 """
 import json
+import time
 import warnings
 import zlib
+from copy import deepcopy
 from typing import Dict, Optional, Union
 
 from hivemind_bus_client.encryption import SupportedEncodings, SupportedCiphers
 from hivemind_bus_client.message import HiveMessage, HiveMessageType, Message
+
+
+# Fields that record state accumulated within a session, as opposed to a
+# preference over deployment configuration (OVOS-SESSION-1 §2.1). Override
+# fields such as pipeline and blacklisted_skills belong to the node and are
+# never kept.
+SESSION_STATE_FIELDS = ("active_handlers", "converse_handlers",
+                        "response_mode", "intent_context")
+
+
+def session_state_record(carrier, session_id: str, site_id: str) -> dict | None:
+    """The state record of a session a hub returned for ``session_id``.
+
+    Args:
+        carrier: the ``context["session"]`` of an inbound BUS message.
+        session_id: the session id of this client.
+        site_id: the site id of this client.
+
+    Returns:
+        The state-record fields of ``carrier`` with this client's own
+        ``session_id`` and ``site_id``, or None when ``carrier`` is not a
+        session for ``session_id``.
+    """
+    if not isinstance(carrier, dict) or carrier.get("session_id") != session_id:
+        return None
+    return {**{k: deepcopy(carrier[k]) for k in SESSION_STATE_FIELDS
+               if k in carrier},
+            "session_id": session_id, "site_id": site_id}
+
+
+def session_to_send(hub_session: dict | None) -> dict:
+    """A copy of ``hub_session`` for the next outgoing message, without a
+    ``response_mode`` that has expired (OVOS-CONVERSE-1 §2.2)."""
+    session = deepcopy(hub_session or {})
+    mode = session.get("response_mode")
+    if isinstance(mode, dict) and mode.get("expires_at", float("inf")) <= time.time():
+        del session["response_mode"]
+    return session
 
 
 def serialize_message(message: Union[HiveMessage, Message, Dict]) -> str:
