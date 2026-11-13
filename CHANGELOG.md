@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.13a1) (2026-11-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.12a1...1.2.13a1)
+
+**Merged pull requests:**
+
+- fix: raise the bitstring floor to 4.1.2 [\#314](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/314) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.2.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.12a1) (2026-10-20)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.11a2...1.2.12a1)
@@ -299,10 +307,6 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.3a2...1.1.4a1)
 
-**Closed issues:**
-
-- RSA handshake crashes client-side: generate\_handshake\(\) never called before receive\_handshake [\#209](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/209)
-
 **Merged pull requests:**
 
 - fix: don't restart the Noise handshake after establishment [\#232](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/232) ([JarbasAl](https://github.com/JarbasAl))
@@ -369,10 +373,6 @@
 ## [1.0.18a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.18a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.17a1...1.0.18a1)
-
-**Merged pull requests:**
-
-- fix: warn when close\(\) worker join times out [\#210](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/210) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.17a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.17a1) (2026-09-02)
 
