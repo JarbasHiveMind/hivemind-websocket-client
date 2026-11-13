@@ -5,6 +5,12 @@ from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.client import HiveMessageBusClient
 
 LOG.set_level("DEBUG")
+
+# Before this runs, the hub must grant this client the message types it sends:
+#   hivemind-core allow-msg "recognizer_loop:utterance" <node_id>
+#   hivemind-core allow-msg "speak" <node_id>
+# A new client has an empty whitelist and the hub denies everything it sends.
+
 # not passing args so it uses identity file
 client = HiveMessageBusClient()
 client.connect() # establish a secure end-to-end encrypted connection
