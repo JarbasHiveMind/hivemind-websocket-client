@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.14a1) (2026-11-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.13a1...1.2.14a1)
+
+**Merged pull requests:**
+
+- fix: the payload door on dev, ten required payloads, and clients drop a malformed frame instead of closing [\#307](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/307) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.13a1) (2026-11-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.12a1...1.2.13a1)
@@ -365,10 +373,6 @@
 ## [1.0.19a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.19a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.18a1...1.0.19a1)
-
-**Merged pull requests:**
-
-- fix: preserve empty-bytes payload instead of coercing to empty dict [\#212](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/212) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.18a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.18a1) (2026-09-02)
 
