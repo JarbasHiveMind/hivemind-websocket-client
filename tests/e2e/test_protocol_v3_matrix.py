@@ -19,6 +19,9 @@ from websocket import ABNF
 import hivemind_core.protocol as server_protocol
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
+import tempfile
+from pathlib import Path
+from json_database import JsonStorage
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivescope import TopologyBuilder
@@ -41,7 +44,8 @@ def _make_client(url, key, password, name="v3-matrix-client",
                  max_protocol_version=3):
     host, port = url.replace("ws://", "").rstrip("/").split(":")
     port = int(port)
-    identity = NodeIdentity()
+    tmp_path = Path(tempfile.mkdtemp())
+    identity = NodeIdentity(identity_file=JsonStorage(str(tmp_path / f"{name}.json")))
     identity.access_key = key
     identity.password = password
     identity.default_master = f"ws://{host}"
