@@ -72,7 +72,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
 
    ```bash
    uv venv .venv && . .venv/bin/activate
-   uv pip install --prerelease=allow "hivemind-bus-client[async]" hivemind-core ovos-messagebus
+   uv pip install --prerelease=allow "hivemind-bus-client[async]" "hivemind-core>=5.3.16a1" ovos-messagebus
    ```
 
 2. Point the XDG folders at a scratch folder, and set the OVOS bus port:
@@ -86,29 +86,16 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
 
 3. Run `hivemind-core print-config` once. It writes `$J/config/hivemind-core/server.json`. In that file, set `agent_protocol` → `hivemind-ovos-agent-plugin` → `port` to `18181`, set `network_protocol` → `hivemind-websocket-plugin` → `host` to `127.0.0.1` and `port` to `15678`, and set `presence` → `enabled` to `false`.
 
-4. Give the hub a node identity. hivemind-core 5.3.15a2 and earlier releases read the hub key from the shared identity file, and the client library does not create that file by itself (see [Identity](identity.md#the-shared-file)). These releases need this step. Releases that include [HiveMind-core#418](https://github.com/JarbasHiveMind/HiveMind-core/pull/418) make their own key in `$XDG_CONFIG_HOME/hivemind/hivemind-core/` on the first start, and do not need this step:
-
-   ```bash
-   hivemind-client --shared set-identity --siteid hub
-   ```
-
-   ```text
-   PUBKEY: -----BEGIN PUBLIC KEY-----
-   ...
-   -----END PUBLIC KEY-----
-   identity saved: /home/user/hm-demo/config/hivemind/_identity.json
-   ```
-
-5. Start the OVOS bus and the hub, each in its own terminal with the same environment:
+4. Start the OVOS bus and the hub, each in its own terminal with the same environment:
 
    ```bash
    ovos-messagebus
    hivemind-core listen
    ```
 
-   The hub log ends with `hivemind-core service ready!` and `ws listener started`.
+   The hub log ends with `hivemind-core service ready!` and `ws listener started`. On the first start, the hub makes its own key pair in `$J/config/hivemind/hivemind-core/`. When the shared file `$J/config/hivemind/_identity.json` already exists, the hub uses the key of that file instead.
 
-6. Register the client on the hub:
+5. Register the client on the hub:
 
    ```bash
    hivemind-core add-client --name docs-sat --access-key docs-key-0123 \
@@ -127,7 +114,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
    Allowed Message Types: speak, recognizer_loop:utterance
    ```
 
-7. Store the credentials for the application `docs-sat`, then test them:
+6. Store the credentials for the application `docs-sat`, then test them:
 
    ```bash
    hivemind-client --app docs-sat set-identity --key docs-key-0123 \
@@ -141,7 +128,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
    == Identity successfully connected to HiveMind!
    ```
 
-8. The demo hub has no skills, so nothing answers an utterance. Run this responder on the OVOS bus. It answers each utterance with a `speak` message, then marks the utterance as handled, which ends a [QUERY](routing-and-peers.md#query) answer:
+7. The demo hub has no skills, so nothing answers an utterance. Run this responder on the OVOS bus. It answers each utterance with a `speak` message, then marks the utterance as handled, which ends a [QUERY](routing-and-peers.md#query) answer:
 
    ```python
    from ovos_bus_client import MessageBusClient
@@ -160,7 +147,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
    wait_for_exit_signal()
    ```
 
-9. Run the sync or the async example at the top of this page.
+8. Run the sync or the async example at the top of this page.
 
 ## The connect flow
 

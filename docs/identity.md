@@ -104,7 +104,7 @@ A client built without `identity=` uses `NodeIdentity()` and logs that it uses t
 
 ### Provision the shared file
 
-`--shared` makes the CLI write the shared file, and create it when it does not exist. Use it when one identity for all applications is what you want, for example for a hivemind-core hub:
+`--shared` makes the CLI write the shared file, and create it when it does not exist. Use it when one identity for all applications is what you want. A hivemind-core hub before 5.3.16a1 needs this file. From 5.3.16a1, the hub uses `NodeIdentity(app_name="hivemind-core")` and makes its own key:
 
 ```bash
 hivemind-client --shared set-identity --siteid hub

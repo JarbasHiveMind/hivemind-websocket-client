@@ -86,9 +86,9 @@ Fix: put `--app <name>` before the subcommand, or pass `NodeIdentity(app_name="<
 ERROR - Connection closed (code 1011): internal error handling shake - goodbye
 ```
 
-The hub failed while it handled the handshake. One cause is a hivemind-core hub with no node identity. The hub log then shows `could not generate a node public key` at start, and `AttributeError: 'NoneType' object has no attribute 'encode'` for each handshake. hivemind-core reads the shared identity file, and the library does not create that file without `--shared`. Issue [HiveMind-core#417](https://github.com/JarbasHiveMind/HiveMind-core/issues/417) tracks the fix.
+The hub failed while it handled the handshake. One cause is a hivemind-core hub with no node identity. The hub log then shows `could not generate a node public key` at start, and `AttributeError: 'NoneType' object has no attribute 'encode'` for each handshake. hivemind-core before 5.3.16a1 reads the shared identity file, and the library does not create that file without `--shared`.
 
-Fix: on the hub, as the user that runs hivemind-core, run `hivemind-client --shared set-identity --siteid <site>`, then restart `hivemind-core listen`.
+Fix: upgrade the hub to hivemind-core 5.3.16a1 or later, which makes its own key in `~/.config/hivemind/hivemind-core/` on the first start. On an older hub, as the user that runs hivemind-core, run `hivemind-client --shared set-identity --siteid <site>`, then restart `hivemind-core listen`.
 
 ## The identity file does not parse
 

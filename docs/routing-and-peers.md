@@ -11,7 +11,7 @@ A node can send a message to one peer, ask the hive a question, collect answers 
 
 ## Before you start
 
-Do steps 1 to 8 of [Install and connect](install-and-connect.md#steps). The responder of step 8 must run. Then register a second client, `docs-peer`, and store its identity:
+Do steps 1 to 7 of [Install and connect](install-and-connect.md#steps). The responder of step 7 must run. Then register a second client, `docs-peer`, and store its identity:
 
 ```bash
 hivemind-core add-client --name docs-peer --access-key docs-peer-key-0123 \
@@ -134,7 +134,7 @@ The client also puts each answer chunk on the bus that you give to `connect(bus=
 
 ## CASCADE
 
-A `CASCADE` asks the hive one question and collects the answers of all the nodes that answer. The client keeps the answers for `client.protocol.cascade_timeout` seconds (default 5) after the first one. Then it gives the list to `client.protocol.cascade_select_callback`, and puts the answer that the callback returns on its bus. Without a callback, the client picks one answer at random. When the callback returns `None`, nothing goes on the bus.
+A `CASCADE` asks the hive one question and collects the answers of all the nodes that answer. The client keeps the answers for `client.protocol.cascade_timeout` seconds (default 5) after the first one. Then it gives the list to `client.protocol.cascade_select_callback`, and puts the answer that the callback returns on its bus. The client stops to wait before the timeout when the number of answers is equal to the number of nodes in `client.protocol.hive_mapper`. With an empty map, the first answer stops the wait. Without a callback, the client picks one answer at random. When the callback returns `None`, nothing goes on the bus.
 
 ```python
 import time
