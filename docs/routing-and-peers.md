@@ -218,15 +218,15 @@ sat.emit(HiveMessage(HiveMessageType.PROPAGATE,
 time.sleep(3)
 
 mapper.mark_trusted_nodes({"docs-peer": NodeIdentity(app_name="docs-peer").public_key})
-for info in sorted(mapper.nodes.values(), key=lambda n: n.site_id):
-    print(info.site_id, "trusted" if info.trusted else "untrusted")
+for info in sorted(mapper.nodes.values(), key=lambda n: n.site_id or ""):
+    print(info.site_id or "(no site)", "trusted" if info.trusted else "untrusted")
 
 sat.close()
 peer.close()
 ```
 
 ```text
-hub untrusted
+(no site) untrusted
 peer trusted
 ```
 
@@ -235,7 +235,7 @@ peer trusted
 | Field | Content |
 | :--- | :--- |
 | `peer` | The label of the node. A hub uses its public key, a satellite uses `<name>::<session_id>` |
-| `site_id` | The site that the node announced |
+| `site_id` | The site that the node announced, or `None`. A hub that has no site in its identity file announces none |
 | `timestamp` | The clock of the node when it sent the `PING` |
 | `received_at` | The local clock when the `PING` arrived |
 | `public_key` | The RSA public key of the node |
