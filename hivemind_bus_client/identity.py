@@ -110,7 +110,7 @@ class NodeIdentity:
                         f"location shared by every application of this user. "
                         f"Pass app_name=\"<your-app>\", or provision the "
                         f"shared file deliberately with "
-                        f"'hivemind-client set-identity --shared ...'")
+                        f"'hivemind-client --shared set-identity ...'")
         self.IDENTITY_FILE = identity_file
         self._assert_identity_readable()
 
@@ -500,7 +500,7 @@ class NodeIdentity:
                 f"name, NodeIdentity(app_name=\"<your-app>\") or "
                 f"'hivemind-client --app <your-app> set-identity ...', or "
                 f"provision the shared file deliberately with "
-                f"'hivemind-client set-identity --shared ...'")
+                f"'hivemind-client --shared set-identity ...'")
 
     def reload(self) -> None:
         """

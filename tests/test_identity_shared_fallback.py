@@ -36,7 +36,7 @@ def _shared_store():
     ``NodeIdentity()`` no longer creates it: HIVEMIND-CRYPTO-1 §2 forbids
     defaulting to a location shared by every application of the user, so
     provisioning it is a deliberate act. This is the route
-    ``hivemind-client set-identity --shared`` takes.
+    ``hivemind-client --shared set-identity`` takes.
     """
     from json_database import JsonConfigXDG
     from ovos_utils.xdg_utils import xdg_config_home
