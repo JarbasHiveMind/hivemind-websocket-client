@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0a3](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.3.0a3) (2026-11-27)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.3.0a2...1.3.0a3)
+
+**Merged pull requests:**
+
+- docs: README, docs index, navigation and agent hints [\#328](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/328) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.3.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.3.0a2) (2026-11-27)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.3.0a1...1.3.0a2)
@@ -368,7 +376,6 @@
 **Merged pull requests:**
 
 - fix\(identity\): keep key paths usable when the identity file moves [\#233](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/233) ([goldyfruit](https://github.com/goldyfruit))
-- fix\(http\): advertise protocol v3 so HiveMindHTTPClient does not decline the Noise handshake [\#220](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/220) ([goldyfruit](https://github.com/goldyfruit))
 
 ## [1.1.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.1a1) (2026-09-04)
 
