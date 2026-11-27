@@ -617,8 +617,6 @@ class HiveMindHTTPClient(threading.Thread):
     def connect(self, bus=None, protocol=None, site_id=None,
                 handshake_max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
         LOG.info("Connecting...")
-        # A mutable default (FakeBus()) is created once at import and shared
-        # across every call; construct a fresh one here instead.
         if bus is None:
             bus = FakeBus()
         # The site this connection reports is the client's, not the identity's
