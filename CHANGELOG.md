@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.15a1) (2026-11-27)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.14a1...1.2.15a1)
+
+**Merged pull requests:**
+
+- fix: INTERCOM and RENDEZVOUS carry a §4 payload, so an absent one is refused [\#297](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/297) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.14a1) (2026-11-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.13a1...1.2.14a1)
@@ -365,10 +373,6 @@
 ## [1.0.20a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.20a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.19a1...1.0.20a1)
-
-**Merged pull requests:**
-
-- fix: harden async and http client transports [\#213](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/213) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.19a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.19a1) (2026-09-02)
 
