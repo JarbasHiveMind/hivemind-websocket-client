@@ -313,18 +313,11 @@ class HiveMessage:
 
     @property
     def payload(self) -> Union['HiveMessage', Message, dict, bytes]:
-        """
-        Return the public payload converted to the most appropriate message representation for this HiveMessage.
-        
-        Depending on this message's msg_type, the payload is returned as a reconstructed `Message`, a reconstructed `HiveMessage`, or the raw stored payload.
+        """A `Message` for BUS and SHARED_BUS, a `HiveMessage` for the routing
+        types, else the raw payload.
 
-        The reconstructed object is built once and reused, so reading the
-        payload twice gives you the SAME object and a mutation made through it
-        is still there on the next read. It is invalidated when the payload is
-        replaced or an item is assigned.
-
-        Returns:
-            Union[HiveMessage, Message, dict, bytes]: A `Message` when msg_type is BUS or SHARED_BUS; a `HiveMessage` when msg_type is BROADCAST, PROPAGATE, CASCADE, ESCALATE, or QUERY; otherwise the raw payload (typically a `dict` or `bytes`).
+        The object is built once and cached, so a mutation through it stays
+        until the payload is replaced or an item is assigned.
         """
         if self._payload_view is not None:
             return self._payload_view
@@ -345,12 +338,7 @@ class HiveMessage:
 
     @payload.setter
     def payload(self, payload: Union['HiveMessage', Message, dict, bytes]):
-        """
-        Set the message payload, normalizing Message or HiveMessage inputs to their dictionary representations.
-        
-        Parameters:
-            payload (HiveMessage | Message | dict | bytes): New payload to assign. If a `Message` or `HiveMessage` is provided, its dict representation is stored; otherwise the value is stored as given.
-        """
+        """Store a `Message` or `HiveMessage` as its dict, anything else as given."""
         if isinstance(payload, Message):
             self._payload = payload.as_dict
         elif isinstance(payload, HiveMessage):
@@ -361,12 +349,6 @@ class HiveMessage:
 
     @property
     def bin_type(self) -> HiveMindBinaryPayloadType:
-        """
-        Get the binary payload type for this message.
-        
-        Returns:
-            HiveMindBinaryPayloadType: Indicator of how the message's binary payload should be interpreted.
-        """
         return self._bin_type
 
     @property
