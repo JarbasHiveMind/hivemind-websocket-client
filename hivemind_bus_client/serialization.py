@@ -230,9 +230,7 @@ def _decode_bitstring_v1(s):
     type_code = s.read(5).uint
     if type_code not in _INT2TYPE:
         # WIRE-1 §4.2: "A receiver MUST reject a frame carrying an
-        # unassigned or reserved value as malformed." Previously any
-        # unknown code was silently coerced to a default type, which
-        # masked corrupt/forged frames.
+        # unassigned or reserved value as malformed."
         raise MalformedBinaryFrame(
             f"malformed binary frame: unassigned WIRE-1 message-type "
             f"code {type_code} (assigned codes: "

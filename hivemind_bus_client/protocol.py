@@ -775,23 +775,11 @@ class HiveMindSlaveProtocol:
             return  # Noise handshake already in flight, keep waiting
         if self._server_handshake_payload is None:
             # The retry fired before the server's HANDSHAKE offer arrived.
-            # Nothing is known about the peer yet, so a legacy frame here is
-            # a downgrade decided on no evidence: it used to send a v2
-            # pubkey handshake built from an empty payload, and a 5.x node
-            # refuses that with 1008 (HIVEMIND-CRYPTO-1 §3 gives Noise no
-            # legacy fallback). Under a burst of satellites against one
-            # IOLoop the offer is simply still in flight, so keep waiting.
-            #
-            # The caller re-waits: wait_for_handshake loops while
-            # handshake_event is unset and calls this again. It is BOUNDED
-            # ONLY WHEN max_retries is set, where it raises after that many
-            # attempts; the default is None, which retries for as long as the
-            # connection lasts. So under the default a peer that never offers
-            # leaves this waiting rather than timing out, and that is the
-            # trade this fix makes deliberately: waiting for a hub is what a
-            # satellite is for, while the downgrade it replaces got the
-            # satellite refused with 1008 and, because the client records
-            # that as a refused identity, taken off the mesh until restarted.
+            # Nothing is known about the peer yet, so a legacy frame here
+            # would be a downgrade on no evidence, and a 5.x node refuses a
+            # v2 handshake with 1008 (HIVEMIND-CRYPTO-1 §3). Keep waiting:
+            # wait_for_handshake calls this again, and raises only when
+            # max_retries is set.
             LOG.debug("handshake retry before the server's offer arrived; "
                       "waiting rather than downgrading")
             return

@@ -750,17 +750,8 @@ class HiveMessageBusClient(OVOSBusClient):
         If nothing owns the reconnect lifecycle yet, this starts it and
         runs it on the calling thread, same as before.
 
-        If ``connect()`` (or ``run_in_thread()``) already started it in a
-        background thread -- the common case for a bridge that calls
-        ``connect()`` in ``__init__`` and then wants to block ``run()`` on
-        the connection -- this used to raise ``RuntimeError("HiveMind
-        websocket reconnect worker is already running")``. That made the
-        combination of "connect() to get a synchronous, retried handshake"
-        and "run_forever() to block the main thread" -- a completely
-        reasonable pair of calls -- a footgun: every bridge that wrote it
-        naturally hit the crash. There is nothing to "start" a second time
-        in that case; what the caller actually wants is to block on the
-        worker that already exists, so that is what this does instead.
+        If ``connect()`` or ``run_in_thread()`` already started it in a
+        background thread, this blocks on that worker instead.
         """
         while True:
             token = self._try_reserve_worker()
@@ -1406,9 +1397,6 @@ class HiveMessageBusClient(OVOSBusClient):
         """
         private_key = load_RSA_key(self.identity.private_key)
         envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
-        # Two things this used to leave out, which together meant a peer-to-peer
-        # INTERCOM never arrived anywhere.
-        #
         # `target_pubkey` is the address. Without it a node reads
         # `target_public_key` as None, tries to decrypt the envelope with its
         # own key, fails, and has nothing left to route on.
