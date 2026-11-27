@@ -3,9 +3,7 @@ import sys
 import zlib
 from inspect import signature
 
-from bitstring import BitArray, BitStream
-
-from bitstring import ReadError
+from bitstring import BitArray, Bits, ReadError
 
 from hivemind_bus_client.exceptions import (MalformedBinaryFrame, MetadataTooLarge,
                                             UnsupportedProtocolVersion)
@@ -111,21 +109,93 @@ def _get_bitstring_v1(hive_type=HiveMessageType.BUS, payload=None,
 
     # when payload is binary data meant to be passed along raw and not parsed
     if hive_type == HiveMessageType.BINARY:
+        # MSG-1 §4: "For BINARY, the payload is an opaque byte string with an
+        # associated handling instruction". Anything else is refused here
+        # rather than appended, because BitArray.append() does not reject it:
+        # it reads a dict as a one-bit token, so the whole payload became a
+        # single bit on the wire, and it reads a str as a format spec, so a
+        # text payload raised from inside bitstring instead of naming the
+        # problem.
+        if not isinstance(payload, (bytes, bytearray, memoryview, Bits)):
+            raise MalformedWirePayload(
+                f"a BINARY payload must be an opaque byte string, got "
+                f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
         # 4 bit unsigned integer - integer indicating pseudo format of bin content
         s.append(f'uint:4={binmap.get(binary_type, 0)}')
     # the remaining bits are the payload
     else:
+        # MSG-1 §4: every other binarizable type carries an object payload --
+        # a Layer-1 bus message for BUS and SHARED_BUS, a nested HiveMessage
+        # for the routing types. The text path refuses a non-object at
+        # HiveMessage.from_wire(); this path did not, so a str was written to
+        # the frame as raw bytes that no peer can parse. The message was then
+        # dropped at the far end, where the sender never learns of it, rather
+        # than refused here. A list or an int reached BitArray.append() and
+        # raised a bare AssertionError naming nothing.
         if hasattr(payload, "serialize"):
             payload = payload.serialize()
+        if isinstance(payload, str):
+            # A Message arrives here as its own JSON text, so text is a
+            # legitimate form: the same object, already encoded. Text that
+            # does not decode to an object is not, and that is the shape
+            # that used to reach the wire as raw bytes.
+            try:
+                decoded = json.loads(payload)
+            except ValueError:
+                raise MalformedWirePayload(
+                    f"{hive_type} payload is a string that is not JSON "
+                    f"(HIVEMIND-MSG-1 §4)")
+            if not isinstance(decoded, dict):
+                raise MalformedWirePayload(
+                    f"{hive_type} payload must be a JSON object, got JSON "
+                    f"{type(decoded).__name__} (HIVEMIND-MSG-1 §4)")
+        elif not isinstance(payload, dict):
+            raise MalformedWirePayload(
+                f"{hive_type} payload must be a JSON object, got "
+                f"{type(payload).__name__} (HIVEMIND-MSG-1 §4)")
         payload = cast2bytes(payload, compressed)
 
     s.append(payload)
 
-    # pad
-    while len(s) % 8 != 0:
-        s.insert(f'uint:1={int(0)}', 0)
+    # pad: 0 bits on the left up to a byte boundary. prepend() is used rather
+    # than insert(), whose argument order bitstring 5 reversed.
+    pad = -len(s) % 8
+    if pad:
+        s.prepend(f'uint:{pad}=0')
 
     return s
+
+
+class _FrameReader:
+    """A read cursor over a binary frame.
+
+    The decoder reads a frame field by field. bitstring 4 provided that cursor
+    as ``BitStream``; bitstring 5 removed ``BitStream`` and moved sequential
+    reads to a ``Reader`` class that bitstring 4 does not have. Slicing a
+    ``Bits`` behaves the same in both, so the cursor is kept here and both
+    major versions decode identically.
+
+    ``read(n)`` returns the next ``n`` bits as ``Bits`` and raises
+    ``ReadError`` when fewer than ``n`` remain, as ``BitStream.read`` did.
+    """
+
+    __slots__ = ("_bits", "pos")
+
+    def __init__(self, frame):
+        self._bits = Bits(frame)
+        self.pos = 0
+
+    def __len__(self):
+        return len(self._bits)
+
+    def read(self, n: int) -> Bits:
+        end = self.pos + n
+        if n < 0 or end > len(self._bits):
+            raise ReadError(f"cannot read {n} bits at position {self.pos}: "
+                            f"only {len(self._bits) - self.pos} remain")
+        chunk = self._bits[self.pos:end]
+        self.pos = end
+        return chunk
 
 
 def decode_bitstring(bitstr):
@@ -135,7 +205,7 @@ def decode_bitstring(bitstr):
     and UnsupportedProtocolVersion for a frame-format version this decoder
     does not implement; nothing else escapes for a bad frame.
     """
-    s = BitStream(bitstr)
+    s = _FrameReader(bitstr)
     try:
         pad = False
         while not pad:
@@ -169,7 +239,7 @@ def _decode_bitstring_v1(s):
             f"{sorted(_INT2TYPE)})"
         )
     hive_type = _INT2TYPE[type_code]
-    compressed = s.read(1).bool  # note: bool(BitStream) checks length (always True), .bool reads the actual bit
+    compressed = s.read(1).bool  # note: bool(Bits) checks length (always True), .bool reads the actual bit
 
     metalen = s.read(8).uint * 8
     if metalen > len(s) - s.pos:

@@ -476,6 +476,10 @@ class AsyncHiveMessageBusClient:
                     LOG.exception("Error in on_message")
         except (ConnectionClosedOK, ConnectionClosedError, ConnectionClosed) as e:
             LOG.debug(f"WebSocket closed: {e!r}")
+            # Read before the clear below: whether the session had been
+            # established decides how to read a 1008 (see the branch further
+            # down).
+            session_was_established = self.handshake_event.is_set()
             self.handshake_event.clear()
             self.crypto_key = None
             self.noise_transport = None
@@ -491,7 +495,24 @@ class AsyncHiveMessageBusClient:
                 # the pinned key and the next connect() retries with XXpsk2.
                 LOG.warning("HiveMind closed a failed KKpsk0 handshake; "
                             "the next connect uses XXpsk2")
-            if close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry:
+            if (close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry
+                    and session_was_established):
+                # 1008 on an ESTABLISHED session is not a credential refusal.
+                # hivemind-core sends 1008 from decode() for a non-Noise
+                # message on a v3 session, an invalid Noise transport message
+                # and an unencrypted message, all of which need an admitted
+                # connection to reach. The credentials were accepted minutes
+                # ago. Latching here took a correctly registered satellite off
+                # the mesh permanently and blamed its access key.
+                LOG.warning(
+                    f"HiveMind closed an established session with "
+                    f"{self.AUTH_REJECTED_CLOSE_CODE}: "
+                    f"{getattr(rcvd, 'reason', None) or getattr(e, 'reason', None) or 'no reason given'}. "
+                    f"The credentials were already accepted on this session, "
+                    f"so this is a protocol or transport error and not a "
+                    f"credential refusal. Reconnecting."
+                )
+            elif close_code == self.AUTH_REJECTED_CLOSE_CODE and not kk_retry:
                 # Reconnecting cannot help: the credentials are identical on
                 # every attempt. Record the reason, wake wait_for_handshake so
                 # it fails fast instead of blocking forever, and stop.
@@ -565,7 +586,20 @@ class AsyncHiveMessageBusClient:
                 LOG.exception("dropping malformed binary frame")
                 return
         elif isinstance(message, str):
-            message = json.loads(message)
+            try:
+                message = json.loads(message)
+            except json.JSONDecodeError:
+                # HIVEMIND-MSG-1 §3: a payload a node does not understand is
+                # ignored, and the connection is NOT rejected over it. This
+                # `json.loads` was bare, so a truncated or non-JSON text frame
+                # raised straight out of the receive callback: the transport
+                # calls on_error, the error path clears state and closes, and
+                # one frame from the peer ended the session. Widening
+                # `_parse_or_drop` was not enough, because the raise happens
+                # HERE, before that guard is reached -- measured.
+                LOG.error("dropping a text frame that is not JSON "
+                          "(HIVEMIND-MSG-1 §3)")
+                return
         if isinstance(message, dict) and "ciphertext" in message:
             LOG.error("got encrypted message, but could not decrypt!")
             return
@@ -579,11 +613,53 @@ class AsyncHiveMessageBusClient:
             self._handle_hive_protocol(message)
         elif isinstance(message, str):
             self.emitter.emit("message", message)
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
         else:
             assert isinstance(message, dict)
             self.emitter.emit("message", json.dumps(message, ensure_ascii=False))
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
+
+    @staticmethod
+    def _parse_or_drop(frame) -> Optional[HiveMessage]:
+        """Build a HiveMessage from a wire frame, or drop the frame.
+
+        HIVEMIND-MSG-1 §3: "A node MUST forward or ignore a payload it does
+        not understand. It MUST NOT reject the connection over it, and it MUST
+        NOT stop its own handler over it."
+
+        A refusal raised out of the receive callback does exactly what the
+        clause forbids: the transport catches it, calls on_error, and the
+        client clears its state and closes. One malformed frame from the peer
+        would end the session. The binary door above already drops and stays
+        up, citing WIRE-1 §4.2; this is the same treatment for the JSON door.
+
+        Returns None when the frame is dropped, so the caller returns too.
+        """
+        try:
+            return HiveMessage.from_wire(frame)
+        except (ValueError, TypeError):
+            # Widened from (MalformedWirePayload, json.JSONDecodeError).
+            # Both of those are already a ValueError, so this still catches
+            # them. It also catches the bare ValueError the constructor
+            # raises for an unknown msg_type, and the TypeError Python raises
+            # for a frame key the constructor does not accept -- both escaped
+            # this guard before, and an unknown msg_type is exactly "a
+            # payload it does not understand" under HIVEMIND-MSG-1 §3. This
+            # door is reached with a dict here, so the text case is caught in
+            # `on_message` above; both are guarded because the three copies
+            # of this function are reached by different callers.
+            #
+            # The connection survives the frame, and the operator gets the
+            # reason: no peer can observe this log, so it is the only place
+            # the drop appears.
+            LOG.exception("dropping malformed wire frame (HIVEMIND-MSG-1 §3)")
+            return None
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY

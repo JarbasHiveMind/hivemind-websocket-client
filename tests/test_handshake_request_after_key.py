@@ -19,9 +19,9 @@ from hivemind_bus_client.encryption import (SupportedCiphers, SupportedEncodings
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 
-from tests.test_client import _make_client
-from tests.test_async_client import _bare_client
-from tests.test_http_client_noise_transport import _client as _http_client
+from test_client import _make_client
+from test_async_client import _bare_client
+from test_http_client_noise_transport import _client as _http_client
 
 KEY = "a" * 32
 REQUEST = {"password": True, "binarize": False,

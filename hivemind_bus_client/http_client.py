@@ -18,7 +18,8 @@ from hivemind_bus_client.encryption import (encrypt_as_json, decrypt_from_json, 
 from hivemind_bus_client.exceptions import MetadataTooLarge
 from hivemind_bus_client.noise import NoiseTransportFailed
 from hivemind_bus_client.identity import NodeIdentity, shared_identity_for
-from hivemind_bus_client.message import HiveMessage, HiveMessageType, HiveMindBinaryPayloadType
+from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
+                                         HiveMindBinaryPayloadType)
 from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 from hivemind_bus_client.serialization import (BINARY_ENCODABLE_TYPES,
                                                get_bitstring, decode_bitstring)
@@ -275,7 +276,20 @@ class HiveMindHTTPClient(threading.Thread):
                 LOG.exception("dropping malformed binary frame")
                 return
         elif isinstance(message, str):
-            message = json.loads(message)
+            try:
+                message = json.loads(message)
+            except json.JSONDecodeError:
+                # HIVEMIND-MSG-1 §3: a payload a node does not understand is
+                # ignored, and the connection is NOT rejected over it. This
+                # `json.loads` was bare, so a truncated or non-JSON text frame
+                # raised straight out of the receive callback: the transport
+                # calls on_error, the error path clears state and closes, and
+                # one frame from the peer ended the session. Widening
+                # `_parse_or_drop` was not enough, because the raise happens
+                # HERE, before that guard is reached -- measured.
+                LOG.error("dropping a text frame that is not JSON "
+                          "(HIVEMIND-MSG-1 §3)")
+                return
         if isinstance(message, dict) and "ciphertext" in message:
             LOG.error("got encrypted message, but could not decrypt!")
             return
@@ -287,10 +301,52 @@ class HiveMindHTTPClient(threading.Thread):
         if isinstance(message, HiveMessage):
             self._handle_hive_protocol(message)
         elif isinstance(message, str):
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
         else:
             assert isinstance(message, dict)
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
+
+    @staticmethod
+    def _parse_or_drop(frame) -> Optional[HiveMessage]:
+        """Build a HiveMessage from a wire frame, or drop the frame.
+
+        HIVEMIND-MSG-1 §3: "A node MUST forward or ignore a payload it does
+        not understand. It MUST NOT reject the connection over it, and it MUST
+        NOT stop its own handler over it."
+
+        A refusal raised out of the receive callback does exactly what the
+        clause forbids: the transport catches it, calls on_error, and the
+        client clears its state and closes. One malformed frame from the peer
+        would end the session. The binary door above already drops and stays
+        up, citing WIRE-1 §4.2; this is the same treatment for the JSON door.
+
+        Returns None when the frame is dropped, so the caller returns too.
+        """
+        try:
+            return HiveMessage.from_wire(frame)
+        except (ValueError, TypeError):
+            # Widened from (MalformedWirePayload, json.JSONDecodeError).
+            # Both of those are already a ValueError, so this still catches
+            # them. It also catches the bare ValueError the constructor
+            # raises for an unknown msg_type, and the TypeError Python raises
+            # for a frame key the constructor does not accept -- both escaped
+            # this guard before, and an unknown msg_type is exactly "a
+            # payload it does not understand" under HIVEMIND-MSG-1 §3. This
+            # door is reached with a dict here, so the text case is caught in
+            # `on_message` above; both are guarded because the three copies
+            # of this function are reached by different callers.
+            #
+            # The connection survives the frame, and the operator gets the
+            # reason: no peer can observe this log, so it is the only place
+            # the drop appears.
+            LOG.exception("dropping malformed wire frame (HIVEMIND-MSG-1 §3)")
+            return None
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY

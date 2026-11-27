@@ -1,5 +1,93 @@
 # Changelog
 
+## [1.2.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.14a1) (2026-11-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.13a1...1.2.14a1)
+
+**Merged pull requests:**
+
+- fix: the payload door on dev, ten required payloads, and clients drop a malformed frame instead of closing [\#307](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/307) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.13a1) (2026-11-13)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.12a1...1.2.13a1)
+
+**Merged pull requests:**
+
+- fix: raise the bitstring floor to 4.1.2 [\#314](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/314) ([JarbasAl](https://github.com/JarbasAl))
+
+## [1.2.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.12a1) (2026-10-20)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.11a2...1.2.12a1)
+
+**Merged pull requests:**
+
+- fix: echo the hub's session back so get\_response follow-ups work [\#312](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/312) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.11a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.11a2) (2026-10-20)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.11a1...1.2.11a2)
+
+**Merged pull requests:**
+
+- fix: encode and decode binary frames on bitstring 4 and 5 [\#310](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/310) ([goldyfruit](https://github.com/goldyfruit))
+
+## [1.2.11a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.11a1) (2026-10-01)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.10a1...1.2.11a1)
+
+**Merged pull requests:**
+
+- fix\(tests\): every cell imports the wheel, the subprocess one included [\#308](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/308) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.10a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.10a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.9a1...1.2.10a1)
+
+**Merged pull requests:**
+
+- fix: refuse a Layer-1 Message as a routing payload \(MSG-1 §4\) [\#305](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/305) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.9a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.8a1...1.2.9a1)
+
+**Merged pull requests:**
+
+- fix: a 1008 on an established session is not a credential refusal [\#294](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/294) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.8a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.7a1...1.2.8a1)
+
+**Merged pull requests:**
+
+- fix: escalate and propagate send a deliverable nested envelope [\#300](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/300) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.7a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.7a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.6a1...1.2.7a1)
+
+**Merged pull requests:**
+
+- fix: a handshake retry does not downgrade before the server's offer arrives [\#293](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/293) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.6a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.6a1) (2026-09-26)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.5a1...1.2.6a1)
+
+**Merged pull requests:**
+
+- fix: the binary send path refuses a payload shape §4 does not allow [\#292](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/292) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.2.5a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.5a1) (2026-09-25)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.4a1...1.2.5a1)
+
+**Merged pull requests:**
+
+- fix: the slave's upstream doors build an object payload, not a string [\#298](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/298) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.4a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.4a1) (2026-09-23)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.3a1...1.2.4a1)
@@ -227,10 +315,6 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.3a2...1.1.4a1)
 
-**Closed issues:**
-
-- RSA handshake crashes client-side: generate\_handshake\(\) never called before receive\_handshake [\#209](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/209)
-
 **Merged pull requests:**
 
 - fix: don't restart the Noise handshake after establishment [\#232](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/232) ([JarbasAl](https://github.com/JarbasAl))
@@ -290,65 +374,33 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.18a1...1.0.19a1)
 
-**Merged pull requests:**
-
-- fix: preserve empty-bytes payload instead of coercing to empty dict [\#212](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/212) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [1.0.18a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.18a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.17a1...1.0.18a1)
-
-**Merged pull requests:**
-
-- fix: warn when close\(\) worker join times out [\#210](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/210) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.17a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.17a1) (2026-09-02)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.16a1...1.0.17a1)
 
-**Merged pull requests:**
-
-- fix: close\(\) joins its reconnect worker thread so callers get a clean stop [\#207](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/207) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [1.0.16a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.16a1) (2026-09-01)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.15a2...1.0.16a1)
-
-**Merged pull requests:**
-
-- fix: respect caller-supplied session\_id/site\_id in emit\(\) [\#205](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/205) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.15a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a2) (2026-08-15)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.15a1...1.0.15a2)
 
-**Merged pull requests:**
-
-- docs: add AGENTS.md with per-repo agent conventions [\#203](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/203) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [1.0.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.15a1) (2026-08-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.14a1...1.0.15a1)
-
-**Merged pull requests:**
-
-- fix: add handshake\_max\_retries to async client connect\(\) [\#201](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/201) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.14a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.14a1) (2026-08-14)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.13a1...1.0.14a1)
 
-**Merged pull requests:**
-
-- fix: run\_forever\(\) blocks on an existing worker instead of raising [\#199](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/199) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [1.0.13a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.13a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.12a1...1.0.13a1)
-
-**Merged pull requests:**
-
-- fix: emit\(\) must not block the caller's loop when the transport is down [\#197](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/197) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.12a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.12a1) (2026-08-13)
 
@@ -362,18 +414,9 @@
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.9a1...1.0.10a1)
 
-**Merged pull requests:**
-
-- fix: make the hive map readable, and show the nodes that answered [\#191](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/191) ([JarbasAl](https://github.com/JarbasAl))
-- fix: a node has one identity, and connecting somewhere must not rewrite it [\#190](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/190) ([JarbasAl](https://github.com/JarbasAl))
-
 ## [1.0.9a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.9a1) (2026-08-13)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.8a1...1.0.9a1)
-
-**Merged pull requests:**
-
-- fix: tolerate malformed route entries in update\_hop\_data [\#192](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/192) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.8a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.8a1) (2026-08-12)
 

@@ -26,22 +26,16 @@ closes.
 ONE TYPE STAYS OUT. ``PING`` may carry ``{}``, because §4 says its payload
 "MAY be empty".
 
-``INTERCOM`` and ``RENDEZVOUS`` were out of this list too, on the premise that
-§4 named no form for either. That premise expired. Architecture wrote both
-forms into JarbasHiveMind/architecture#32, at 567ddf1: an INTERCOM payload is
-"a JSON object carrying a ciphertext encrypted to the target peer's public key
-and a signature made by the originator", which "is never absent and never the
-empty object"; a RENDEZVOUS payload is "a JSON object naming the outcome of
-one mailbox exchange", whose reply carries ``status`` and ``mailbox_node``. An
-absent payload carries no ciphertext and no status, so both types join the
-list. That is this library enforcing a rule, not inventing one, which is the
-bar T-4687 set.
+``INTERCOM`` and ``RENDEZVOUS`` are in. §2's table requires a payload for
+every type but ``PING``, and §4 at JarbasHiveMind/architecture ``7eabe88``
+gives each a form: an INTERCOM payload is "a JSON object carrying a ciphertext
+encrypted to the target peer's public key and a signature made by the
+originator", which "is never absent and never the empty object"; a RENDEZVOUS
+payload is "a JSON object naming the outcome of one mailbox exchange". An
+absent payload carries no ciphertext and no status.
 
 The KEY NAMES inside the INTERCOM object stay with HIVEMIND-CRYPTO-1 and are
-NOT checked here: architecture T-4733 is open on them.
-
-The clause is in an OPEN draft. This cites the pull request rather than a
-merged ref, and #32 merging is what settles it.
+NOT checked here.
 """
 import unittest
 
@@ -59,11 +53,6 @@ REQUIRED = (HiveMessageType.HANDSHAKE, HiveMessageType.HELLO,
 
 #: left out on purpose
 PING_MAY_BE_EMPTY = (HiveMessageType.PING,)
-
-#: empty since architecture#32 at 567ddf1 gave INTERCOM and RENDEZVOUS a §4
-#: form. Kept, rather than deleted, because the next type that arrives without
-#: one belongs here and the reader needs to see the list exists.
-UNSPECIFIED_IN_SECTION_4 = ()
 
 
 class TestAPayloadLessFrameIsRefusedAtTheDoor(unittest.TestCase):
@@ -83,6 +72,10 @@ class TestAPayloadLessFrameIsRefusedAtTheDoor(unittest.TestCase):
         said = str(caught.exception)
         self.assertIn("propagate", said)
         self.assertIn("payload", said)
+        # The clause, because the test is named for it. Without this the
+        # citation could be dropped from the refusal and this row still
+        # passed, which is what it was doing.
+        self.assertIn("HIVEMIND-MSG-1 §2", said)
 
     def test_the_wire_form_is_matched_and_not_only_the_enum(self):
         """A frame off the wire carries the STRING, so both forms must be in
@@ -110,7 +103,7 @@ class TestAPayloadLessFrameIsRefusedAtTheDoor(unittest.TestCase):
                           f"gives {type(message.payload).__name__}")
 
 
-class TestTheThreeLeftOut(unittest.TestCase):
+class TestPingIsLeftOut(unittest.TestCase):
 
     def test_ping_may_carry_an_empty_payload(self):
         """§4: a PING payload "MAY be empty"."""
@@ -118,17 +111,7 @@ class TestTheThreeLeftOut(unittest.TestCase):
             {"msg_type": HiveMessageType.PING.value})
         self.assertEqual(message.payload, {})
 
-    def test_no_registry_type_is_left_without_a_section_4_form(self):
-        """The list is empty, and an empty list must be asserted, not looped.
-
-        A loop over ``()`` passes whatever the library does, so the emptiness
-        is stated directly. When a type arrives without a §4 form, this is
-        the line that has to change.
-        """
-        self.assertEqual(UNSPECIFIED_IN_SECTION_4, ())
-
-    def test_intercom_and_rendezvous_are_now_required(self):
-        """The types the emptied list used to hold, asserted one by one."""
+    def test_intercom_and_rendezvous_are_required(self):
         for msg_type in (HiveMessageType.INTERCOM,
                          HiveMessageType.RENDEZVOUS):
             with self.subTest(msg_type=msg_type.value):
@@ -185,7 +168,10 @@ class TestAFrameWithAPayloadIsUnaffected(unittest.TestCase):
                 message = HiveMessage.from_wire(
                     {"msg_type": msg_type.value, "payload": payload})
                 self.assertEqual(message.msg_type, msg_type.value)
-                self.assertIsNotNone(message.payload)
+                # The VALUE, not just "not None": the payload that went in is
+                # the payload that comes back. `assertIsNotNone` passed for any
+                # object the door happened to build, including a wrong one.
+                self.assertEqual(message.as_dict["payload"], payload)
 
 
 #: §4 gives each of these an ENVELOPE, so an empty object is malformed
@@ -196,7 +182,13 @@ ENVELOPE_CARRYING = (HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
 
 
 class TestAnEmptyEnvelopePayloadIsRefused(unittest.TestCase):
-    """Architecture ruled this under T-4728, recorded in architecture#32.
+    """This library's reading of §4, pending a clause that states it.
+
+    No merged clause says "an empty payload is malformed" in those words. An
+    earlier version of this docstring cited an architecture pull request as
+    the ruling; that request is OPEN and is about HANDSHAKE, HELLO and PING,
+    so it does not rule on this. The refusal below rests on §4's own words,
+    quoted next, and changes when a clause merges that says otherwise.
 
     A present-but-empty payload is MALFORMED for the seven types §4 gives an
     envelope, not a legal degenerate they tolerate. §4 says a BUS or
@@ -254,7 +246,8 @@ class TestAnEmptyEnvelopePayloadIsRefused(unittest.TestCase):
                 message = HiveMessage.from_wire(
                     {"msg_type": msg_type.value,
                      "payload": _VALID_PAYLOAD[msg_type]})
-                self.assertIsNotNone(message.payload)
+                self.assertEqual(message.as_dict["payload"],
+                                 _VALID_PAYLOAD[msg_type])
 
 
 class TestEmptinessStaysLegalWhereSection4GrantsIt(unittest.TestCase):
@@ -275,9 +268,8 @@ class TestEmptinessStaysLegalWhereSection4GrantsIt(unittest.TestCase):
     def test_an_empty_rendezvous_payload_is_still_admitted(self):
         """§4 names no empty form for RENDEZVOUS and says nothing against one.
 
-        So absence is refused and emptiness is not. The library does not
-        extend a rule the specification did not write, and this line is the
-        boundary: it fails the day a change refuses emptiness everywhere.
+        So absence is refused and emptiness is not. This line fails the day a
+        change refuses emptiness everywhere.
         """
         message = HiveMessage.from_wire(
             {"msg_type": HiveMessageType.RENDEZVOUS.value, "payload": {}})
@@ -285,8 +277,8 @@ class TestEmptinessStaysLegalWhereSection4GrantsIt(unittest.TestCase):
 
 
 class TestAnEmptyIntercomPayloadIsRefused(unittest.TestCase):
-    """§4 at architecture#32 567ddf1: the INTERCOM payload "is never absent
-    and never the empty object, because neither carries a ciphertext or a
+    """§4 at architecture 7eabe88: the INTERCOM payload "is never absent and
+    never the empty object, because neither carries a ciphertext or a
     signature".
 
     A separate rule from the envelope one, so it carries its own reason: an
@@ -309,8 +301,8 @@ class TestAnEmptyIntercomPayloadIsRefused(unittest.TestCase):
         self.assertNotIn("envelope", said)
 
     def test_a_populated_intercom_payload_is_accepted(self):
-        """The control, and it also proves no key name is enforced here:
-        HIVEMIND-CRYPTO-1 owns those, and architecture T-4733 is open."""
+        """The control. It also proves no key name is enforced here:
+        HIVEMIND-CRYPTO-1 owns those."""
         for payload in ({"ciphertext": "x", "signature": "y"},
                         {"whatever_crypto_1_ends_up_calling_it": "x"}):
             with self.subTest(payload=sorted(payload)):
