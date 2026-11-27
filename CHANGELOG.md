@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.3.0a1) (2026-11-27)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.15a1...1.3.0a1)
+
+**Merged pull requests:**
+
+- feat: NodeIdentity with no app\_name never creates the shared file [\#295](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/295) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.2.15a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.2.15a1) (2026-11-27)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.14a1...1.2.15a1)
@@ -365,10 +373,6 @@
 ## [1.1.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.0a1) (2026-09-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.0.20a1...1.1.0a1)
-
-**Merged pull requests:**
-
-- feat: transparent multi-frame chunking for the v3 Noise transport [\#216](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/216) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.0.20a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.0.20a1) (2026-09-02)
 
