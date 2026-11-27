@@ -37,6 +37,8 @@ hivemind-client --app docs-sat test-identity
 | [Identity](identity.md) | `NodeIdentity(app_name=...)`, the shared file, `--app` and `--shared`, and the refusal |
 | [CLI reference](cli.md) | Every `hivemind-client` command, its options and real output |
 | [Messages](messages.md) | `HiveMessage` types, payload rules, binary payloads and the serialization encodings |
+| [Routing and peers](routing-and-peers.md) | INTERCOM to one peer, the trusted keys, QUERY, CASCADE and the PING map |
+| [Wire format](wire-format.md) | The bit layout of a binary frame and the rules for an encoder in another language |
 | [Security](security.md) | The Noise XXpsk2 and KKpsk0 handshakes, server key pinning, `forget-server` and the PSK cache |
 | [HTTP client](polling-client.md) | `HiveMindHTTPClient` for a hub that runs the HTTP network protocol |
 | [Troubleshooting](troubleshooting.md) | Each error you can see, what causes it and what to do |

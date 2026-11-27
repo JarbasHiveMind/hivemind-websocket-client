@@ -4,7 +4,7 @@ covers: the HiveMessage envelope, the message types, the payload rules, binary p
 source: hivemind_bus_client/message.py, hivemind_bus_client/serialization.py, hivemind_bus_client/encryption.py:SupportedEncodings, hivemind_bus_client/client.py:emit
 generated: no
 verify: diff <(python <(awk '/^```python/{f=1;next} f&&/^```/{exit} f' docs/messages.md) 2>/dev/null) <(awk '/^```text/{f=1;next} f&&/^```/{exit} f' docs/messages.md)
-see: security.md
+see: routing-and-peers.md, wire-format.md
 -->
 
 A `HiveMessage` is the envelope that travels between nodes. This page shows how to build one, which payload each type takes, and how the client puts it on the wire.
@@ -108,7 +108,7 @@ The client picks the form of each frame in `emit()`:
 - A `BINARY` message is always a binary frame.
 - `HELLO` and `HANDSHAKE` are always JSON text.
 - Another type with a binary code is a binary frame when the hub announced binary support and `binarize=True`. Else it is JSON text.
-- `compress=True` compresses the binary frame. `get_bitstring(compressed=None)` picks the smaller of the two forms.
+- `compress=True` compresses the binary frame. [Wire format](wire-format.md) gives the bit layout. `get_bitstring(compressed=None)` picks the smaller of the two forms.
 - A frame whose metadata does not fit in 255 bytes goes as JSON text, except `BINARY`, which raises `MetadataTooLarge`.
 
 In a protocol-v3 session, the Noise transport encrypts each frame, text or binary, and sends it as a WebSocket binary message. A frame of more than 65000 bytes goes in chunks. The legacy handshake (protocol 2 and lower) encrypts a binary frame with `encrypt_bin`, and a text frame with `encrypt_as_json`. `encrypt_as_json` writes the ciphertext, the tag and the nonce as text in one of the encodings of `SupportedEncodings`. The hub selects the encoding during the handshake.
@@ -121,4 +121,4 @@ In a protocol-v3 session, the Noise transport encrypts each frame, text or binar
 `img/measure_encoding_sizes.py` writes `img/encoding-sizes-results.json` for one fixed `speak` message, and `img/plot_encoding_sizes.py` makes this figure from it. The legacy rows use AES-GCM with a fixed key and nonce, so each run gives the same sizes. Run both scripts from the repository root to measure again.
 
 ---
-[← CLI reference](cli.md) · [Home](index.md) · [Security →](security.md)
+[← CLI reference](cli.md) · [Home](index.md) · [Routing and peers →](routing-and-peers.md)

@@ -86,7 +86,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
 
 3. Run `hivemind-core print-config` once. It writes `$J/config/hivemind-core/server.json`. In that file, set `agent_protocol` → `hivemind-ovos-agent-plugin` → `port` to `18181`, set `network_protocol` → `hivemind-websocket-plugin` → `host` to `127.0.0.1` and `port` to `15678`, and set `presence` → `enabled` to `false`.
 
-4. Give the hub a node identity. hivemind-core reads the shared identity file, and the client library does not create that file by itself (see [Identity](identity.md#the-shared-file) and [HiveMind-core#417](https://github.com/JarbasHiveMind/HiveMind-core/issues/417)):
+4. Give the hub a node identity. hivemind-core 5.3.15a2 and earlier releases read the hub key from the shared identity file, and the client library does not create that file by itself (see [Identity](identity.md#the-shared-file)). These releases need this step. Releases that include [HiveMind-core#418](https://github.com/JarbasHiveMind/HiveMind-core/pull/418) make their own key in `$XDG_CONFIG_HOME/hivemind/hivemind-core/` on the first start, and do not need this step:
 
    ```bash
    hivemind-client --shared set-identity --siteid hub
@@ -141,7 +141,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
    == Identity successfully connected to HiveMind!
    ```
 
-8. The demo hub has no skills, so nothing answers an utterance. Run this responder on the OVOS bus. It answers each utterance with a `speak` message:
+8. The demo hub has no skills, so nothing answers an utterance. Run this responder on the OVOS bus. It answers each utterance with a `speak` message, then marks the utterance as handled, which ends a [QUERY](routing-and-peers.md#query) answer:
 
    ```python
    from ovos_bus_client import MessageBusClient
@@ -149,8 +149,14 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
 
    bus = MessageBusClient(port=18181)
    bus.run_in_thread()
-   bus.on("recognizer_loop:utterance",
-          lambda m: bus.emit(m.reply("speak", {"utterance": "you said " + m.data["utterances"][0]})))
+
+
+   def answer(message):
+       bus.emit(message.reply("speak", {"utterance": "you said " + message.data["utterances"][0]}))
+       bus.emit(message.reply("ovos.utterance.handled"))
+
+
+   bus.on("recognizer_loop:utterance", answer)
    wait_for_exit_signal()
    ```
 
@@ -206,6 +212,11 @@ Constructor arguments of `HiveMessageBusClient` (`hivemind_bus_client/client.py`
 `connect(bus=FakeBus(), protocol=None, site_id=None, handshake_max_retries=None)` retries the handshake forever when `handshake_max_retries` is `None`. Each retry waits 5 seconds. A refused access key raises `ConnectionRefusedError` at once, and the client does not reconnect.
 
 `AsyncHiveMessageBusClient` takes the same arguments except `websocket_connect_timeout`. It needs the `async` extra.
+
+`await client.emit()` of the async client differs from the sync `emit()` in two ways:
+
+- It does not start the QUERY timeout (`query_timeout`). After you send a `QUERY`, wait for the answer with `wait_for_response(..., timeout=...)`, because nothing else limits the wait.
+- It ignores `HiveMessage.bin_type`. The sync client uses the `bin_type` of the message when `binary_type` is `UNDEFINED`. With the async client, give `binary_type=` each time you send a `BINARY` message.
 
 ---
 [Home](index.md) · [Identity →](identity.md)

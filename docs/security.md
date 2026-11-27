@@ -119,4 +119,4 @@ unnamed-node_noise_psks.json
 - `set-identity --password` with a changed password deletes the whole file. Without this step, the first connection to each hub fails once before the client removes the stale entry.
 
 ---
-[← Messages](messages.md) · [Home](index.md) · [HTTP client →](polling-client.md)
+[← Wire format](wire-format.md) · [Home](index.md) · [HTTP client →](polling-client.md)

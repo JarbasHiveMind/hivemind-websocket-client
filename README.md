@@ -58,6 +58,8 @@ The answer comes from a test responder on the hub's OVOS bus. [Install and conne
 | [Identity](docs/identity.md) | Where credentials and keys live, and the shared-file refusal |
 | [CLI reference](docs/cli.md) | Every `hivemind-client` command and option |
 | [Messages](docs/messages.md) | Message types, payload rules and serialization |
+| [Routing and peers](docs/routing-and-peers.md) | INTERCOM, trusted keys, QUERY, CASCADE and the hive map |
+| [Wire format](docs/wire-format.md) | The bit layout of a binary frame |
 | [Security](docs/security.md) | Noise XXpsk2 and KKpsk0, key pinning and the PSK cache |
 | [HTTP client](docs/polling-client.md) | `HiveMindHTTPClient` for hubs that serve HTTP |
 | [Troubleshooting](docs/troubleshooting.md) | Each error message, its cause and the fix |
