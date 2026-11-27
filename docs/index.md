@@ -1,58 +1,43 @@
-# HiveMind WebSocket Client
+# HiveMind Bus Client documentation
+<!-- agent-hint
+covers: the reading order of the docs and one line for each page
+source: docs/
+generated: no
+verify: diff <(ls docs/*.md | grep -v index.md | xargs -n1 basename | sort) <(grep -o '([a-z0-9-]*\.md)' docs/index.md | tr -d '()' | sort -u)
+see: ../README.md
+-->
 
-`hivemind-websocket-client` (package: `hivemind_bus_client`) is the primary library for building and running HiveMind satellites. It provides a WebSocket client that extends the standard OpenVoiceOS (OVOS) bus client. The client encrypts and routes communication across the HiveMind network.
+`hivemind-bus-client` connects a Python program to a HiveMind hub over an encrypted session and carries OVOS bus messages in both directions.
 
-## Key Features
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/encoding-sizes-dark.svg">
+  <img alt="Wire size of one BUS message: the compressed binary frame is 119 bytes, JSON text is 276 bytes, and the legacy JSON-HEX encoding is 658 bytes, the largest." src="img/encoding-sizes.svg">
+</picture>
 
-- **Transparent Routing**: Automatically handles message routing between satellites and hubs.
-- **Per-link Encryption**: AES-GCM or ChaCha20-Poly1305, negotiated at handshake.
-- **Hybrid INTERCOM Encryption**: AES-256-GCM payload + RSA-encrypted ephemeral key per message. `hivemind-core` decrypts the envelope with plain RSA, so a message sent to a hub must fit one RSA block (about 214 bytes with a 2048-bit key).
-- **Trusted Peers**: `NodeIdentity.trusted_keys` gates BUS injection for PROPAGATE and INTERCOM from untrusted sources.
-- **CASCADE Aggregation**: Collects responses from all nodes with timeout and early resolution via `HiveMapper`.
-- **PING Discovery**: Flood-based topology mapping with public key and locale announcement.
-- **Binary Support**: Optimized handling for binary payloads such as TTS audio and file transfers.
-- **Drop-in Replacement**: Designed to be mostly compatible with `ovos-bus-client`, allowing easy migration of existing OVOS skills or services to HiveMind.
+`img/measure_encoding_sizes.py` writes `img/encoding-sizes-results.json`, and `img/plot_encoding_sizes.py` makes this figure from it. [Messages](messages.md#serialization) explains each encoding.
 
-## Primary Components
+## Quickstart
 
-- **`HiveMessageBusClient`**: The main WebSocket client class (`hivemind_bus_client/client.py`).
-- **`HiveMessage`**: The fundamental message unit of the HiveMind protocol (`hivemind_bus_client/message.py`).
-- **`NodeIdentity`**: Manages device credentials, keys, and identity settings (`hivemind_bus_client/identity.py`).
-
-## Quick Start
-
-```python
-from hivemind_bus_client import HiveMessageBusClient
-from ovos_bus_client.message import Message
-
-# Initialize the client
-client = HiveMessageBusClient(key="my_access_key", password="my_password", host="ws://127.0.0.1")
-
-# The hub must first grant this client the message types it sends:
-#   hivemind-core allow-msg "recognizer_loop:utterance" <node_id>
-
-# Connect and block until handshake is complete
-client.connect()
-
-# Listen for a 'speak' event from the hub
-client.on_mycroft("speak", lambda msg: print(f"Hub says: {msg.data['utterance']}"))
-
-# Send an utterance to the hub
-client.emit(Message("recognizer_loop:utterance", {"utterances": ["hello world"]}))
+```bash
+uv pip install --prerelease=allow "hivemind-bus-client[async]"
+hivemind-client --app docs-sat set-identity --key docs-key-0123 \
+    --password "correct-horse-battery-staple-docs" --host 127.0.0.1 --port 5678
+hivemind-client --app docs-sat test-identity
 ```
 
-## Documentation Guides
+```text
+== Identity successfully connected to HiveMind!
+```
 
-- [Setup walkthrough](setup.md) - Pair a satellite with a hub step by step.
-- [Installation](installation.md) - Getting started.
-- [API Reference](api.md) - `HiveMessage`, `HiveMessageType`, `HiveMessageBusClient`, `BinaryDataCallbacks`, `NodeIdentity`.
-- [Client API](client_api.md) - `HiveMessageBusClient` and `HiveMindHTTPClient` usage.
-- [Async Client](async_client.md) - `AsyncHiveMessageBusClient` for asyncio-native applications.
-- [Fakes](fakebus.md) - `AsyncFakeHiveMessageBus` in-process stand-in for testing.
-- [Message Types](message_types.md) - `HiveMessage`, `HiveMessageType` enum, routing, serialization.
-- [Binary Serialization](serialization.md) - Bitstring wire format, `get_bitstring`, `decode_bitstring` (reference implementation).
-- [Binary Handlers](binary_handlers.md) - `BinaryDataCallbacks` for TTS audio and file transfers.
-- [Identity & Credentials](identity.md) - Managing node identity and settings.
-- [CLI Reference](cli.md) - `hivemind-client` commands (`terminal`, `ping`, `send-mycroft`, etc.).
-- [CLI Guide](cli_guide.md) - Detailed CLI usage with `HiveMapper` network discovery.
-- [Examples](examples.md) - Practical code snippets and walkthroughs.
+## Pages
+
+| Page | What you get there |
+| :--- | :--- |
+| [Install and connect](install-and-connect.md) | A local hub, then a sync and an async round trip, with the connect flow |
+| [Identity](identity.md) | `NodeIdentity(app_name=...)`, the shared file, `--app` and `--shared`, and the refusal |
+| [CLI reference](cli.md) | Every `hivemind-client` command, its options and real output |
+| [Messages](messages.md) | `HiveMessage` types, payload rules, binary payloads and the serialization encodings |
+| [Security](security.md) | The Noise XXpsk2 and KKpsk0 handshakes, server key pinning, `forget-server` and the PSK cache |
+| [HTTP client](polling-client.md) | `HiveMindHTTPClient` for a hub that runs the HTTP network protocol |
+| [Troubleshooting](troubleshooting.md) | Each error you can see, what causes it and what to do |
+| [Contributing](contributing.md) | Development setup, the test suites and the repository rules |
