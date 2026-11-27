@@ -80,8 +80,8 @@ _ROUTING_TYPES = frozenset(
 #:
 #: Emptiness stays legal exactly where §4 grants it, HANDSHAKE, HELLO and PING,
 #: and those are not here. Nor are BINARY, whose payload is bytes, or INTERCOM
-#: and RENDEZVOUS, whose inner form belongs to another specification (see
-#: ``_PAYLOAD_REQUIRED``).
+#: and RENDEZVOUS, which carry no envelope (see
+#: ``_NEVER_EMPTY``).
 #:
 #: Before this, all seven were ADMITTED with ``{}`` and raised only when
 #: something read ``.payload``: KeyError for the bus types, TypeError for the
@@ -106,7 +106,7 @@ _ENVELOPE_PAYLOAD = tuple(
 #: opaque byte string" for ``BINARY``, and the control fields their types
 #: require for ``HANDSHAKE`` and ``HELLO``. §2's envelope table now marks
 #: ``payload`` Required "yes, except ``PING``" (``7eabe88``), so requiring it
-#: for all ten reads the table straight.
+#: for all twelve reads the table straight.
 #:
 #: Settled by architecture under T-4702, and this list is the answer. Before
 #: it, only HELLO and HANDSHAKE were here. Measured on the other eleven with a
@@ -120,23 +120,34 @@ _ENVELOPE_PAYLOAD = tuple(
 #: raising a bare ``ValueError`` that no transport guard caught; that check
 #: now raises ``MalformedWirePayload`` and cites §4's "opaque byte string".
 #:
-#: THREE TYPES ARE LEFT OUT, and they are named here so the gap is not read
-#: as an oversight. ``PING`` may omit the key: §2's table excepts it and §4
-#: says a receiver reads an absent key as ``{}``. ``INTERCOM`` and
-#: ``RENDEZVOUS`` ARE MISSING BY SEQUENCING, NOT BY §2'S SILENCE: presence is
-#: §2's rule, and its table has required a payload for every type but ``PING``
-#: all along, so this list is two names short of what §2 asks. #297 adds both
-#: with the tests that hold them, and this paragraph goes when it lands.
-#: Shape is §4's separate question, and §4 at ``7eabe88`` answers that too --
-#: each "a JSON object", INTERCOM's "never absent and never the empty object"
-#: -- but presence needs no shape to enforce.
+#: PING IS LEFT OUT: §2's table excepts it, and §4 says a receiver reads an
+#: absent key as ``{}``. ``INTERCOM`` and ``RENDEZVOUS`` are in: §2's table
+#: requires a payload for every type but ``PING``, and §4 at ``7eabe88`` gives
+#: each "a JSON object", INTERCOM's carrying a ciphertext and a signature and
+#: RENDEZVOUS's naming the outcome of one mailbox exchange. An absent payload
+#: carries neither. The key names inside the INTERCOM object stay with
+#: HIVEMIND-CRYPTO-1 and are not checked here.
 _PAYLOAD_REQUIRED = tuple(
     form
     for _type in (HiveMessageType.HANDSHAKE, HiveMessageType.HELLO,
                   HiveMessageType.BUS, HiveMessageType.SHARED_BUS,
                   HiveMessageType.BROADCAST, HiveMessageType.PROPAGATE,
                   HiveMessageType.ESCALATE, HiveMessageType.QUERY,
-                  HiveMessageType.CASCADE, HiveMessageType.BINARY)
+                  HiveMessageType.CASCADE, HiveMessageType.BINARY,
+                  HiveMessageType.INTERCOM, HiveMessageType.RENDEZVOUS)
+    for form in (_type, _type.value)
+)
+
+
+#: §4 at ``7eabe88`` says the INTERCOM payload is "never absent and never the
+#: empty object, because neither carries a ciphertext or a signature". That is
+#: a second rule and needs a second list: INTERCOM carries no envelope, so the
+#: envelope refusal does not reach it and its reason would be the wrong one.
+#: RENDEZVOUS is not here: §4 names no empty form for it and says nothing
+#: against one.
+_NEVER_EMPTY = tuple(
+    form
+    for _type in (HiveMessageType.INTERCOM,)
     for form in (_type, _type.value)
 )
 
@@ -497,6 +508,12 @@ class HiveMessage:
         that DOES read the wire comes through here.
         """
         if isinstance(payload, dict):
+            if not payload and msg_type in _NEVER_EMPTY:
+                raise MalformedWirePayload(
+                    f"{msg_type} payload is empty, and HIVEMIND-MSG-1 §4 "
+                    f"says an INTERCOM payload is never absent and never the "
+                    f"empty object, because neither carries a ciphertext or "
+                    f"a signature")
             if not payload and msg_type in _ENVELOPE_PAYLOAD:
                 raise MalformedWirePayload(
                     f"{msg_type} payload is empty, and HIVEMIND-MSG-1 §4 "
