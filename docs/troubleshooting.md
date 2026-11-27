@@ -46,7 +46,7 @@ cryptography.exceptions.InvalidTag
 Error: could not reach HiveMind within 10s. Check the host and port in the identity file, and that hivemind-core is listening.
 ```
 
-With protocol v3, the password is the Noise PSK. A wrong password makes the handshake fail on the client side. `test-identity` then reports a timeout, which tells you to check the host and the port. Check the password too.
+With protocol v3, the password is the Noise PSK. A wrong password makes the handshake fail on the client side. `test-identity` then reports a timeout, which tells you to check the host and the port. Check the password too. Issue [#326](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/326) tracks the wrong hint.
 
 Fix: compare the password with the hub (`hivemind-core list-clients`), then run `hivemind-client --app <name> set-identity --password <password>`. That command also clears the PSK cache.
 
@@ -66,7 +66,7 @@ Error: HiveMind refused this identity: the server Noise static key for 127.0.0.1
 Check the access key and password with 'hivemind-client set-identity', and confirm the client is registered on the server with 'hivemind-core list-clients'.
 ```
 
-The hub shows a Noise key that is not the pinned key. The second line of `test-identity` is about the access key and does not apply here.
+The hub shows a Noise key that is not the pinned key. The second line of `test-identity` is about the access key and does not apply here ([#326](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/326)).
 
 Fix: if you reinstalled or restored the hub, run `hivemind-client --app <name> forget-server`. If you did not, find out which machine answers at that address before you trust it. [Security](security.md#server-key-pinning) has the details.
 
@@ -86,7 +86,7 @@ Fix: put `--app <name>` before the subcommand, or pass `NodeIdentity(app_name="<
 ERROR - Connection closed (code 1011): internal error handling shake - goodbye
 ```
 
-The hub failed while it handled the handshake. One cause is a hivemind-core hub with no node identity. The hub log then shows `could not generate a node public key` at start, and `AttributeError: 'NoneType' object has no attribute 'encode'` for each handshake. hivemind-core reads the shared identity file, and the library does not create that file without `--shared`.
+The hub failed while it handled the handshake. One cause is a hivemind-core hub with no node identity. The hub log then shows `could not generate a node public key` at start, and `AttributeError: 'NoneType' object has no attribute 'encode'` for each handshake. hivemind-core reads the shared identity file, and the library does not create that file without `--shared`. Issue [HiveMind-core#417](https://github.com/JarbasHiveMind/HiveMind-core/issues/417) tracks the fix.
 
 Fix: on the hub, as the user that runs hivemind-core, run `hivemind-client --shared set-identity --siteid <site>`, then restart `hivemind-core listen`.
 

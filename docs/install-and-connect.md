@@ -86,7 +86,7 @@ These steps keep the hub state in one scratch folder, so they do not touch `~/.c
 
 3. Run `hivemind-core print-config` once. It writes `$J/config/hivemind-core/server.json`. In that file, set `agent_protocol` → `hivemind-ovos-agent-plugin` → `port` to `18181`, set `network_protocol` → `hivemind-websocket-plugin` → `host` to `127.0.0.1` and `port` to `15678`, and set `presence` → `enabled` to `false`.
 
-4. Give the hub a node identity. hivemind-core reads the shared identity file, and the client library does not create that file by itself (see [Identity](identity.md#the-shared-file)):
+4. Give the hub a node identity. hivemind-core reads the shared identity file, and the client library does not create that file by itself (see [Identity](identity.md#the-shared-file) and [HiveMind-core#417](https://github.com/JarbasHiveMind/HiveMind-core/issues/417)):
 
    ```bash
    hivemind-client --shared set-identity --siteid hub

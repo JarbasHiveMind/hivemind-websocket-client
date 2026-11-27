@@ -94,7 +94,7 @@ the next connection will trust and pin the key it sees
 
 Use it only when you know that the hub changed its key. A changed key with no reinstall can mean that another machine answers at that address.
 
-`forget-server` does not remove a pin that the async client made under the hub's `node_id`. To remove that pin, call `NodeIdentity(app_name="<name>").forget_noise_key(node_id)` in Python.
+`forget-server` does not remove a pin that the async client made under the hub's `node_id`. To remove that pin, call `NodeIdentity(app_name="<name>").forget_noise_key(node_id)` in Python. Issue [#325](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/325) tracks one pin id for both clients.
 
 An application that reads the shared file as a fallback keeps its pins in the shared file. `forget-server` says so:
 
@@ -114,7 +114,7 @@ unnamed-node_noise_psks.json
 - The file name is the static key file name with `_psks.json` in place of the extension.
 - Each entry name is the hub `node_id`, with a 16-hex-digit SHA-256 tag of the access key in front. The file never holds the access key or the password.
 - The file holds at most 32 entries. A new entry pushes out the oldest.
-- The client ignores a cache file that the group or other users can read, a file larger than 1 MiB, and a damaged file. It then derives the key again.
+- The client ignores a cache file with any group or other permission bit set, a file larger than 1 MiB, and a damaged file. It then derives the key again.
 - When the hub rejects a cached key, the client removes that entry. The next attempt derives from the current password.
 - `set-identity --password` with a changed password deletes the whole file. Without this step, the first connection to each hub fails once before the client removes the stale entry.
 

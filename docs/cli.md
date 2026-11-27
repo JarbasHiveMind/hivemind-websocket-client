@@ -175,7 +175,7 @@ Makes a new RSA key pair, prints the public key and saves the identity. With `--
 | `--port INTEGER` | `default_port` of the identity, then 5678 |
 | `--siteid TEXT` | `site_id` of the identity, then `unknown` |
 
-Without a key, a password or a host, these commands raise `RuntimeError: NodeIdentity not set, please pass key/password/host or call 'hivemind-client set-identity'`.
+Without a key or a password, these commands raise `RuntimeError: NodeIdentity not set, please pass key/password/host or call 'hivemind-client set-identity'`. `send-mycroft` and `ping` raise the same error without a host. `terminal`, `escalate` and `propagate` without a host fail with `AttributeError: 'NoneType' object has no attribute 'startswith'` ([#327](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/327)).
 
 ---
 [← Identity](identity.md) · [Home](index.md) · [Messages →](messages.md)
