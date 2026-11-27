@@ -4,6 +4,9 @@ import time
 
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
+import tempfile
+from pathlib import Path
+from json_database import JsonStorage
 from hivescope import TopologyBuilder
 
 STRONG_PASSWORD = "correct-horse-battery-staple-92"
@@ -13,7 +16,8 @@ def _make_client(url: str, key: str, password: str,
                  name: str = "test-client") -> HiveMessageBusClient:
     host, port = url.replace("ws://", "").replace("wss://", "").rstrip("/").split(":")
     port = int(port)
-    identity = NodeIdentity()
+    tmp_path = Path(tempfile.mkdtemp())
+    identity = NodeIdentity(identity_file=JsonStorage(str(tmp_path / f"{name}.json")))
     identity.access_key = key
     identity.password = password
     identity.default_master = f"ws://{host}"

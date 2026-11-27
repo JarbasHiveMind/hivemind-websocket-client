@@ -299,6 +299,9 @@ class AsyncHiveMessageBusClient:
         """
         from hivemind_bus_client.protocol import HiveMindSlaveProtocol
 
+        # Fail closed before the handshake: the first Noise contact must pin
+        # the server key, and an identity that refuses to persist cannot.
+        self.identity._refuse_if_it_would_create_the_shared_file("pin a server key in")
         bus = bus if bus is not None else FakeBus()
         # The site this connection reports is the client's, not the identity's
         # — writing it back would rewrite the node's own site, and reading it

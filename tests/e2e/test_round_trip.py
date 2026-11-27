@@ -4,6 +4,9 @@ import time
 
 from hivemind_bus_client.client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
+import tempfile
+from pathlib import Path
+from json_database import JsonStorage
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from ovos_bus_client.message import Message
 
@@ -24,7 +27,8 @@ def _wait_for(condition, timeout: float = 5.0, interval: float = 0.05) -> bool:
 def _make_client(url, key, password, name="round-trip-client"):
     host, port = url.replace("ws://", "").rstrip("/").split(":")
     port = int(port)
-    identity = NodeIdentity()
+    tmp_path = Path(tempfile.mkdtemp())
+    identity = NodeIdentity(identity_file=JsonStorage(str(tmp_path / f"{name}.json")))
     identity.access_key = key
     identity.password = password
     identity.default_master = f"ws://{host}"
