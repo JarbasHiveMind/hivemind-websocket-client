@@ -28,6 +28,11 @@ class HiveMessageType(str, Enum):
     BINARY = "bin"  # binary data container, payload for something else
 
 
+# A tuple, not a set: `in` must compare with ==, because an unhashable
+# msg_type off the wire has to raise the ValueError below, not TypeError.
+_MSG_TYPE_VALUES = tuple(m.value for m in HiveMessageType)
+
+
 class HiveMindBinaryPayloadType(IntEnum):
     """ Pseudo extension type for binary payloads
     it doesnt describe the payload but rather provides instruction to hivemind about how to handle it"""
@@ -201,7 +206,7 @@ class HiveMessage:
         #  but end-users should consider them read_only.
         #  To send this message on to the next hop, use forward() - it derives
         #  a new envelope and keeps the fields you did not name.
-        if msg_type not in [m.value for m in HiveMessageType]:
+        if msg_type not in _MSG_TYPE_VALUES:
             raise ValueError("Unknown HiveMessage.msg_type")
         if msg_type != HiveMessageType.BINARY and bin_type != HiveMindBinaryPayloadType.UNDEFINED:
             raise ValueError("bin_type can only be set for BINARY message type")
@@ -359,15 +364,15 @@ class HiveMessage:
         if self._payload_view is not None:
             return self._payload_view
 
-        if self.msg_type in [HiveMessageType.BUS, HiveMessageType.SHARED_BUS]:
+        if self.msg_type in (HiveMessageType.BUS, HiveMessageType.SHARED_BUS):
             self._payload_view = Message(self._payload["type"],
                                          data=self._payload.get("data"),
                                          context=self._payload.get("context"))
-        elif self.msg_type in [HiveMessageType.BROADCAST,
+        elif self.msg_type in (HiveMessageType.BROADCAST,
                                HiveMessageType.PROPAGATE,
                                HiveMessageType.CASCADE,
                                HiveMessageType.ESCALATE,
-                               HiveMessageType.QUERY]:
+                               HiveMessageType.QUERY):
             self._payload_view = HiveMessage(**self._payload)
         else:
             return self._payload
