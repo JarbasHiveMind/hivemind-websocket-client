@@ -148,13 +148,9 @@ class NodeIdentity:
 
     @property
     def name(self) -> str:
-        """
-        Get or set the human-readable label for the node.
+        """Human-readable label for the node.
 
         The name is not guaranteed to be unique and can describe functionality, brand, capabilities, or other attributes.
-
-        Returns:
-            str: The name of the node, defaulting to "unnamed-node" if not set.
         """
         if not self.IDENTITY_FILE.get("name") and self.IDENTITY_FILE.get("key"):
             self.IDENTITY_FILE["name"] = basename(self.IDENTITY_FILE["key"])
@@ -167,12 +163,7 @@ class NodeIdentity:
 
     @property
     def public_key(self) -> Optional[str]:
-        """
-        Get or set the public RSA key for the node.
-
-        Returns:
-            Optional[str]: The public RSA key, if available.
-        """
+        """Public RSA key for the node."""
         return self.IDENTITY_FILE.get("public_key")
 
     @public_key.setter
@@ -229,14 +220,7 @@ class NodeIdentity:
 
     @property
     def private_key(self) -> str:
-        """
-        Get or set the path to the private RSA PEM file for the node.
-
-        The private key is used to uniquely identify the device and prove its identity within the HiveMind network.
-
-        Returns:
-            str: The path to the private key file.
-        """
+        """Path to the private RSA PEM file that proves the node's identity."""
         return self._resolve_key_path(self.IDENTITY_FILE.get("secret_key"),
                                       f"{self.name}.pem")
 
@@ -247,14 +231,7 @@ class NodeIdentity:
 
     @property
     def password(self) -> Optional[str]:
-        """
-        Get or set the password for the node.
-
-        The password is used to generate a session AES key during the non-RSA handshake process.
-
-        Returns:
-            Optional[str]: The password used for session encryption.
-        """
+        """Password that derives the session AES key in the non-RSA handshake."""
         return self.IDENTITY_FILE.get("password")
 
     @password.setter
@@ -264,12 +241,7 @@ class NodeIdentity:
 
     @property
     def access_key(self) -> Optional[str]:
-        """
-        Get or set the access key for the node.
-
-        Returns:
-            Optional[str]: The access key for the node.
-        """
+        """Access key for the node."""
         return self.IDENTITY_FILE.get("access_key")
 
     @access_key.setter
@@ -279,12 +251,7 @@ class NodeIdentity:
 
     @property
     def site_id(self) -> Optional[str]:
-        """
-        Get or set the site ID for the node.
-
-        Returns:
-            Optional[str]: The site ID for the node.
-        """
+        """Site ID for the node."""
         return self.IDENTITY_FILE.get("site_id")
 
     @site_id.setter
@@ -294,12 +261,7 @@ class NodeIdentity:
 
     @property
     def default_master(self) -> Optional[str]:
-        """
-        Get or set the host for default master of the node.
-
-        Returns:
-            Optional[str]: The default master for the node.
-        """
+        """Host for default master of the node."""
         return self.IDENTITY_FILE.get("default_master")
 
     @default_master.setter
@@ -309,12 +271,7 @@ class NodeIdentity:
 
     @property
     def default_port(self) -> Optional[int]:
-        """
-        Get or set the default port for the node.
-
-        Returns:
-            Optional[int]: The default port for the node.
-        """
+        """Default port for the node."""
         return self.IDENTITY_FILE.get("default_port")
 
     @default_port.setter

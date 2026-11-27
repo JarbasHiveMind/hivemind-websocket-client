@@ -58,16 +58,13 @@ class HiveMindHTTPClient(threading.Thread):
                  http_timeout: float = HTTP_TIMEOUT,
                  max_protocol_version: int = 3):
         super().__init__(daemon=True)
-        # HiveMindSlaveProtocol._should_use_noise() reads this off the client;
-        # without it the getattr default of 2 made every HTTP client decline
-        # the v3 Noise handshake. Set to 2 to force the legacy handshake.
+        # Read by HiveMindSlaveProtocol._should_use_noise(). Set to 2 to force
+        # the legacy handshake.
         self.max_protocol_version = max_protocol_version
-        # A mutable default is created once at import and shared across every
-        # instance; construct a fresh one per client instead.
         self.bin_callbacks = bin_callbacks or BinaryDataCallbacks()
         self.http_timeout = http_timeout
-        self.json_encoding = SupportedEncodings.JSON_HEX  # server defaults before it was made configurable
-        self.cipher = SupportedCiphers.AES_GCM  # server defaults before it was made configurable
+        self.json_encoding = SupportedEncodings.JSON_HEX  # the server default
+        self.cipher = SupportedCiphers.AES_GCM  # the server default
         self.server_key: Optional[str] = None  # public RSA key
         self.identity = identity or None
         self._password = password
@@ -107,12 +104,7 @@ class HiveMindHTTPClient(threading.Thread):
 
 
     def wait_for_handshake(self, timeout=5, max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
-        """Wait for the handshake, retrying up to ``max_retries`` times.
-
-        This used to recurse on every failed attempt, which turns a hub that
-        never handshakes into an unbounded recursion ending in RecursionError.
-        A bounded loop raises a clear error once the retries are exhausted.
-        """
+        """Wait for the handshake, retrying up to ``max_retries`` times."""
         attempts = 0
         while not self.handshake_event.is_set():
             self.handshake_event.wait(timeout=timeout)
@@ -610,19 +602,9 @@ class HiveMindHTTPClient(threading.Thread):
     # targeted messages for nodes, asymmetric encryption
     def emit_intercom(self, message: Union[MycroftMessage, HiveMessage],
                       pubkey: Union[str, bytes, RSA.RsaKey]):
-        """INTERCOM (hybrid-encrypted) send. Same shape as sync/async clients.
+        """Send a hybrid-encrypted INTERCOM to ``pubkey``, wrapped in PROPAGATE.
 
-        This used to build its own envelope: plain ``encrypt_RSA`` + ``sign_RSA``
-        under keys ``{"ciphertext", "signature"}`` and no ``encrypted_key``.
-        The receiving protocol only recognises the hybrid-encryption envelope
-        (``hybrid_encrypt``'s ``"encrypted_key"`` shape) and drops anything
-        else at the inner-type check, so that frame could never be accepted.
-        Worse, ``pybase64.b64encode(...)`` returns ``bytes``, and a HiveMessage
-        payload containing raw bytes cannot be JSON-serialized, so the frame
-        raised before it could even be sent — this path was dead. Building the
-        same hybrid envelope as ``client.py`` / ``async_client.py``, addressed
-        via ``target_pubkey`` and wrapped in PROPAGATE, makes it match what the
-        receiver actually verifies and decrypts.
+        Same envelope as the sync and async clients.
         """
         private_key = load_RSA_key(self.identity.private_key)
         envelope = hybrid_encrypt(pubkey, message.serialize(), sign_key=private_key)
@@ -635,8 +617,6 @@ class HiveMindHTTPClient(threading.Thread):
     def connect(self, bus=None, protocol=None, site_id=None,
                 handshake_max_retries=DEFAULT_HANDSHAKE_MAX_RETRIES):
         LOG.info("Connecting...")
-        # A mutable default (FakeBus()) is created once at import and shared
-        # across every call; construct a fresh one here instead.
         if bus is None:
             bus = FakeBus()
         # The site this connection reports is the client's, not the identity's
