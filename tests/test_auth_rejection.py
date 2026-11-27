@@ -10,6 +10,8 @@ Retrying cannot help: the identity is identical on every attempt.
 """
 from unittest.mock import MagicMock
 
+import threading
+
 import pytest
 from websocket import ABNF
 
@@ -24,6 +26,11 @@ def _close_frame(code: int, reason: bytes = b"") -> ABNF:
 @pytest.fixture
 def client():
     node = object.__new__(HiveMessageBusClient)
+    # Left UNSET on purpose: every case here is a refusal at connect time,
+    # before a session exists, which is the one that must still be fatal. A
+    # 1008 on an established session is a different thing and is covered in
+    # test_1008_on_an_established_session.py.
+    node.handshake_event = threading.Event()
     node._auth_rejected = None
     node.emitter = MagicMock()
     node._clear_connection_state = MagicMock()

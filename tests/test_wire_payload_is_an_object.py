@@ -19,6 +19,7 @@ no wire value was read. The wire goes through ``from_wire``.
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from hivemind_bus_client.message import (HiveMessage, HiveMessageType,
@@ -155,8 +156,18 @@ class TestTheConstructorKeepsItsApiDefault(unittest.TestCase):
             "    print('REFUSED')\n"
             "else:\n"
             "    print('EMITTED')\n")
-        result = subprocess.run([sys.executable, "-O", "-c", program],
-                                capture_output=True, text=True)
+        # cwd matters here, not only -O. `python -c` puts the CURRENT
+        # WORKING DIRECTORY on the child's sys.path, and pytest runs from the
+        # repository root, so without this the child imports the working-tree
+        # copy of hivemind_bus_client rather than the installed one -- and
+        # this cell is then the only one in the suite that does not test what
+        # build_tests built. Running from an empty directory leaves the child
+        # with the installed package alone. `-P` does the same thing in one
+        # flag, but it is Python 3.11 and this repository still builds 3.10.
+        with tempfile.TemporaryDirectory() as outside_the_repository:
+            result = subprocess.run([sys.executable, "-O", "-c", program],
+                                    capture_output=True, text=True,
+                                    cwd=outside_the_repository)
         self.assertEqual(result.stdout.strip(), "REFUSED", result.stderr)
 
     def test_a_string_payload_is_refused_by_the_constructor(self):
@@ -239,9 +250,31 @@ class TestTheBinaryFrameDoorRefusesTheSameShapes(unittest.TestCase):
     """
 
     def _frame(self, payload_text):
-        from hivemind_bus_client.serialization import get_bitstring
-        return get_bitstring(hive_type=HiveMessageType.PING,
-                             payload=payload_text, compressed=False)
+        """Assemble the frame directly, bypassing the sender's own guard.
+
+        ``get_bitstring`` used to build these frames, but it now refuses a
+        payload §4 does not allow, so it can no longer produce the malformed
+        frame this decoder test needs. That refusal is the point of the
+        sender guard; the decoder still has to be tested against a frame a
+        non-conforming peer can send, so the bits are laid out here instead,
+        per HIVEMIND-WIRE-1 §4.1.
+        """
+        from bitstring import BitArray
+        from hivemind_bus_client.serialization import _TYPE2INT
+        from hivemind_bus_client.util import cast2bytes
+
+        meta = cast2bytes({}, False)
+        s = BitArray()
+        s.append('uint:1=1')                                   # start marker
+        s.append('uint:1=0')                                   # not versioned
+        s.append(f'uint:5={_TYPE2INT[HiveMessageType.PING]}')   # msg type
+        s.append('uint:1=0')                                   # not compressed
+        s.append(f'uint:8={len(meta)}')                         # metadata len
+        s.append(meta)
+        s.append(cast2bytes(payload_text, False))               # payload block
+        while len(s) % 8 != 0:
+            s.prepend('uint:1=0')
+        return s
 
     def test_a_binary_frame_whose_payload_is_not_an_object_is_refused(self):
         """The decoder wraps the refusal in its own wire-error type.

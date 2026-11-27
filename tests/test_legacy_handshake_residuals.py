@@ -24,6 +24,10 @@ def _protocol(crypto_key=None, password=False):
     proto = HiveMindSlaveProtocol.__new__(HiveMindSlaveProtocol)
     proto.hm = MagicMock()
     proto.hm.crypto_key = crypto_key
+    # a bare MagicMock answers any attribute, and _should_use_noise compares
+    # this one with `< PROTOCOL_V3`, which raises TypeError on a mock. These
+    # cases are the pre-v3 legacy handshake, so say so.
+    proto.hm.max_protocol_version = 2
     proto.hm.handshake_event = threading.Event()
     proto.hm.session_id = "sess"
     proto.identity = MagicMock(public_key="PUB")
@@ -32,7 +36,13 @@ def _protocol(crypto_key=None, password=False):
     proto.mpubkey = ""
     proto.noise_handshake = None
     proto._noise_established = False
-    proto._server_handshake_payload = None
+    # The pre-v3 server's own HANDSHAKE request, as handle_handshake stores
+    # it. A timed retry only happens after the server has asked, and
+    # start_handshake now refuses to guess at a peer it has heard nothing
+    # from, so the request has to be here for the retry to resend at all.
+    proto._server_handshake_payload = {"password": True, "binarize": False,
+                                       "ciphers": ["AES_GCM"],
+                                       "encodings": ["JSON_HEX"]}
     proto._emit = MagicMock()
     proto.handshake = MagicMock(pubkey="CLIENTPUB", secret=None)
     proto.pswd_handshake = MagicMock(secret=b"derived-from-password") if password else None

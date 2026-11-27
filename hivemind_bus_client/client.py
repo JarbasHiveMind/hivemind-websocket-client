@@ -2,7 +2,9 @@ import json
 import random
 import socket
 import ssl
+import time
 from collections.abc import Callable
+from copy import deepcopy
 from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Optional, Union
 
@@ -119,6 +121,32 @@ class HivePayloadWaiter(HiveMessageWaiter):
             super()._handler(message)
 
 
+#: Stamped on a WebSocketApp once its session completed the handshake.
+#: A new connection is a new object, so the fact has exactly the lifetime of
+#: the connection it describes — no reset to forget, and nothing to leak.
+_SESSION_ESTABLISHED_ATTR = "_hivemind_session_was_established"
+
+
+def _mark_session_established(socket) -> None:
+    """Remember, on the socket, that this connection reached READY."""
+    if socket is None:
+        return
+    try:
+        setattr(socket, _SESSION_ESTABLISHED_ATTR, True)
+    except Exception:  # a C object with no __dict__: fall back to forgetting
+        LOG.debug("could not mark the session established on %r", type(socket))
+
+
+def _session_was_established(socket) -> bool:
+    # `is True`, not a truth test. Any object that auto-creates attributes —
+    # a MagicMock in a test, a proxy in the wild — returns something TRUTHY
+    # for an attribute nobody set, and this guard would then read "the session
+    # was established" for a connection that never got past the credentials.
+    # That fails OPEN: a genuinely refused key would stop latching and retry
+    # for ever. Only the mark this module writes counts.
+    return getattr(socket, _SESSION_ESTABLISHED_ATTR, False) is True
+
+
 class HiveMessageBusClient(OVOSBusClient):
     # emit() grace window (seconds) for the "connection not currently open"
     # case. Kept short and non-configurable on purpose: it only exists to let
@@ -127,6 +155,13 @@ class HiveMessageBusClient(OVOSBusClient):
     # unreachable master) emit() must fail fast rather than block its caller,
     # since callers include event-loop code (see emit() docstring).
     _EMIT_NOT_CONNECTED_GRACE = 0.05
+
+    # The session state record the hub last returned for this client's own
+    # session_id (OVOS-SESSION-1 §2.1). Override fields such as pipeline and
+    # blacklisted_skills belong to the node and are never kept.
+    _SESSION_STATE_FIELDS = ("active_handlers", "converse_handlers",
+                             "response_mode", "intent_context")
+    hub_session: Optional[dict] = None
 
     def __init__(self, key: Optional[str] = None,
                  password: Optional[str] = None,
@@ -409,6 +444,36 @@ class HiveMessageBusClient(OVOSBusClient):
         close_code = args[1] if len(args) > 1 else None
         close_reason = args[2] if len(args) > 2 else None
 
+        # The socket the close belongs to, when websocket-client passes one,
+        # else the current one. `args[0] is not None` matters: a caller that
+        # passes None as the ws took the None, and the guard then fell back
+        # to handshake_event, which on_error has already cleared, so the 1008
+        # latched again — measured. websocket-client 1.9.2 always passes the
+        # app (_app.py:685), but it is a transitive dependency here and the
+        # callback signature is not ours to rely on. Read with getattr throughout: on_close is a
+        # CALLBACK and must not raise. A raise here loses the close handling
+        # entirely, which is the shape of defect this guard exists to fix,
+        # and it is the same reason the arguments above are read by position.
+        closed_socket = (args[0] if args and args[0] is not None
+                         else getattr(self, "client", None))
+        session_was_established = (self.handshake_event.is_set()
+                                   or _session_was_established(closed_socket))
+        if (close_code == self.AUTH_REJECTED_CLOSE_CODE
+                and not self._failed_kk_retry_pending()
+                and session_was_established):
+            # 1008 on an ESTABLISHED session is not a credential refusal; see
+            # _is_auth_rejection for the full reasoning. Reconnect.
+            LOG.warning(
+                f"HiveMind closed an established session with "
+                f"{self.AUTH_REJECTED_CLOSE_CODE}: "
+                f"{close_reason or 'no reason given'}. The credentials were "
+                f"already accepted on this session, so this is a protocol or "
+                f"transport error and not a credential refusal. Reconnecting."
+            )
+            self._clear_connection_state()
+            self.emitter.emit("close")
+            return
+
         if (close_code == self.AUTH_REJECTED_CLOSE_CODE
                 and not self._failed_kk_retry_pending()):
             # Reconnecting cannot help: the credentials do not change between
@@ -449,6 +514,20 @@ class HiveMessageBusClient(OVOSBusClient):
         if code != self.AUTH_REJECTED_CLOSE_CODE:
             return False
         if self._failed_kk_retry_pending():
+            return False
+        if self.handshake_event.is_set():
+            # A 1008 on an ESTABLISHED session is not a credential refusal.
+            # hivemind-core sends 1008 from decode() for a non-Noise message
+            # on a v3 session, an invalid Noise transport message and an
+            # unencrypted message. All three need an admitted connection to
+            # reach, so the credentials were accepted before this frame.
+            # Treating them as a refusal took a correctly registered
+            # satellite off the mesh permanently and blamed its access key.
+            #
+            # The split is read from the connection state rather than from
+            # the reason text: HIVEMIND-TRANSPORT-1 §2.2 makes a refusal
+            # machine-readable through a STABLE reason string, and these
+            # three reasons are free prose that no peer should parse.
             return False
         try:
             reason = data[2:].decode("utf-8") or "credentials refused"
@@ -496,6 +575,24 @@ class HiveMessageBusClient(OVOSBusClient):
         self.close()
 
     def _clear_connection_state(self):
+        # Read BEFORE the clear below, and remembered ON THE SOCKET.
+        #
+        # websocket-client delivers a close to on_error first, with an
+        # exception, and that path clears the connection state; on_close then
+        # runs with handshake_event already cleared and could not otherwise
+        # tell an established session from one that never got past the
+        # credentials. async_client keeps the same fact in a local, because
+        # its close arrives on one path only.
+        #
+        # It is stamped on the WebSocketApp, not on self, for two reasons a
+        # field could not give: a SECOND clear before on_close cannot
+        # downgrade it (an assignment did, and the 1008 latched again), and
+        # the next connection is a NEW WebSocketApp, so the fact cannot leak
+        # into it even when on_open never fires — a hub that refuses the
+        # upgrade outright closes with no open, and a genuinely refused key
+        # must still latch there.
+        if self.handshake_event.is_set():
+            _mark_session_established(getattr(self, "client", None))
         self.connected_event.clear()
         self.handshake_event.clear()
         self.crypto_key = None
@@ -903,7 +1000,20 @@ class HiveMessageBusClient(OVOSBusClient):
                 LOG.exception("dropping malformed binary frame")
                 return
         elif isinstance(message, str):
-            message = json.loads(message)
+            try:
+                message = json.loads(message)
+            except json.JSONDecodeError:
+                # HIVEMIND-MSG-1 §3: a payload a node does not understand is
+                # ignored, and the connection is NOT rejected over it. This
+                # `json.loads` was bare, so a truncated or non-JSON text frame
+                # raised straight out of the receive callback: the transport
+                # calls on_error, the error path clears state and closes, and
+                # one frame from the peer ended the session. Widening
+                # `_parse_or_drop` was not enough, because the raise happens
+                # HERE, before that guard is reached -- measured.
+                LOG.error("dropping a text frame that is not JSON "
+                          "(HIVEMIND-MSG-1 §3)")
+                return
         if isinstance(message, dict) and "ciphertext" in message:
             LOG.error("got encrypted message, but could not decrypt!")
             return
@@ -917,11 +1027,53 @@ class HiveMessageBusClient(OVOSBusClient):
             self._handle_hive_protocol(message)
         elif isinstance(message, str):
             self.emitter.emit('message', message)  # raw message
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
         else:
             assert isinstance(message, dict)
             self.emitter.emit('message', json.dumps(message, ensure_ascii=False))  # raw message
-            self._handle_hive_protocol(HiveMessage.from_wire(message))
+            parsed = self._parse_or_drop(message)
+            if parsed is None:
+                return
+            self._handle_hive_protocol(parsed)
+
+    @staticmethod
+    def _parse_or_drop(frame) -> Optional[HiveMessage]:
+        """Build a HiveMessage from a wire frame, or drop the frame.
+
+        HIVEMIND-MSG-1 §3: "A node MUST forward or ignore a payload it does
+        not understand. It MUST NOT reject the connection over it, and it MUST
+        NOT stop its own handler over it."
+
+        A refusal raised out of the receive callback does exactly what the
+        clause forbids: the transport catches it, calls on_error, and the
+        client clears its state and closes. One malformed frame from the peer
+        would end the session. The binary door above already drops and stays
+        up, citing WIRE-1 §4.2; this is the same treatment for the JSON door.
+
+        Returns None when the frame is dropped, so the caller returns too.
+        """
+        try:
+            return HiveMessage.from_wire(frame)
+        except (ValueError, TypeError):
+            # Widened from (MalformedWirePayload, json.JSONDecodeError).
+            # Both of those are already a ValueError, so this still catches
+            # them. It also catches the bare ValueError the constructor
+            # raises for an unknown msg_type, and the TypeError Python raises
+            # for a frame key the constructor does not accept -- both escaped
+            # this guard before, and an unknown msg_type is exactly "a
+            # payload it does not understand" under HIVEMIND-MSG-1 §3. This
+            # door is reached with a dict here, so the text case is caught in
+            # `on_message` above; both are guarded because the three copies
+            # of this function are reached by different callers.
+            #
+            # The connection survives the frame, and the operator gets the
+            # reason: no peer can observe this log, so it is the only place
+            # the drop appears.
+            LOG.exception("dropping malformed wire frame (HIVEMIND-MSG-1 §3)")
+            return None
 
     def _handle_binary(self, message: HiveMessage):
         assert message.msg_type == HiveMessageType.BINARY
@@ -951,8 +1103,19 @@ class HiveMessageBusClient(OVOSBusClient):
         # destination to source (HIVEMIND-BRIDGE-1 §3.1). Emitting here as well
         # delivered every frame twice, the first time without those steps.
         # Emit directly only when no protocol delivers to this bus.
-        if message.msg_type == HiveMessageType.BUS and not self._protocol_delivers_bus():
-            self.internal_bus.emit(message.payload)
+        if message.msg_type == HiveMessageType.BUS:
+            # read the carrier as the hub sent it: emitting to internal_bus
+            # stamps this client's own default session onto a frame that has
+            # none, and those defaults are not hub state
+            carrier = message.payload.context.get("session")
+            if (isinstance(carrier, dict)
+                    and carrier.get("session_id") == self.session_id):
+                self.hub_session = {
+                    **{k: deepcopy(carrier[k]) for k in self._SESSION_STATE_FIELDS
+                       if k in carrier},
+                    "session_id": self.session_id, "site_id": self.site_id}
+            if not self._protocol_delivers_bus():
+                self.internal_bus.emit(message.payload)
         self.emitter.emit(message.msg_type, message)  # hive message
 
     def _protocol_delivers_bus(self) -> bool:
@@ -983,6 +1146,7 @@ class HiveMessageBusClient(OVOSBusClient):
        
         Notes:
             - For messages with msg_type == HiveMessageType.BUS, the function will ensure the payload.context contains routing fields (source, platform, destination, session) and will emit the payload to the client's internal bus before sending.
+            - A BUS message that carries no session is sent with the session state record (active_handlers, converse_handlers, response_mode, intent_context) the hub last returned for this client's session_id (hub_session), minus an expired response_mode, or with only session_id and site_id before any reply. A session set by the caller is never replaced.
             - This method transmits the message over the client's WebSocket and may perform serialization, optional compression, and optional encryption depending on client configuration.
        
         Raises:
@@ -1026,8 +1190,16 @@ class HiveMessageBusClient(OVOSBusClient):
                     updated_payload.context["platform"] = self.useragent
                 if "destination" not in updated_payload.context:
                     updated_payload.context["destination"] = "HiveMind"
-                if "session" not in updated_payload.context:
-                    updated_payload.context["session"] = {}
+                if not updated_payload.context.get("session"):
+                    # the client is the authority for its own session: send
+                    # back the latest one the hub returned, so state such as
+                    # response_mode survives to the next turn
+                    updated_payload.context["session"] = deepcopy(
+                        self.hub_session or {})
+                    mode = updated_payload.context["session"].get("response_mode")
+                    if isinstance(mode, dict) and mode.get("expires_at", float("inf")) <= time.time():
+                        # an expired response mode is inert (OVOS-CONVERSE-1 §2.2)
+                        del updated_payload.context["session"]["response_mode"]
                 session = updated_payload.context["session"]
                 if not session.get("session_id"):
                     session["session_id"] = self.session_id
