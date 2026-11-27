@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0a2](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.3.0a2) (2026-11-27)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.3.0a1...1.3.0a2)
+
+**Merged pull requests:**
+
+- refactor: drop history comments, long docstrings, per-message list build [\#323](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/323) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [1.3.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.3.0a1) (2026-11-27)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.2.15a1...1.3.0a1)
@@ -365,10 +373,6 @@
 ## [1.1.1a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.1a1) (2026-09-04)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-websocket-client/compare/1.1.0a1...1.1.1a1)
-
-**Merged pull requests:**
-
-- fix: use SessionManager.get\_default\_session\(\) [\#218](https://github.com/JarbasHiveMind/hivemind-websocket-client/pull/218) ([JarbasAl](https://github.com/JarbasAl))
 
 ## [1.1.0a1](https://github.com/JarbasHiveMind/hivemind-websocket-client/tree/1.1.0a1) (2026-09-04)
 
