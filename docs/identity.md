@@ -1,186 +1,147 @@
-# Identity & Credentials
+# Identity
+<!-- agent-hint
+covers: where a node keeps its credentials and keys, NodeIdentity(app_name=...), the shared file, --app and --shared, and the refusal to create the shared file
+source: hivemind_bus_client/identity.py:NodeIdentity, hivemind_bus_client/scripts.py:_node_identity
+generated: no
+verify: python -c "from hivemind_bus_client.identity import NodeIdentity as N; import inspect; p=inspect.signature(N).parameters; assert list(p)==['identity_file','app_name','shared_fallback'] and p['shared_fallback'].default is True" && grep -qF 'refusing to {verb} the shared' hivemind_bus_client/identity.py && hivemind-client --help | grep -q -- '--shared'
+see: cli.md
+-->
 
-A HiveMind node has **one identity**: one keypair and one Noise static key,
-used in both directions — serving its own clients and dialling its master.
-The identity is persisted in:
+A node identity holds the credentials that reach a hub and the keys that prove who the node is. This page tells you where each application keeps its identity, and what to do when the library refuses to write one.
 
-```
-~/.config/hivemind/_identity.json
-```
+## Example
 
-## One identity per application
-
-HIVEMIND-CRYPTO-1 §2: a node is one application, not the user or the host.
-Two applications of one user are two nodes and must not present the same
-identifier or static key. Pass the application's own name:
-
-```python
-identity = NodeIdentity(app_name="voice-sat")
-# ~/.config/hivemind/voice-sat/_identity.json, keys in the same folder
-```
-
-`app_name` is one path segment: letters, digits, `.`, `_` and `-`, starting
-with a letter or digit, at most 64 characters. Passing both `identity_file`
-and `app_name` raises `ValueError`.
-
-`NodeIdentity()` without a name uses the shared
-`~/.config/hivemind/_identity.json`. §2 does not allow that location as a
-default, so an application passes its own `app_name`.
-
-### A box provisioned with the shared file
-
-Every deployment before `app_name` was provisioned with
-`hivemind-client set-identity`, which writes the shared file. When an
-application starts to name itself on such a box, it has no file of its own
-yet. `NodeIdentity(app_name=...)` then reads the shared file, logs a
-warning that names §2 and the command that gives the application its own
-identity, and sets `identity.uses_shared_fallback` to `True`. It never
-creates the shared file: without one, the application gets its own path.
+Give each application its own name. The identity then lives in `~/.config/hivemind/<app_name>/`:
 
 ```bash
-hivemind-client --app voice-sat set-identity --key KEY --password PASS --host HUB
+hivemind-client --app docs-sat set-identity --key docs-key-0123 \
+    --password "correct-horse-battery-staple-docs" \
+    --host 127.0.0.1 --port 15678 --siteid kitchen
 ```
 
-writes `~/.config/hivemind/voice-sat/_identity.json`, and the warning
-stops. `set-identity` and `reset-pgp` pass `shared_fallback=False`, so
-they never touch the shared file. Everything else works on the file the
-application reads: under the fallback a pin the application adds on its
-first connection, or drops with `forget-server`, is the pin every other
-application on the box checks. Give the application its own file before
-you change pins.
-
-Credentials (`access_key`, `password`), `useragent` and `site_id` are not
-part of the identity. They say how to reach one particular master, and a
-node that both serves clients and connects upstream has its own access key
-and password as well as its master's. The client reads them from the
-identity file only as a fallback, and never writes them back — see
-[One identity, many masters](#one-identity-many-masters) below.
-
-## Fields
-
-| Field | Description |
-|---|---|
-| `name` | Human-readable node label (not required to be unique). Read as the client's `useragent` fallback |
-| `access_key` | Access key issued by `hivemind-core add-client`. Read as a fallback when the client is not given one directly |
-| `password` | Password used to derive the AES session key during handshake. Read as a fallback when the client is not given one directly |
-| `default_master` | Default hub URL (e.g. `ws://192.168.1.10`) |
-| `default_port` | Default hub port (e.g. `5678`) |
-| `site_id` | Location identifier injected into every OVOS message context. Read as a fallback when the client is not given one directly |
-| `public_key` | RSA public key for this node |
-| `secret_key` | Path to the RSA private key PEM file |
-| `trusted_keys` | Dict of alias → public key for trusted peers (see below) |
-
-## One identity, many masters
-
-A node's identity is its keypair. Credentials are not stored *in* the
-identity in the sense of being owned by it — they are read from the
-identity file as a fallback, and a client given its own `key`/`password`
-(directly, or via `set-identity`) uses those instead.
-
-`connect()` resolves credentials this way:
-
-```python
-self._access_key = self._access_key or self.identity.access_key
-self._password   = self._password   or self.identity.password
-self._site_id    = site_id or self._site_id or self.identity.site_id
+```text
+PUBKEY: -----BEGIN PUBLIC KEY-----
+...
+-----END PUBLIC KEY-----
+identity saved: /home/user/hm-demo/config/hivemind/docs-sat/_identity.json
 ```
 
-Nothing here is ever written back to the identity file. That distinction
-matters for a node that both serves its own downstream clients and connects
-to a master above it: it has its own access key and password, and its
-master's. Earlier, the client copied whatever credentials it was handed
-onto `self.identity` and the first successful Noise handshake persisted
-them (pinning a peer key writes the whole identity to disk) — so the node's
-own access key, password, and name were silently overwritten by its
-master's on first connect. Every downstream client of that node then failed
-its own handshake with "invalid api key" against credentials the node no
-longer had, and the node reported itself under the default useragent
-instead of its own name.
-
-## Trusted Keys
-
-Peers whose public key is in `trusted_keys` are allowed to inject BUS
-messages via PROPAGATE and INTERCOM.  Untrusted peers are silently dropped.
+The application reads the same file in Python:
 
 ```python
+from hivemind_bus_client import HiveMessageBusClient
 from hivemind_bus_client.identity import NodeIdentity
 
-identity = NodeIdentity()
-identity.add_trusted_key("living-room-hub", "<RSA_PUBLIC_KEY>")
-identity.save()
-
-# Check trust
-identity.is_trusted_key("<RSA_PUBLIC_KEY>")  # True
-identity.get_trusted_alias("<RSA_PUBLIC_KEY>")  # "living-room-hub"
-
-# Remove
-identity.remove_trusted_key("living-room-hub")
-identity.save()
+client = HiveMessageBusClient(identity=NodeIdentity(app_name="docs-sat"))
 ```
 
-Source: `NodeIdentity.trusted_keys`, `identity.py`
+## Steps
 
-## Setting identity from the CLI
+1. Pick an application name. It is one path segment: letters, digits, `.`, `_` or `-`, starts with a letter or a digit, and has at most 64 characters. Another name raises:
+
+   ```text
+   ValueError: app_name must be letters, digits, '.', '_' or '-', start with a letter or digit, and be at most 64 characters: 'bad/name'
+   ```
+
+2. Write the identity with `hivemind-client --app <name> set-identity`. Put `--app` before the subcommand, because it is an option of the command group. The first `set-identity` makes an RSA key pair and prints the public key.
+
+3. Pass `NodeIdentity(app_name="<name>")` to the client.
+
+4. Optional: run `hivemind-client --app <name> test-identity` to check the credentials against the hub.
+
+## The identity folder
+
+After a first connection, the folder of `docs-sat` holds these files:
+
+```text
+config/hivemind/docs-sat/
+├── _identity.json             credentials, public key, pinned server keys
+├── HiveMindComs.pem           RSA private key, made by set-identity or reset-pgp
+├── unnamed-node_noise.key     Noise static X25519 private key
+└── unnamed-node_noise_psks.json   Noise PSK cache, see security.md
+```
+
+The Noise key file is named after `name` in the identity. With no `name`, the name is `unnamed-node`. The key paths in `_identity.json` are relative to the identity file, so you can move the folder to another home directory.
+
+`_identity.json` holds these keys:
+
+| Key | Set by | Use |
+| :--- | :--- | :--- |
+| `access_key` | `set-identity --key` | Identifies the client to the hub |
+| `password` | `set-identity --password` | Input of the Noise PSK, never sent |
+| `default_master` | `set-identity --host` | Hub URL, `ws://` is added when the scheme is missing |
+| `default_port` | `set-identity --port` | Hub port, 5678 when not given |
+| `site_id` | `set-identity --siteid` | Site of the node in `message.context` |
+| `public_key`, `secret_key` | `set-identity`, `reset-pgp` | RSA key pair for INTERCOM and the legacy handshake |
+| `name` | your code | Node label, and the stem of the Noise key file name |
+| `noise_key` | your code | Path of the Noise static key, when not the default |
+| `pinned_noise_keys` | first handshake | Server Noise keys, see [Security](security.md#server-key-pinning) |
+| `trusted_keys` | `add_trusted_key()` | Peers whose PROPAGATE, CASCADE and INTERCOM messages reach the bus |
+
+The client reads the credentials from the identity only as a fallback. It never writes credentials back to the identity.
+
+## The shared file
+
+The shared file is `~/.config/hivemind/_identity.json`. HIVEMIND-CRYPTO-1 §2 says that two applications of one user must not present one identifier and one static key. So the library treats the shared file as a choice that a deployer makes, never as a default:
+
+| How you build the identity | Own file exists | Shared file exists | Result |
+| :--- | :--- | :--- | :--- |
+| `NodeIdentity(app_name="x")` | yes | any | Uses the own file. |
+| `NodeIdentity(app_name="x")` | no | yes | Reads the shared file and logs a warning. `uses_shared_fallback` is `True`. |
+| `NodeIdentity(app_name="x")` | no | no | Uses the own file, which `save()` creates. |
+| `NodeIdentity(app_name="x", shared_fallback=False)` | any | any | Always uses the own file. |
+| `NodeIdentity()` | not applicable | yes | Reads the shared file and logs a warning. |
+| `NodeIdentity()` | not applicable | no | Refuses to create the shared file. |
+| `NodeIdentity(identity_file=path)` | not applicable | not applicable | Uses `path`. Do not pass `app_name` too. |
+
+The fallback warning names the fix:
+
+```text
+WARNING - 'kitchen-sat' has no identity file at /home/user/hm-demo/config/hivemind/kitchen-sat/_identity.json and reads the shared /home/user/hm-demo/config/hivemind/_identity.json. HIVEMIND-CRYPTO-1 §2 wants one identity per application: run 'hivemind-client --app kitchen-sat set-identity ...' to give it one
+```
+
+A client built without `identity=` uses `NodeIdentity()` and logs that it uses the shared file.
+
+### Provision the shared file
+
+`--shared` makes the CLI write the shared file, and create it when it does not exist. Use it when one identity for all applications is what you want. A hivemind-core hub before 5.3.16a1 needs this file. From 5.3.16a1, the hub uses `NodeIdentity(app_name="hivemind-core")` and makes its own key:
 
 ```bash
-hivemind-client set-identity \
-  --key  "42caf3d2405075fb9e7a4e1ff44e4c4f" \
-  --password "5ae486f7f1c26bd4645bd052e4af3ea3" \
-  --siteid "living-room"
+hivemind-client --shared set-identity --siteid hub
 ```
 
-This writes the values to `~/.config/hivemind/_identity.json`. You can also set `default_master` / `default_port` so you don't need to pass `--host` / `--port` on every invocation.
-
-## Using NodeIdentity in Python
-
-```python
-from hivemind_bus_client.identity import NodeIdentity
-
-identity = NodeIdentity()
-
-# Read persisted values
-print(identity.access_key)
-print(identity.password)
-print(identity.default_master)
-print(identity.site_id)
-
-# Override values programmatically
-identity.access_key = "my-key"
-identity.password   = "my-password"
-identity.default_master = "ws://192.168.1.10"
-identity.default_port   = 5678
-identity.save()
+```text
+identity saved: /home/user/hm-demo/config/hivemind/_identity.json
 ```
 
-## RSA key pair
+`--shared` is in `hivemind-bus-client` 1.3.0a1 and later. Like `--app`, it goes before the subcommand. After the subcommand, click refuses it:
 
-NodeIdentity stores an RSA key pair used for the HiveMind handshake and `INTERCOM` (peer-to-peer encrypted) messages.
-
-```python
-identity.create_keys()  # generates and saves a new RSA key pair
-print(identity.public_key)  # PEM-encoded public key string
-print(identity.private_key) # path to the private key .pem file
+```text
+Error: No such option '--shared'. Did you mean '--siteid'?
 ```
 
-Keys are auto-created on first use if they do not exist.
+## The refusal
 
-## Passing credentials directly (without identity file)
+With no `app_name` and no shared file, `save()`, `create_keys()` and `connect()` raise `ValueError` before they write anything. A bare `hivemind-client set-identity` on a box with no shared file fails in the same way:
 
-Credentials can be passed directly to the client constructor instead of relying on the identity file:
-
-```python
-from hivemind_bus_client.client import HiveMessageBusClient
-
-client = HiveMessageBusClient(
-    host="ws://192.168.1.10",
-    port=5678,
-    key="42caf3d2405075fb9e7a4e1ff44e4c4f",
-    password="5ae486f7f1c26bd4645bd052e4af3ea3",
-)
-client.connect()
+```text
+ValueError: refusing to write a private key beside the shared /home/user/hm-demo/config/hivemind/_identity.json: HIVEMIND-CRYPTO-1 §2 forbids an identity location shared by every application of this user. Give this application a name, NodeIdentity(app_name="<your-app>") or 'hivemind-client --app <your-app> set-identity ...', or provision the shared file deliberately with 'hivemind-client --shared set-identity ...'
 ```
 
-Both `key` and `password` are required. If either is missing and not present in the identity file, a `RuntimeError` is raised.
+`save()` gives the same message with `refusing to create`. To fix it, do one of these:
+
+- Give the application a name: `NodeIdentity(app_name="<your-app>")`, and `hivemind-client --app <your-app> set-identity ...`.
+- Make the shared file on purpose: `hivemind-client --shared set-identity ...`.
+
+## A damaged identity file
+
+An identity file that exists but does not parse stops the node. The library does not make a new identity, because a new identity has a new Noise key, and each hub that pinned the old key then refuses the node:
+
+```text
+hivemind_bus_client.exceptions.IdentityFileCorrupted: identity file /home/user/hm-demo/config/hivemind/docs-nohub/_identity.json exists but could not be parsed. Refusing to mint a new identity — restore it from a backup or delete it to start over as a new node.
+```
+
+Restore the file from a backup. If you delete it, the node starts as a new node with a new Noise key. The hub pinned the old key, so run `hivemind-core reset-noise-pin` on the hub to make it forget that pin.
 
 ---
-[← Binary Handlers](binary_handlers.md) · [Home](index.md) · [CLI Reference →](cli.md)
+[← Install and connect](install-and-connect.md) · [Home](index.md) · [CLI reference →](cli.md)

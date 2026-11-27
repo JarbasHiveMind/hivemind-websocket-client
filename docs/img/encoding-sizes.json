@@ -1,0 +1,12 @@
+{
+ "legacy AES-GCM, JSON-HEX": 658,
+ "legacy AES-GCM, JSON-B32": 554,
+ "legacy AES-GCM, JSON-B64": 458,
+ "legacy AES-GCM, JSON-URLSAFE-B64": 458,
+ "legacy AES-GCM, JSON-Z85P": 445,
+ "legacy AES-GCM, JSON-Z85B": 427,
+ "legacy AES-GCM, JSON-B91": 422,
+ "JSON text": 276,
+ "binary frame": 137,
+ "binary frame, compressed": 119
+}

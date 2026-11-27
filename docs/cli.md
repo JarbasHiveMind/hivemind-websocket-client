@@ -1,205 +1,181 @@
-# CLI Reference
+# CLI reference
+<!-- agent-hint
+covers: every hivemind-client command, its options, and its real output
+source: hivemind_bus_client/scripts.py, pyproject.toml:[project.scripts]
+generated: no
+verify: diff <(hivemind-client --help 2>/dev/null | sed -n '/^Commands:/,$p') <(awk '/^Commands:/{f=1} f&&/^```/{exit} f' docs/cli.md)
+see: messages.md
+-->
 
-The `hivemind-client` command provides utilities for managing identity and sending test messages.
+`hivemind-client` stores a node identity and sends single messages to a hub from the shell. This page lists each command with its options and the output of a real run.
 
-```
-hivemind-client [--app NAME] [COMMAND] [OPTIONS]
-```
-
-`--app NAME` makes every command use the identity of that application,
-`~/.config/hivemind/NAME/_identity.json`, instead of the shared
-`~/.config/hivemind/_identity.json`. It goes before the command:
+## Example
 
 ```bash
-hivemind-client --app voice-sat set-identity --key KEY --password PASS
+hivemind-client --app docs-sat test-identity
 ```
 
-On a box that only has the shared file, `--app NAME` uses the shared file
-and logs a warning until the application has a file of its own.
-`set-identity` and `reset-pgp` with `--app NAME` always write
-`~/.config/hivemind/NAME/_identity.json`: they give the application its own
-identity and never touch the shared one. A pin change (`forget-server`, and
-the first connection to a hub) lands in the file the application reads.
-Under the fallback that is the shared file, so the pin is dropped or added
-for every application on the box; `forget-server` prints that.
+```text
+== Identity successfully connected to HiveMind!
+```
+
+## Steps
+
+1. Choose the identity with a group option before the subcommand: `--app <name>` for the application's own file, or `--shared` for the shared file. With neither, the CLI reads an existing shared file and refuses to create one. [Identity](identity.md) explains the three cases.
+2. Store the credentials once with `set-identity`.
+3. Run the other commands. Each one reads the key, password, host, port and site from the identity. An option on the command line takes precedence over the identity.
+
+## Group options
+
+```text
+Usage: hivemind-client [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --app TEXT  application name: use the identity in ~/.config/hivemind/<app>/
+              instead of the shared ~/.config/hivemind/_identity.json
+  --shared    use the shared ~/.config/hivemind/_identity.json, and create it
+              if it does not exist. Sharing one identity across applications
+              is a provisioning choice a deployer makes explicitly (HIVEMIND-
+              CRYPTO-1 §2); without this flag and without --app, an existing
+              shared file is read but a new one is never created
+  --help      Show this message and exit.
+
+Commands:
+  escalate       escalate a single mycroft message
+  forget-server  forget the pinned encryption key of a hivemind-core
+  ping           Send a PING and display the reachable hive map.
+  propagate      propagate a single mycroft message
+  reset-pgp      recreate the private RSA key for inter-node communication
+  send-mycroft   send a single mycroft message
+  set-identity   persist node identity / credentials
+  terminal       simple cli interface to inject utterances and print speech
+  test-identity  test if Identity file can connect to HiveMind
+```
+
+When you give both `--app` and `--shared`, `--app` wins.
+
+## set-identity
+
+Writes the credentials to the identity file. It needs at least one option. The first run makes an RSA key pair and prints the public key.
+
+| Option | Effect |
+| :--- | :--- |
+| `--key TEXT` | Access key |
+| `--password TEXT` | Password. A changed password also clears the Noise PSK cache. |
+| `--host TEXT` | Hub host. `ws://` is added when the scheme is missing. |
+| `--port INTEGER` | Hub port. Without it, the stored port, then 5678. |
+| `--siteid TEXT` | Site identifier |
+
+```bash
+hivemind-client --app docs-sat set-identity --key docs-key-0123 \
+    --password "correct-horse-battery-staple-docs" \
+    --host 127.0.0.1 --port 15678 --siteid kitchen
+```
+
+```text
+PUBKEY: -----BEGIN PUBLIC KEY-----
+...
+-----END PUBLIC KEY-----
+identity saved: /home/user/hm-demo/config/hivemind/docs-sat/_identity.json
+```
+
+With `--app`, the write always goes to the application's own file, also when the application reads the shared file as a fallback.
+
+## test-identity
+
+Connects with the stored identity and reports the result. `--timeout FLOAT` (default 30) bounds the wait. The command retries the handshake `max(1, timeout // 5)` times.
+
+```text
+== Identity successfully connected to HiveMind!
+```
+
+A refused access key exits with an error that names the fix:
+
+```text
+Error: HiveMind refused this identity: invalid api key
+Check the access key and password with 'hivemind-client set-identity', and confirm the client is registered on the server with 'hivemind-core list-clients'.
+```
+
+[Troubleshooting](troubleshooting.md) lists the other failures.
+
+## send-mycroft
+
+Connects, sends one OVOS message in a `BUS` envelope, and disconnects. `--msg` is the message type and `--payload` is the `message.data` as JSON. Both are needed.
+
+```bash
+hivemind-client --app docs-sat send-mycroft --msg recognizer_loop:utterance \
+    --payload '{"utterances": ["hi"]}'
+```
+
+```text
+== connected to HiveMind
+```
+
+## escalate and propagate
+
+Each sends one OVOS message, wrapped as `ESCALATE(BUS(message))` or `PROPAGATE(BUS(message))`. They take the same options as `send-mycroft`. `--siteid` sets `target_site_id` on the outer envelope. A node delivers the inner `BUS` message to its bus only when its site matches, so pass the site of the target. The hub must allow the client to send these types (`hivemind-core allow-escalate`, `hivemind-core allow-propagate`).
+
+## ping
+
+Sends a `PING` flood inside a `PROPAGATE` envelope, collects the answers for `--timeout` seconds (default 5), and prints the hive map. `--json` prints the map as JSON.
+
+```bash
+hivemind-client --app docs-sat ping --timeout 3
+```
+
+```text
+== connected to HiveMind, sending PING (timeout=3.0s)
+  PING from -----BEGIN PUBLIC KEY-----
+...
+-----END PUBLIC KEY-----  site=hub
+
+== Hive Map ==
+[self] unnamed-node::fbb8b36d
+└── key:3c5bff6b9445  site=hub  latency=0ms
+```
+
+## terminal
+
+Opens an interactive prompt. Each line you type goes to the hub as `recognizer_loop:utterance`, and each `speak` answer prints with `> `. Press Ctrl+C to stop. It takes the connection options of `send-mycroft` without `--msg` and `--payload`.
+
+## forget-server
+
+Drops the pinned Noise key of a hub, so that the next connection trusts the key it sees. `--host` and `--port` default to the identity. [Security](security.md#forget-a-server-key) tells you when to use it.
+
+```bash
+hivemind-client --app docs-sat forget-server
+```
+
+```text
+forgot pinned key for 127.0.0.1:15678
+the next connection will trust and pin the key it sees
+```
+
+When no pin exists for that host and port, it lists the pins that do exist:
+
+```text
+no pinned key for 127.0.0.1:15678
+pinned servers: -----BEGIN PUBLIC KEY-----
+...
+```
+
+## reset-pgp
+
+Makes a new RSA key pair, prints the public key and saves the identity. With `--app`, the key goes to the application's own folder. Peers that trust the old public key for INTERCOM must get the new one.
+
+## Connection options
+
+`terminal`, `send-mycroft`, `escalate`, `propagate` and `ping` share these options:
+
+| Option | Default |
+| :--- | :--- |
+| `--key TEXT` | `access_key` of the identity |
+| `--password TEXT` | `password` of the identity |
+| `--host TEXT` | `default_master` of the identity |
+| `--port INTEGER` | `default_port` of the identity, then 5678 |
+| `--siteid TEXT` | `site_id` of the identity, then `unknown` |
+
+Without a key or a password, these commands raise `RuntimeError: NodeIdentity not set, please pass key/password/host or call 'hivemind-client set-identity'`. `send-mycroft` and `ping` raise the same error without a host. `terminal`, `escalate` and `propagate` without a host fail with `AttributeError: 'NoneType' object has no attribute 'startswith'` ([#327](https://github.com/JarbasHiveMind/hivemind-websocket-client/issues/327)).
 
 ---
-
-## `set-identity`
-
-Persist node credentials to the identity file (`~/.config/hivemind/_identity.json`).
-
-```bash
-hivemind-client set-identity [OPTIONS]
-```
-
-| Option | Description |
-|---|---|
-| `--key TEXT` | HiveMind access key |
-| `--password TEXT` | HiveMind password |
-| `--host TEXT` | Default hub URL, `ws://` or `wss://` |
-| `--port INTEGER` | Default hub port |
-| `--siteid TEXT` | Location identifier injected into `message.context` |
-
-At least one option is required. Each option changes only its own field:
-a call without `--host` keeps the stored hub, and on a fresh identity
-stores none.
-
-**Example:**
-
-```bash
-hivemind-client set-identity \
-  --key "42caf3d2405075fb9e7a4e1ff44e4c4f" \
-  --password "5ae486f7f1c26bd4645bd052e4af3ea3" \
-  --siteid "living-room"
-```
-
----
-
-## `terminal`
-
-Interactive text terminal. Type utterances and see spoken responses.
-
-```bash
-hivemind-client terminal [OPTIONS]
-```
-
-| Option | Description |
-|---|---|
-| `--key TEXT` | HiveMind access key (overrides identity file) |
-| `--password TEXT` | HiveMind password (overrides identity file) |
-| `--host TEXT` | HiveMind host URL |
-| `--port INTEGER` | HiveMind port (default 5678) |
-| `--siteid TEXT` | Location identifier (overrides identity file) |
-
-**Example:**
-
-```bash
-hivemind-client terminal --host ws://192.168.1.10 --port 5678
-> what time is it
-It is 3:45 PM.
-```
-
----
-
-## `send-mycroft`
-
-Send a single OVOS/Mycroft bus message to the hub.
-
-```bash
-hivemind-client send-mycroft [OPTIONS]
-```
-
-| Option | Description |
-|---|---|
-| `--key TEXT` | HiveMind access key |
-| `--password TEXT` | HiveMind password |
-| `--host TEXT` | HiveMind host |
-| `--port INTEGER` | HiveMind port (default 5678) |
-| `--siteid TEXT` | Location identifier |
-| `--msg TEXT` | OVOS message type to inject |
-| `--payload TEXT` | OVOS message data as a JSON string |
-
-The hub must have the message type in this client's whitelist. If it does not, the hub
-answers `hive.policy.denied`. Grant it with `hivemind-core allow-msg <msg_type> <node_id>`.
-
-**Example:**
-
-```bash
-hivemind-client send-mycroft \
-  --msg "recognizer_loop:utterance" \
-  --payload '{"utterances": ["turn off the lights"]}'
-```
-
----
-
-## `escalate`
-
-Send a single OVOS message wrapped in a `HiveMessageType.ESCALATE` envelope. The message is forwarded upstream through the hub hierarchy. It takes the same options as `send-mycroft`.
-
-```bash
-hivemind-client escalate [OPTIONS]
-```
-
----
-
-## `propagate`
-
-Send a single OVOS message wrapped in a `HiveMessageType.PROPAGATE` envelope. The message is forwarded to all peers and upstream hubs. It takes the same options as `send-mycroft`.
-
-```bash
-hivemind-client propagate [OPTIONS]
-```
-
----
-
-## `ping`
-
-Send a PING flood and print the reachable hive topology as an ASCII tree.
-
-```bash
-hivemind-client ping [OPTIONS]
-```
-
-| Option | Description |
-|---|---|
-| `--key TEXT` | HiveMind access key |
-| `--password TEXT` | HiveMind password |
-| `--host TEXT` | HiveMind host |
-| `--port INTEGER` | HiveMind port (default 5678) |
-| `--siteid TEXT` | Location identifier |
-| `--timeout FLOAT` | Seconds to collect answering PINGs (default 5.0) |
-| `--json` | Print the raw JSON topology instead of the tree |
-
-See the [CLI Guide](cli_guide.md) for sample output.
-
----
-
-## `test-identity`
-
-Open a connection with the saved identity and report whether the handshake completes.
-
-```bash
-hivemind-client test-identity
-```
-
----
-
-## `reset-pgp`
-
-Generate a new RSA key pair for this node. Peers that trust the old public key must be
-updated.
-
-```bash
-hivemind-client reset-pgp
-```
-
----
-
-## `forget-server`
-
-Forget the pinned encryption key of a hivemind-core.
-
-The first time this node connects to a master it records the master's static
-encryption key, and every later connection checks that the key did not change.
-This protects the connection, but it also stops the node when the master
-legitimately changes its key — after a reinstall, a new SD card, or a restore
-from a backup. The log then reports a key mismatch on every attempt.
-
-Forget the old key, then connect again to trust and record the new one.
-
-```bash
-hivemind-client forget-server --host 192.168.1.10 --port 5678
-```
-
-| Option | Description |
-|--------|-------------|
-| `--host` | Host of the master. Defaults to the master in the identity file. |
-| `--port` | Port of the master. Defaults to the port in the identity file. |
-
-Only forget a key you expected to change. If nothing was reinstalled, another
-machine may be answering at that address.
-
----
-[← Identity & Credentials](identity.md) · [Home](index.md) · [CLI Guide →](cli_guide.md)
-
+[← Identity](identity.md) · [Home](index.md) · [Messages →](messages.md)
