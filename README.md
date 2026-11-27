@@ -1,182 +1,70 @@
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/JarbasHiveMind/hivemind-websocket-client)
+# HiveMind Bus Client
+<!-- agent-hint
+covers: what the library does, how to install it, one round trip, and the links into docs/
+source: pyproject.toml, hivemind_bus_client/client.py, hivemind_bus_client/scripts.py
+generated: no
+verify: diff <(ls docs/*.md | xargs -n1 basename | sort) <(grep -o '(docs/[a-z0-9-]*\.md)' README.md | sed 's|(docs/||;s|)||' | sort -u)
+see: docs/index.md
+-->
 
-# Hivemind Client
-
-Python client library for [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core)
+`hivemind-bus-client` connects a Python program to a [hivemind-core](https://github.com/JarbasHiveMind/HiveMind-core) hub. It extends the OVOS bus client with the HiveMind wire protocol: a Noise handshake, encrypted messages, and the HiveMind routing types. Every HiveMind satellite builds on it.
 
 ## Install
 
 ```bash
-pip install hivemind_bus_client
+uv pip install --prerelease=allow "hivemind-bus-client[async]"
 ```
 
-## Usage
+The `async` extra adds `websockets` for `AsyncHiveMessageBusClient`. The sync client needs no extra.
 
-via [hivemind-http-protocol](https://github.com/JarbasHiveMind/hivemind-http-protocol)
+## Quickstart
 
-```python
-from hivemind_bus_client.http_client import HiveMindHTTPClient
-
-# not passing key etc so it uses identity file
-client = HiveMindHTTPClient(host="http://localhost", port=5679)
-client.connect() # establish a secure end-to-end encrypted connection
-```
-
-via [hivemind-websocket-protocol](https://github.com/JarbasHiveMind/hivemind-websocket-protocol)
-```python
-from hivemind_bus_client.client import HiveMessageBusClient
-
-# not passing key etc so it uses identity file
-client = HiveMessageBusClient(host="ws://localhost", port=5678)
-client.connect() # establish a secure end-to-end encrypted connection
-```
-
-### Example: Simple Chat
-
-```python
-import threading
-from ovos_bus_client.message import Message
-from hivemind_bus_client.message import HiveMessage, HiveMessageType
-from hivemind_bus_client.client import HiveMessageBusClient
-
-# not passing key etc so it uses identity file
-client = HiveMessageBusClient(host="ws://localhost", port=5678)
-client.connect() # establish a secure end-to-end encrypted connection
-
-# to handle agent responses, use client.on_mycroft("event", handler)
-answered = threading.Event()
-
-def handle_speak(message: Message):
-    print(message.data['utterance'])
-
-def utt_handled(message: Message):
-    answered.set()
-
-client.on_mycroft("speak", handle_speak)
-client.on_mycroft("ovos.utterance.handled", utt_handled)
-
-
-while True:
-    utt = input("> ")
-    answered.clear()
-    client.emit(HiveMessage(HiveMessageType.BUS,
-                            Message("recognizer_loop:utterance", {"utterances": [utt]})))
-    answered.wait()
-```
-
-### Example: Remote TTS 
-
-if server is running [hivemind-audio-binary-protocol](https://github.com/JarbasHiveMind/hivemind-audio-binary-protocol)
-
-```python
-from ovos_bus_client.message import Message
-from hivemind_bus_client.client import BinaryDataCallbacks
-from hivemind_bus_client.message import HiveMessage, HiveMessageType
-from hivemind_bus_client.http_client import HiveMindHTTPClient
-
-# To handle binary data subclass BinaryDataCallbacks
-class BinaryDataHandler(BinaryDataCallbacks):
-    def handle_receive_tts(self, bin_data: bytes,
-                           utterance: str,
-                           lang: str,
-                           file_name: str):
-        # we can play it or save to file or whatever
-        print(f"got {len(bin_data)} bytes of TTS audio")
-        print(f"utterance: {utterance}", f"lang: {lang}", f"file_name: {file_name}")
-        # got 33836 bytes of TTS audio
-        # utterance: hello world lang: en-US file_name: 5eb63bbbe01eeed093cb22bb8f5acdc3.wav
-
-
-# not passing key etc so it uses identity file
-client = HiveMindHTTPClient(host="http://localhost", port=5679,
-                            bin_callbacks=BinaryDataHandler())
-client.connect()
-
-# send HiveMessages as usual
-client.emit(HiveMessage(HiveMessageType.BUS,
-                        Message("speak:synth", {"utterance": "hello world"})))
-
-```
-
-## Cli Usage
+On the hub, register the client. On the satellite, store the credentials under an application name, then send an utterance:
 
 ```bash
-$ hivemind-client --help
-Usage: hivemind-client [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  escalate      escalate a single mycroft message
-  propagate     propagate a single mycroft message
-  send-mycroft  send a single mycroft message
-  terminal      simple cli interface to inject utterances and print speech
-
-
-$ hivemind-client set-identity --help
-Usage: hivemind-client set-identity [OPTIONS]
-
-  persist node identity / credentials
-
-Options:
-  --key TEXT       HiveMind access key
-  --password TEXT  HiveMind password
-  --siteid TEXT    location identifier for message.context
-  --help           Show this message and exit.
-
-
-$ hivemind-client terminal --help
-Usage: hivemind-client terminal [OPTIONS]
-
-  simple cli interface to inject utterances and print speech
-
-Options:
-  --key TEXT      HiveMind access key
-  --host TEXT     HiveMind host
-  --port INTEGER  HiveMind port number
-  --help          Show this message and exit.
-
-
-$ hivemind-client send-mycroft --help
-Usage: hivemind-client send-mycroft [OPTIONS]
-
-  send a single mycroft message
-
-Options:
-  --key TEXT      HiveMind access key
-  --host TEXT     HiveMind host
-  --port INTEGER  HiveMind port number
-  --msg TEXT      ovos message type to inject
-  --payload TEXT  ovos message json payload
-  --help          Show this message and exit.
-
-
-$ hivemind-client escalate --help
-Usage: hivemind-client escalate [OPTIONS]
-
-  escalate a single mycroft message
-
-Options:
-  --key TEXT      HiveMind access key
-  --host TEXT     HiveMind host
-  --port INTEGER  HiveMind port number
-  --msg TEXT      ovos message type to inject
-  --payload TEXT  ovos message json payload
-  --help          Show this message and exit.
-
-
-$ hivemind-client propagate --help
-Usage: hivemind-client propagate [OPTIONS]
-
-  propagate a single mycroft message
-
-Options:
-  --key TEXT      HiveMind access key
-  --host TEXT     HiveMind host
-  --port INTEGER  HiveMind port number
-  --msg TEXT      ovos message type to inject
-  --payload TEXT  ovos message json payload
-  --help          Show this message and exit.
-
+hivemind-core add-client --name docs-sat --access-key docs-key-0123 \
+    --password "correct-horse-battery-staple-docs" --allow recognizer_loop:utterance
+hivemind-client --app docs-sat set-identity --key docs-key-0123 \
+    --password "correct-horse-battery-staple-docs" --host 127.0.0.1 --port 5678
 ```
+
+```python
+from ovos_bus_client.message import Message
+from hivemind_bus_client import HiveMessageBusClient
+from hivemind_bus_client.identity import NodeIdentity
+
+client = HiveMessageBusClient(identity=NodeIdentity(app_name="docs-sat"))
+client.connect(handshake_max_retries=3)
+client.emit_mycroft(Message("recognizer_loop:utterance",
+                            {"utterances": ["hello hive"]},
+                            {"destination": "skills"}))
+reply = client.wait_for_mycroft("speak", timeout=5)
+print(reply.msg_type, reply.payload.msg_type, reply.payload.data)
+client.close()
+```
+
+```text
+bus speak {'utterance': 'you said hello hive'}
+```
+
+The answer comes from a test responder on the hub's OVOS bus. [Install and connect](docs/install-and-connect.md) shows the full setup.
+
+## Documentation
+
+| Page | What you get there |
+| :--- | :--- |
+| [Docs index](docs/index.md) | The reading order and the wire size of each encoding |
+| [Install and connect](docs/install-and-connect.md) | A sync and an async round trip against a local hub |
+| [Identity](docs/identity.md) | Where credentials and keys live, and the shared-file refusal |
+| [CLI reference](docs/cli.md) | Every `hivemind-client` command and option |
+| [Messages](docs/messages.md) | Message types, payload rules and serialization |
+| [Routing and peers](docs/routing-and-peers.md) | INTERCOM, trusted keys, QUERY, CASCADE and the hive map |
+| [Wire format](docs/wire-format.md) | The bit layout of a binary frame |
+| [Security](docs/security.md) | Noise XXpsk2 and KKpsk0, key pinning and the PSK cache |
+| [HTTP client](docs/polling-client.md) | `HiveMindHTTPClient` for hubs that serve HTTP |
+| [Troubleshooting](docs/troubleshooting.md) | Each error message, its cause and the fix |
+| [Contributing](docs/contributing.md) | Setup, tests and the rules for a change |
+
+## License
+
+Apache-2.0. See [LICENSE.md](LICENSE.md).
